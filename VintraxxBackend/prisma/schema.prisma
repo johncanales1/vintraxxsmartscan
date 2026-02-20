@@ -1,0 +1,94 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  scans        Scan[]
+}
+
+model Otp {
+  id        String   @id @default(uuid())
+  email     String
+  code      String
+  verified  Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email, code])
+}
+
+model Scan {
+  id                   String     @id @default(uuid())
+  userId               String
+  user                 User       @relation(fields: [userId], references: [id])
+  vin                  String
+  mileage              Float?
+  milOn                Boolean
+  dtcCount             Int
+  storedDtcCodes       String[]
+  pendingDtcCodes      String[]
+  permanentDtcCodes    String[]
+  distanceSinceCleared Float?
+  timeSinceCleared     Float?
+  warmupsSinceCleared  Int?
+  distanceWithMilOn    Float?
+  fuelSystemStatus     Json?
+  secondaryAirStatus   Int?
+  milStatusByEcu       Json?
+  rawPayload           Json
+  vehicleYear          Int?
+  vehicleMake          String?
+  vehicleModel         String?
+  vehicleEngine        String?
+  status               ScanStatus @default(RECEIVED)
+  errorMessage         String?
+  scanDate             DateTime
+  receivedAt           DateTime   @default(now())
+  processedAt          DateTime?
+  fullReport           FullReport?
+
+  @@index([userId])
+  @@index([vin])
+}
+
+model FullReport {
+  id                      String    @id @default(uuid())
+  scanId                  String    @unique
+  scan                    Scan      @relation(fields: [scanId], references: [id])
+  aiRawResponse           Json
+  dtcAnalysis             Json
+  emissionsCheck          Json
+  mileageRiskAssessment   Json
+  repairRecommendations   Json
+  modulesScanned          String[]
+  datapointsScanned       Int
+  totalReconditioningCost Float
+  reportVersion           String
+  pdfUrl                  String?
+  pdfGeneratedAt          DateTime?
+  emailSentAt             DateTime?
+  createdAt               DateTime  @default(now())
+
+  @@index([scanId])
+}
+
+enum ScanStatus {
+  RECEIVED
+  DECODING_VIN
+  ANALYZING
+  GENERATING_PDF
+  EMAILING
+  COMPLETED
+  FAILED
+}

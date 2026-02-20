@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VinTraxx SmartScan Report</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 11px;
+      color: #333;
+      line-height: 1.4;
+      padding: 0;
+    }
+
+    .header-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .header-box {
+      flex: 1;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      padding: 10px 12px;
+    }
+
+    .header-box h3 {
+      font-size: 13px;
+      font-weight: bold;
+      margin-bottom: 8px;
+      color: #333;
+    }
+
+    .header-box .value {
+      font-size: 11px;
+      margin-bottom: 4px;
+      color: #444;
+    }
+
+    .header-box .value.large {
+      font-size: 14px;
+      font-weight: bold;
+      color: #222;
+    }
+
+    .codes-last-reset h3 {
+      color: #2e7d32;
+    }
+
+    .emissions-check h3 {
+      color: #1565c0;
+    }
+
+    .vehicle-info h3 {
+      color: #e65100;
+    }
+
+    .check-icon {
+      color: #4caf50;
+      font-weight: bold;
+    }
+
+    .fail-icon {
+      color: #f44336;
+      font-weight: bold;
+    }
+
+    .section {
+      margin-bottom: 20px;
+    }
+
+    .section h2 {
+      font-size: 15px;
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 10px;
+      border-bottom: 2px solid #333;
+      padding-bottom: 4px;
+    }
+
+    .recon-container {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+    }
+
+    .recon-cost-box {
+      min-width: 180px;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      text-align: center;
+    }
+
+    .recon-cost-label {
+      font-size: 11px;
+      color: #666;
+      margin-bottom: 5px;
+    }
+
+    .recon-cost-value {
+      font-size: 32px;
+      font-weight: bold;
+      color: #222;
+    }
+
+    .recon-table-wrap {
+      flex: 1;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+
+    table th {
+      background-color: #f5f5f5;
+      border: 1px solid #ddd;
+      padding: 6px 8px;
+      text-align: left;
+      font-weight: bold;
+      font-size: 11px;
+    }
+
+    table td {
+      border: 1px solid #ddd;
+      padding: 6px 8px;
+      vertical-align: top;
+    }
+
+    table th.cost-col,
+    table td.cost-col {
+      text-align: right;
+      width: 70px;
+    }
+
+    .dtc-header-info {
+      font-size: 11px;
+      margin-bottom: 8px;
+      color: #555;
+    }
+
+    .dtc-header-info strong {
+      color: #333;
+    }
+
+    .dtc-code {
+      font-weight: bold;
+      font-family: monospace;
+      font-size: 11px;
+    }
+
+    .dtc-critical {
+      color: #d32f2f;
+    }
+
+    .critical-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      background-color: #d32f2f;
+      border-radius: 50%;
+      margin-left: 4px;
+      vertical-align: middle;
+    }
+
+    .mileage-table td:nth-child(1) {
+      font-weight: bold;
+    }
+
+    .footer {
+      margin-top: 30px;
+      padding-top: 10px;
+      border-top: 1px solid #ccc;
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: #888;
+    }
+
+    .emissions-status-pass {
+      color: #2e7d32;
+      font-weight: bold;
+    }
+
+    .emissions-status-fail {
+      color: #d32f2f;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER ROW: 3 columns -->
+  <div class="header-row">
+    <div class="header-box codes-last-reset">
+      <h3>Codes Last Reset</h3>
+      <div class="value large">{{distanceDisplay}}</div>
+      <div class="value" style="font-size: 10px; color: #666; margin-top: 4px;">
+        Emissions Monitors are set and codes shown accurately reflect the status of the vehicle.
+      </div>
+    </div>
+
+    <div class="header-box emissions-check">
+      <h3>Emissions Check</h3>
+      {{#if (eq emissionsCheck.status "pass")}}
+        <div class="value emissions-status-pass">Emissions Passed</div>
+      {{else}}
+        <div class="value emissions-status-fail">Emissions Failed</div>
+      {{/if}}
+      <div class="value">
+        <span class="check-icon">&#10004;</span> {{emissionsCheck.testsPassed}} Tests Passed
+      </div>
+      <div class="value">
+        {{#if emissionsCheck.testsFailed}}
+          <span class="fail-icon">&#10008;</span> {{emissionsCheck.testsFailed}} Tests Failed
+        {{else}}
+          <span class="check-icon">&#10004;</span> {{emissionsCheck.testsFailed}} Tests Failed
+        {{/if}}
+      </div>
+    </div>
+
+    <div class="header-box vehicle-info">
+      <h3>Vehicle Information</h3>
+      <div class="value large">{{vehicle.vin}}</div>
+      <div class="value">{{vehicleDisplay}}</div>
+      <div class="value">{{mileageDisplay}}</div>
+    </div>
+  </div>
+
+  <!-- ESTIMATED RECONDITIONING COSTS -->
+  <div class="section">
+    <h2>Estimated Reconditioning Costs</h2>
+    <div class="recon-container">
+      <div class="recon-cost-box">
+        <div class="recon-cost-label">Reconditioning Cost</div>
+        <div class="recon-cost-value">${{formatNumber totalEstimatedRepairCost}}</div>
+      </div>
+      <div class="recon-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Repairs</th>
+              <th class="cost-col">Parts</th>
+              <th class="cost-col">Labor</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{#each repairRecommendations}}
+            <tr>
+              <td>{{this.description}}</td>
+              <td class="cost-col">{{formatCurrency this.estimatedCost.parts}}</td>
+              <td class="cost-col">{{formatCurrency this.estimatedCost.labor}}</td>
+            </tr>
+            {{/each}}
+            {{#unless repairRecommendations.length}}
+            <tr>
+              <td colspan="3" style="text-align: center; color: #999;">No repairs needed</td>
+            </tr>
+            {{/unless}}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- DIAGNOSTIC TROUBLE CODES -->
+  <div class="section">
+    <h2>Diagnostic Trouble Codes</h2>
+    <div class="dtc-header-info">
+      <strong>{{formatNumber datapointsScanned}}</strong> datapoints were scanned across the <strong>{{modulesDisplay}}</strong>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 90px;">Code</th>
+          <th style="width: 160px;">Module</th>
+          <th>Details</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each dtcAnalysis}}
+        <tr>
+          <td>
+            <span class="dtc-code {{#if (isCritical this.severity)}}dtc-critical{{/if}}">
+              {{this.code}}
+            </span>
+            {{#if (isCritical this.severity)}}
+              <span class="critical-dot"></span>
+            {{/if}}
+          </td>
+          <td>{{this.category}}</td>
+          <td>{{this.description}}</td>
+        </tr>
+        {{/each}}
+        {{#unless dtcAnalysis.length}}
+        <tr>
+          <td colspan="3" style="text-align: center; color: #999;">No diagnostic trouble codes found</td>
+        </tr>
+        {{/unless}}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- MILEAGE BASED RISK ASSESSMENT -->
+  <div class="section">
+    <h2>Mileage Based Risk Assessment</h2>
+    <table class="mileage-table">
+      <thead>
+        <tr>
+          <th>Potential Issue</th>
+          <th style="width: 150px;">Cost Estimates</th>
+          <th style="width: 140px;">Mileage Estimate</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each mileageRiskAssessment}}
+        <tr>
+          <td>{{this.issue}}</td>
+          <td>{{costRange this.costEstimateLow this.costEstimateHigh}}</td>
+          <td>{{formatMileage this.mileageEstimate}}</td>
+        </tr>
+        {{/each}}
+        {{#unless mileageRiskAssessment.length}}
+        <tr>
+          <td colspan="3" style="text-align: center; color: #999;">No mileage-based risks identified</td>
+        </tr>
+        {{/unless}}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <div>User: {{reportMetadata.userEmail}}</div>
+    <div>{{reportMetadata.reportId}} v:{{reportMetadata.reportVersion}}</div>
+    <div>Date: {{generatedDate}}</div>
+  </div>
+
+</body>
+</html>

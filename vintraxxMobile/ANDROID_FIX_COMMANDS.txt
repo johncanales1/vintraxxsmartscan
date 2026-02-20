@@ -1,0 +1,40 @@
+Android Launch Fix - VinTraxx SmartScan
+========================================
+
+ISSUE: Activity class {com.vtsmartscan/com.vtsmartscan.MainActivity} does not exist
+CAUSE: Old APK cached on device with incorrect package configuration
+
+FIX STEPS (Run these commands in order):
+-----------------------------------------
+
+1. Uninstall old app from emulator:
+   adb uninstall com.vtsmartscan
+
+2. Clean Android build:
+   cd android
+   gradlew clean
+   cd ..
+
+3. Clear Metro bundler cache:
+   npx react-native start --reset-cache
+
+4. Rebuild and install:
+   npx react-native run-android
+
+ALTERNATIVE ONE-LINER:
+---------------------
+adb uninstall com.vtsmartscan && cd android && gradlew clean && cd .. && npx react-native run-android
+
+VERIFICATION:
+------------
+After running the fix, you should see:
+- "BUILD SUCCESSFUL"
+- "Installed on 1 device"
+- App launches successfully on emulator
+- No "Activity class does not exist" error
+
+WHAT WAS FIXED:
+--------------
+1. Removed deprecated package="com.vtsmartscan" from AndroidManifest.xml
+2. Namespace is now correctly set in build.gradle only
+3. Old cached APK needs to be uninstalled for changes to take effect

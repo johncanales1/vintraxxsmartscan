@@ -7,7 +7,6 @@ import { TabNavigator } from './TabNavigator';
 import { LoginScreen } from '../screens/LoginScreen';
 import { DeviceSetupScreen } from '../screens/DeviceSetupScreen';
 import { ReportScreen } from '../screens/ReportScreen';
-import { CleanReportScreen } from '../screens/CleanReportScreen';
 import { FullReportScreen } from '../screens/FullReportScreen';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -117,15 +116,6 @@ export const RootNavigator: React.FC = () => {
             component={ReportScreen}
             options={{
               title: 'Condition Report',
-              headerShown: true,
-              presentation: 'card',
-            }}
-          />
-          <Stack.Screen
-            name="CleanReport"
-            component={CleanReportScreen}
-            options={{
-              title: 'Clean Report',
               headerShown: true,
               presentation: 'card',
             }}

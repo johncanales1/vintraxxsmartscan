@@ -268,7 +268,7 @@ export const DeviceSetupScreen: React.FC<DeviceSetupScreenProps> = ({ navigation
                   <OBD2Icon width={24} height={24} color={colors.primary.navy} />
                   <View style={styles.deviceText}>
                     <Text style={styles.deviceName}>
-                      {device.name || 'Unknown Device'}
+                      VinTraxx
                     </Text>
                     <Text style={styles.deviceId}>{device.id}</Text>
                     {device.rssi !== null && (

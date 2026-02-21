@@ -8,6 +8,7 @@ import { sendReportEmail } from '../services/email.service';
 import { env } from '../config/env';
 import logger from '../utils/logger';
 import prisma from '../config/db';
+import fs from 'fs';
 
 export async function submitScan(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -38,7 +39,13 @@ export async function submitScan(req: Request, res: Response, next: NextFunction
       },
     });
 
-    logger.info(`Scan received: ${scan.id} for VIN ${payload.vin}`);
+    logger.info('Scan received', {
+      scanId: scan.id,
+      userId,
+      userEmail,
+      vin: payload.vin,
+      dtcCount: payload.milStatus?.dtcCount,
+    });
 
     res.status(202).json({
       success: true,
@@ -57,8 +64,16 @@ export async function submitScan(req: Request, res: Response, next: NextFunction
 }
 
 async function processScanInBackground(scanId: string, userId: string, userEmail: string): Promise<void> {
+  const startedAtMs = Date.now();
   try {
     const scan = await prisma.scan.findUniqueOrThrow({ where: { id: scanId } });
+
+    logger.info('Background scan processing started', {
+      scanId,
+      userId,
+      userEmail,
+      vin: scan.vin,
+    });
 
     // Step 1: Decode VIN
     await prisma.scan.update({ where: { id: scanId }, data: { status: 'DECODING_VIN' } });
@@ -148,6 +163,10 @@ async function processScanInBackground(scanId: string, userId: string, userEmail
     let pdfPath: string | null = null;
     try {
       pdfPath = await generatePdf(reportData);
+      if (pdfPath && !fs.existsSync(pdfPath)) {
+        logger.error(`[${scanId}] PDF path returned but file does not exist`, { pdfPath });
+        pdfPath = null;
+      }
       await prisma.fullReport.update({
         where: { id: fullReport.id },
         data: { pdfUrl: pdfPath, pdfGeneratedAt: new Date() },
@@ -163,15 +182,11 @@ async function processScanInBackground(scanId: string, userId: string, userEmail
     logger.info(`[${scanId}] Sending email to ${userEmail}`);
 
     try {
-      if (pdfPath) {
-        await sendReportEmail(userEmail, reportData, pdfPath);
-        await prisma.fullReport.update({
-          where: { id: fullReport.id },
-          data: { emailSentAt: new Date() },
-        });
-      } else {
-        logger.warn(`[${scanId}] Skipping email - no PDF available`);
-      }
+      await sendReportEmail(userEmail, reportData, pdfPath);
+      await prisma.fullReport.update({
+        where: { id: fullReport.id },
+        data: { emailSentAt: new Date() },
+      });
     } catch (emailError) {
       logger.error(`[${scanId}] Email sending failed, continuing`, {
         error: (emailError as Error).message,
@@ -184,7 +199,10 @@ async function processScanInBackground(scanId: string, userId: string, userEmail
       data: { status: 'COMPLETED', processedAt: new Date() },
     });
 
-    logger.info(`[${scanId}] Processing completed successfully`);
+    logger.info('Background scan processing completed', {
+      scanId,
+      durationMs: Date.now() - startedAtMs,
+    });
   } catch (error) {
     logger.error(`[${scanId}] Processing failed`, { error: (error as Error).message });
     await prisma.scan.update({

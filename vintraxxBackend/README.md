@@ -49,6 +49,11 @@ npm run dev
 npm run build
 npm start
 ```
+### pm2 
+```bash
+pm2 start npm --name "vintraxxBackend" -- start
+``` 
+
 
 ## API Endpoints
 

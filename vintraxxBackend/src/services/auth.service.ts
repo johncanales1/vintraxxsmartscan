@@ -23,11 +23,18 @@ export async function sendOtp(email: string): Promise<void> {
     data: { email, code, expiresAt },
   });
 
-  if (env.NODE_ENV === 'development') {
+  try {
+    if (env.NODE_ENV !== 'test') {
+      const { sendOtpEmail } = await import('./email.service');
+      await sendOtpEmail(email, code);
+    }
+  } catch (error) {
+    await prisma.otp.deleteMany({ where: { email, code } });
+    throw new AppError('Failed to send verification code. Please try again later.', 502);
+  }
+
+  if (env.NODE_ENV !== 'production') {
     logger.info(`[DEV] OTP for ${email}: ${code}`);
-  } else {
-    const { sendOtpEmail } = await import('./email.service');
-    await sendOtpEmail(email, code);
   }
 }
 

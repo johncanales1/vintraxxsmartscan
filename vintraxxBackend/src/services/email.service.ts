@@ -14,10 +14,33 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+ let transporterVerified = false;
+
+ async function ensureTransporterVerified(): Promise<void> {
+   if (transporterVerified) return;
+   try {
+     await transporter.verify();
+     transporterVerified = true;
+     logger.info('SMTP transporter verified', {
+       host: env.SMTP_HOST,
+       port: env.SMTP_PORT,
+       user: env.SMTP_USER,
+     });
+   } catch (error) {
+     logger.error('SMTP transporter verification failed', {
+       host: env.SMTP_HOST,
+       port: env.SMTP_PORT,
+       user: env.SMTP_USER,
+       error: (error as Error).message,
+     });
+     throw error;
+   }
+ }
+
 export async function sendReportEmail(
   toEmail: string,
   report: FullReportData,
-  pdfPath: string
+  pdfPath?: string | null
 ): Promise<void> {
   const { vehicle, healthScore, dtcAnalysis, totalEstimatedRepairCost } = report;
   const vehicleStr = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
@@ -28,6 +51,10 @@ export async function sendReportEmail(
   });
 
   const subject = `VinTraxx SmartScan Report - ${vehicleStr} - ${dateStr}`;
+
+  const pdfNote = pdfPath
+    ? 'See attached PDF for the full report.'
+    : 'Open the VinTraxx SmartScan app to view the full report.';
 
   const htmlBody = `
 <!DOCTYPE html>
@@ -69,7 +96,7 @@ export async function sendReportEmail(
           <div class="stat-label">Total Estimated Repair Cost</div>
         </div>
       </div>
-      <p style="text-align: center; margin-top: 20px;">See attached PDF for the full report.</p>
+      <p style="text-align: center; margin-top: 20px;">${pdfNote}</p>
     </div>
     <div class="footer">
       <p>&copy; ${new Date().getFullYear()} VinTraxx SmartScan. All rights reserved.</p>
@@ -79,20 +106,41 @@ export async function sendReportEmail(
 </html>`;
 
   try {
-    await transporter.sendMail({
+    await ensureTransporterVerified();
+
+    logger.info('Sending report email', {
+      scanId: report.scanId,
+      vin: vehicle.vin,
+      to: toEmail,
+      subject,
+      hasPdfAttachment: Boolean(pdfPath),
+    });
+
+    const info = await transporter.sendMail({
       from: `"${env.EMAIL_FROM_NAME}" <${env.EMAIL_FROM}>`,
       to: toEmail,
       subject,
       html: htmlBody,
-      attachments: [
-        {
-          filename: `VinTraxx-Report-${vehicle.vin}.pdf`,
-          path: pdfPath,
-        },
-      ],
+      attachments: pdfPath
+        ? [
+            {
+              filename: `VinTraxx-Report-${vehicle.vin}.pdf`,
+              path: pdfPath,
+            },
+          ]
+        : [],
     });
 
-    logger.info(`Report email sent to ${toEmail}`);
+    logger.info('Report email sent', {
+      scanId: report.scanId,
+      vin: vehicle.vin,
+      to: toEmail,
+      messageId: info.messageId,
+      response: info.response,
+      accepted: info.accepted,
+      rejected: info.rejected,
+      pending: (info as any).pending,
+    });
   } catch (error) {
     logger.error('Failed to send report email', {
       to: toEmail,
@@ -130,14 +178,22 @@ export async function sendOtpEmail(toEmail: string, otp: string): Promise<void> 
 </html>`;
 
   try {
-    await transporter.sendMail({
+    await ensureTransporterVerified();
+    const info = await transporter.sendMail({
       from: `"${env.EMAIL_FROM_NAME}" <${env.EMAIL_FROM}>`,
       to: toEmail,
       subject: 'VinTraxx SmartScan - Verification Code',
       html: htmlBody,
     });
 
-    logger.info(`OTP email sent to ${toEmail}`);
+    logger.info('OTP email sent', {
+      to: toEmail,
+      messageId: info.messageId,
+      response: info.response,
+      accepted: info.accepted,
+      rejected: info.rejected,
+      pending: (info as any).pending,
+    });
   } catch (error) {
     logger.error('Failed to send OTP email', {
       to: toEmail,

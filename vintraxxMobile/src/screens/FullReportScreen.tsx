@@ -1,5 +1,6 @@
 // FullReportScreen for VinTraxx SmartScan
-// Submits scan data to backend, polls for AI-processed report, displays results
+// Submits scan data to backend, polls for AI-processed report, displays merged results
+// Combines direct scanned data (clean report) + AI analysis into one unified report
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
@@ -19,7 +20,10 @@ import { Button } from '../components/Button';
 import { apiService } from '../services/api/ApiService';
 import { logger, LogCategory } from '../utils/Logger';
 import { ScanResult } from '../services/scanner/ScannerService';
-import { Vehicle } from '../models/Vehicle';
+import { Vehicle, getVehicleDisplayName, formatMileage } from '../models/Vehicle';
+import { ConditionReport } from '../models/ConditionReport';
+import { useAppStore } from '../store/appStore';
+import { getFuelSystemStatusLabel, getSecondaryAirStatusLabel } from '../services/obd/utils';
 import type { FullReportData } from '../types/api';
 
 interface FullReportScreenProps {
@@ -28,6 +32,7 @@ interface FullReportScreenProps {
     params: {
       scanResult: ScanResult;
       vehicle: Vehicle;
+      conditionReport?: ConditionReport;
     };
   };
 }
@@ -35,13 +40,15 @@ interface FullReportScreenProps {
 type ProcessingStatus = 'submitting' | 'processing' | 'completed' | 'failed';
 
 export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, route }) => {
-  const { scanResult, vehicle } = route.params;
+  const { scanResult, vehicle, conditionReport } = route.params;
   const [status, setStatus] = useState<ProcessingStatus>('submitting');
   const [statusMessage, setStatusMessage] = useState('Submitting scan data...');
   const [reportData, setReportData] = useState<FullReportData | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [reportSaved, setReportSaved] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const isMounted = useRef(true);
+  const { addSavedReport, savedReports } = useAppStore();
 
   useEffect(() => {
     return () => { isMounted.current = false; };
@@ -60,6 +67,28 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
       return () => animation.stop();
     }
   }, [status, pulseAnim]);
+
+  // Auto-save report to history when AI report completes
+  useEffect(() => {
+    if (status === 'completed' && reportData && conditionReport && !reportSaved) {
+      const enrichedReport: ConditionReport = {
+        ...conditionReport,
+        totalRepairCost: reportData.totalEstimatedRepairCost,
+        topRepairCost: reportData.repairRecommendations.length > 0
+          ? Math.max(...reportData.repairRecommendations.map(r => r.estimatedCost.total))
+          : 0,
+        otherRepairsCost: reportData.repairRecommendations.length > 1
+          ? reportData.repairRecommendations.slice(1).reduce((sum, r) => sum + r.estimatedCost.total, 0)
+          : 0,
+      };
+      const alreadySaved = savedReports.some(r => r.id === enrichedReport.id);
+      if (!alreadySaved) {
+        addSavedReport(enrichedReport);
+        logger.info(LogCategory.APP, 'Full report auto-saved to history');
+      }
+      setReportSaved(true);
+    }
+  }, [status, reportData, conditionReport, reportSaved, addSavedReport, savedReports]);
 
   // Submit and poll pipeline
   useEffect(() => {
@@ -124,8 +153,17 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
     setStatusMessage('Submitting scan data...');
     setErrorMessage('');
     setReportData(null);
-    // Re-trigger by navigating to self
-    navigation.replace('FullReport', { scanResult, vehicle });
+    setReportSaved(false);
+    navigation.replace('FullReport', { scanResult, vehicle, conditionReport });
+  };
+
+  const formatDate = (date: Date): string => {
+    return new Date(date).toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
   };
 
   // Render loading/processing state
@@ -173,6 +211,18 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
   // Render completed report
   if (!reportData) return null;
 
+  const report = conditionReport;
+  const allCodes = report ? [...report.activeDtcCodes, ...report.pendingDtcCodes] : [];
+  const storedCodes = report?.activeDtcCodes || [];
+  const pendingCodes = report?.pendingDtcCodes || [];
+
+  // Calculate cost summary
+  const totalRepairCost = reportData.totalEstimatedRepairCost;
+  const topRepairCost = reportData.repairRecommendations.length > 0
+    ? Math.max(...reportData.repairRecommendations.map(r => r.estimatedCost.total))
+    : 0;
+  const otherRepairsCost = totalRepairCost - topRepairCost;
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -183,9 +233,28 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
             {reportData.vehicle.year} {reportData.vehicle.make} {reportData.vehicle.model}
           </Text>
           <Text style={styles.reportMeta}>
-            VIN: {reportData.vehicle.vin} | {reportData.vehicle.mileage ? `${reportData.vehicle.mileage.toLocaleString()} mi` : 'N/A'}
+            VIN: {reportData.vehicle.vin} | {reportData.vehicle.mileage ? `${Math.round(reportData.vehicle.mileage).toLocaleString()} mi` : 'N/A'}
           </Text>
+          {report && <Text style={styles.reportDate}>{formatDate(report.scanDate)}</Text>}
         </View>
+
+        {/* MIL Status Banner */}
+        {report && (
+          <View style={[
+            styles.milBanner,
+            report.celStatus ? styles.milBannerOn : styles.milBannerOff,
+          ]}>
+            <Text style={styles.milIcon}>{report.celStatus ? '⚠' : '✓'}</Text>
+            <View style={styles.milTextWrap}>
+              <Text style={styles.milTitle}>
+                Check Engine Light: {report.celStatus ? 'ON' : 'OFF'}
+              </Text>
+              <Text style={styles.milSubtitle}>
+                {report.dtcCountFromECU ?? allCodes.length} DTC(s) reported by ECU
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Health Score */}
         <View style={styles.healthScoreCard}>
@@ -203,19 +272,79 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
                reportData.overallStatus === 'attention_needed' ? 'Attention Needed' : 'Critical'}
             </Text>
             <Text style={styles.healthCostText}>
-              Est. Repair: ${reportData.totalEstimatedRepairCost.toLocaleString()}
+              Est. Repair: ${totalRepairCost.toLocaleString()}
             </Text>
           </View>
         </View>
+
+        {/* Cost Summary */}
+        <Section title="Cost Summary">
+          <View style={styles.costSummaryGrid}>
+            <View style={styles.costItem}>
+              <Text style={styles.costItemValue}>${totalRepairCost.toLocaleString()}</Text>
+              <Text style={styles.costItemLabel}>Total Cost</Text>
+            </View>
+            <View style={styles.costDivider} />
+            <View style={styles.costItem}>
+              <Text style={styles.costItemValue}>${topRepairCost.toLocaleString()}</Text>
+              <Text style={styles.costItemLabel}>Top Repair</Text>
+            </View>
+            <View style={styles.costDivider} />
+            <View style={styles.costItem}>
+              <Text style={styles.costItemValue}>${otherRepairsCost.toLocaleString()}</Text>
+              <Text style={styles.costItemLabel}>Other Costs</Text>
+            </View>
+          </View>
+        </Section>
 
         {/* AI Summary */}
         <Section title="AI Summary">
           <Text style={styles.summaryText}>{reportData.aiSummary}</Text>
         </Section>
 
-        {/* DTC Analysis */}
+        {/* Vehicle Information (from scan) */}
+        {report && (
+          <Section title="Vehicle Information">
+            <DataRow label="VIN" value={report.vehicle.vin} />
+            <DataRow label="Year / Make / Model" value={getVehicleDisplayName(report.vehicle)} />
+            <DataRow label="Mileage" value={formatMileage(report.scanMileage)} />
+            {report.odometerEcu && (
+              <DataRow label="Odometer ECU" value={report.odometerEcu} isLast />
+            )}
+          </Section>
+        )}
+
+        {/* Stored DTC Codes (from scan) */}
+        <Section title="Stored DTC Codes" subtitle={`${storedCodes.length} code(s)`}>
+          {storedCodes.length > 0 ? (
+            storedCodes.map((dtc, i) => (
+              <View key={dtc.id} style={[styles.codeRow, i === storedCodes.length - 1 && styles.codeRowLast]}>
+                <Text style={styles.codeValue}>{dtc.code}</Text>
+                <Text style={styles.codeDesc} numberOfLines={2}>{dtc.description}</Text>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.emptyText}>No stored codes</Text>
+          )}
+        </Section>
+
+        {/* Pending DTC Codes (from scan) */}
+        <Section title="Pending DTC Codes" subtitle={`${pendingCodes.length} code(s)`}>
+          {pendingCodes.length > 0 ? (
+            pendingCodes.map((dtc, i) => (
+              <View key={dtc.id} style={[styles.codeRow, i === pendingCodes.length - 1 && styles.codeRowLast]}>
+                <Text style={styles.codeValue}>{dtc.code}</Text>
+                <Text style={styles.codeDesc} numberOfLines={2}>{dtc.description}</Text>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.emptyText}>No pending codes</Text>
+          )}
+        </Section>
+
+        {/* DTC Analysis (from AI) */}
         {reportData.dtcAnalysis.length > 0 && (
-          <Section title="DTC Analysis" subtitle={`${reportData.dtcAnalysis.length} code(s) analyzed`}>
+          <Section title="AI DTC Analysis" subtitle={`${reportData.dtcAnalysis.length} code(s) analyzed`}>
             {reportData.dtcAnalysis.map((dtc, i) => (
               <View key={i} style={[styles.dtcCard, i < reportData.dtcAnalysis.length - 1 && styles.dtcCardSpaced]}>
                 <View style={styles.dtcHeader}>
@@ -234,14 +363,14 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
                   <View style={styles.causesContainer}>
                     <Text style={styles.causesTitle}>Possible Causes:</Text>
                     {dtc.possibleCauses.map((cause, j) => (
-                      <Text key={j} style={styles.causeItem}>- {cause}</Text>
+                      <Text key={j} style={styles.causeItem}>• {cause}</Text>
                     ))}
                   </View>
                 )}
                 <View style={styles.dtcCostRow}>
                   <Text style={styles.dtcCostLabel}>Repair Estimate:</Text>
                   <Text style={styles.dtcCostValue}>
-                    ${dtc.repairEstimate.low.toLocaleString()} - ${dtc.repairEstimate.high.toLocaleString()}
+                    ${dtc.repairEstimate.low.toLocaleString()} – ${dtc.repairEstimate.high.toLocaleString()}
                   </Text>
                 </View>
               </View>
@@ -249,7 +378,7 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
           </Section>
         )}
 
-        {/* Repair Recommendations */}
+        {/* Repair Recommendations (from AI) */}
         {reportData.repairRecommendations.length > 0 && (
           <Section title="Repair Recommendations">
             {reportData.repairRecommendations.map((rec, i) => (
@@ -275,7 +404,34 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
           </Section>
         )}
 
-        {/* Emissions Analysis */}
+        {/* Scan Data (from scan) */}
+        {report && (
+          <Section title="Scan Data">
+            <DataRow
+              label="Distance Since Cleared"
+              value={report.codesLastReset.milesSinceReset > 0
+                ? `${report.codesLastReset.milesSinceReset.toFixed(1)} mi`
+                : 'N/A'}
+            />
+            <DataRow
+              label="Time Since Cleared"
+              value={report.codesLastReset.daysSinceReset > 0
+                ? `${report.codesLastReset.daysSinceReset} days`
+                : 'N/A'}
+            />
+            <DataRow
+              label="Warmups Since Cleared"
+              value={report.warmupsSinceCleared !== undefined ? `${report.warmupsSinceCleared}` : 'N/A'}
+            />
+            <DataRow
+              label="Distance With MIL On"
+              value={report.milesWithMILOn !== undefined ? `${report.milesWithMILOn.toFixed(1)} mi` : 'N/A'}
+              isLast
+            />
+          </Section>
+        )}
+
+        {/* Emissions Analysis (from AI + scan) */}
         <Section title="Emissions Analysis">
           <View style={styles.emissionsRow}>
             <View style={[
@@ -296,7 +452,46 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
           <Text style={styles.emissionsSummary}>{reportData.emissionsAnalysis.summary}</Text>
         </Section>
 
-        {/* Mileage Risk Assessment */}
+        {/* Emissions Monitor Readiness (from scan) */}
+        {report && (
+          <Section title="Emissions Monitor Readiness">
+            <View style={styles.monitorSummary}>
+              <View style={styles.monitorStat}>
+                <Text style={[styles.monitorStatValue, { color: colors.status.success }]}>
+                  {report.emissionsCheck.readyMonitors}
+                </Text>
+                <Text style={styles.monitorStatLabel}>Ready</Text>
+              </View>
+              <View style={styles.monitorDivider} />
+              <View style={styles.monitorStat}>
+                <Text style={[styles.monitorStatValue, report.emissionsCheck.notReadyMonitors > 0 && { color: colors.status.error }]}>
+                  {report.emissionsCheck.notReadyMonitors}
+                </Text>
+                <Text style={styles.monitorStatLabel}>Not Ready</Text>
+              </View>
+              <View style={styles.monitorDivider} />
+              <View style={styles.monitorStat}>
+                <Text style={styles.monitorStatValue}>{report.emissionsCheck.totalMonitors}</Text>
+                <Text style={styles.monitorStatLabel}>Total</Text>
+              </View>
+            </View>
+            {report.emissionsCheck.monitors
+              .filter(m => m.status !== 'not_applicable')
+              .map((monitor, index, arr) => (
+                <View key={index} style={[styles.monitorRow, index === arr.length - 1 && styles.monitorRowLast]}>
+                  <Text style={styles.monitorName}>{monitor.name}</Text>
+                  <Text style={[
+                    styles.monitorStatus,
+                    monitor.status === 'ready' ? styles.monitorReady : styles.monitorNotReady,
+                  ]}>
+                    {monitor.status === 'ready' ? 'Ready' : 'Not Ready'}
+                  </Text>
+                </View>
+              ))}
+          </Section>
+        )}
+
+        {/* Mileage Risk Assessment (from AI) */}
         {reportData.mileageRiskAssessment.length > 0 && (
           <Section title="Mileage Risk Assessment">
             {reportData.mileageRiskAssessment.map((risk, i) => (
@@ -304,7 +499,7 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
                 <Text style={styles.riskIssue}>{risk.issue}</Text>
                 <View style={styles.riskDetails}>
                   <Text style={styles.riskCost}>
-                    ${risk.costEstimateLow.toLocaleString()} - ${risk.costEstimateHigh.toLocaleString()}
+                    ${risk.costEstimateLow.toLocaleString()} – ${risk.costEstimateHigh.toLocaleString()}
                   </Text>
                   <Text style={styles.riskMileage}>@ {risk.mileageEstimate.toLocaleString()} mi</Text>
                 </View>
@@ -326,6 +521,7 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
         {/* Footer */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>Report ID: {reportData.reportMetadata.reportId}</Text>
+          <Text style={styles.footerText}>Scanned with VinTraxx SmartScan</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -338,6 +534,13 @@ const Section: React.FC<{ title: string; subtitle?: string; children: React.Reac
     <Text style={sectionStyles.title}>{title}</Text>
     {subtitle && <Text style={sectionStyles.subtitle}>{subtitle}</Text>}
     <View style={sectionStyles.card}>{children}</View>
+  </View>
+);
+
+const DataRow: React.FC<{ label: string; value: string; isLast?: boolean }> = ({ label, value, isLast }) => (
+  <View style={[styles.dataRow, !isLast && styles.dataRowBorder]}>
+    <Text style={styles.dataLabel}>{label}</Text>
+    <Text style={styles.dataValue} numberOfLines={2}>{value}</Text>
   </View>
 );
 
@@ -475,6 +678,46 @@ const styles = StyleSheet.create({
     color: colors.text.muted,
     marginTop: spacing.xs,
   },
+  reportDate: {
+    ...typography.styles.caption,
+    color: colors.text.muted,
+    marginTop: 2,
+  },
+  // MIL Banner
+  milBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderRadius: 12,
+    marginBottom: spacing.lg,
+  },
+  milBannerOff: {
+    backgroundColor: colors.status.successLight,
+    borderWidth: 1,
+    borderColor: colors.status.success,
+  },
+  milBannerOn: {
+    backgroundColor: colors.status.errorLight,
+    borderWidth: 1,
+    borderColor: colors.status.error,
+  },
+  milIcon: {
+    fontSize: 24,
+    marginRight: spacing.md,
+  },
+  milTextWrap: {
+    flex: 1,
+  },
+  milTitle: {
+    fontSize: 15,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.text.primary,
+  },
+  milSubtitle: {
+    ...typography.styles.caption,
+    color: colors.text.secondary,
+    marginTop: 2,
+  },
   // Health Score
   healthScoreCard: {
     flexDirection: 'row',
@@ -521,11 +764,143 @@ const styles = StyleSheet.create({
     color: colors.primary.navy,
     fontWeight: typography.fontWeight.semiBold,
   },
+  // Cost Summary
+  costSummaryGrid: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+  },
+  costItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: spacing.xs,
+  },
+  costItemValue: {
+    fontSize: 18,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primary.navy,
+    marginBottom: 2,
+  },
+  costItemLabel: {
+    ...typography.styles.caption,
+    color: colors.text.muted,
+  },
+  costDivider: {
+    width: 1,
+    height: 36,
+    backgroundColor: colors.border.light,
+  },
   // Summary
   summaryText: {
     ...typography.styles.body,
     color: colors.text.secondary,
     lineHeight: 22,
+  },
+  // Data rows (vehicle info, scan data)
+  dataRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+  },
+  dataRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.light,
+  },
+  dataLabel: {
+    ...typography.styles.caption,
+    color: colors.text.secondary,
+    flex: 1,
+  },
+  dataValue: {
+    fontSize: 14,
+    fontWeight: typography.fontWeight.medium,
+    color: colors.text.primary,
+    flex: 1,
+    textAlign: 'right',
+  },
+  // Code rows (DTC codes from scan)
+  codeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.light,
+    gap: spacing.md,
+  },
+  codeRowLast: {
+    borderBottomWidth: 0,
+  },
+  codeValue: {
+    fontSize: 15,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primary.navy,
+    width: 80,
+  },
+  codeDesc: {
+    ...typography.styles.caption,
+    color: colors.text.secondary,
+    flex: 1,
+  },
+  emptyText: {
+    ...typography.styles.body,
+    color: colors.text.muted,
+    textAlign: 'center',
+    paddingVertical: spacing.md,
+  },
+  // Monitor rows (emissions from scan)
+  monitorSummary: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.light,
+  },
+  monitorStat: {
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  monitorStatValue: {
+    ...typography.styles.h3,
+    color: colors.text.primary,
+  },
+  monitorStatLabel: {
+    ...typography.styles.caption,
+    color: colors.text.muted,
+    marginTop: 2,
+  },
+  monitorDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: colors.border.light,
+  },
+  monitorRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.light,
+  },
+  monitorRowLast: {
+    borderBottomWidth: 0,
+  },
+  monitorName: {
+    ...typography.styles.caption,
+    color: colors.text.primary,
+  },
+  monitorStatus: {
+    fontSize: 12,
+    fontWeight: typography.fontWeight.semiBold,
+  },
+  monitorReady: {
+    color: colors.status.success,
+  },
+  monitorNotReady: {
+    color: colors.status.error,
   },
   // DTC Analysis
   dtcCard: {

@@ -104,14 +104,14 @@ export const DebugDataScreen: React.FC<DebugDataScreenProps> = ({ visible, onClo
             </Text>
           </View>
           <View style={styles.headerButtons}>
+            <TouchableOpacity onPress={onClose} style={styles.backButton}>
+              <Text style={styles.backButtonText}>← Back</Text>
+            </TouchableOpacity>
             <TouchableOpacity onPress={refreshLogs} style={styles.refreshButton}>
               <Text style={styles.refreshButtonText}>Refresh</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={handleExport} style={styles.exportButton}>
               <Text style={styles.exportButtonText}>Export</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Text style={styles.closeButtonText}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -222,6 +222,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
   },
+  backButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.primary.navy,
+    borderRadius: 6,
+  },
+  backButtonText: {
+    ...typography.styles.button,
+    color: colors.text.inverse,
+    fontSize: 14,
+    fontWeight: '700',
+  },
   refreshButton: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -236,21 +248,12 @@ const styles = StyleSheet.create({
   exportButton: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    backgroundColor: colors.primary.navy,
+    backgroundColor: colors.primary.navy + '80',
     borderRadius: 6,
   },
   exportButtonText: {
     ...typography.styles.button,
     color: colors.text.inverse,
-    fontSize: 14,
-  },
-  closeButton: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  closeButtonText: {
-    ...typography.styles.button,
-    color: colors.primary.navy,
     fontSize: 14,
   },
   scrollView: {

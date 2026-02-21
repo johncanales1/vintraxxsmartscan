@@ -306,7 +306,7 @@ export const ConnectScreen: React.FC<ConnectScreenProps> = ({ navigation, route 
       >
         <View style={styles.deviceInfo}>
           <Text style={[styles.deviceName, isLikelyObd && styles.deviceNameHighlighted]}>
-            {item.name || 'Unknown Device'}
+            VinTraxx
           </Text>
           <Text style={styles.deviceId}>{item.id}</Text>
         </View>
@@ -432,7 +432,7 @@ export const ConnectScreen: React.FC<ConnectScreenProps> = ({ navigation, route 
                     >
                       <View style={styles.deviceInfo}>
                         <Text style={[styles.deviceName, isLikelyObd && styles.deviceNameHighlighted]}>
-                          {isLikelyObd ? 'VinTraxx' : (device.name || 'Unknown Device')}
+                          VinTraxx
                         </Text>
                         <Text style={styles.deviceId}>{device.id}</Text>
                       </View>

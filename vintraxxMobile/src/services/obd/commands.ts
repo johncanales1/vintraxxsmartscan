@@ -1135,14 +1135,15 @@ export class ObdCommands {
         }
         
         if (dataIndex !== -1 && dataIndex + 3 < allHexBytes.length) {
-          // Odometer is 4 bytes (32-bit value in km)
-          const odometer = 
+          // Odometer is 4 bytes (32-bit value in 0.1 km per OBD-II PID 01A6 spec)
+          const rawValue = 
             (parseInt(allHexBytes[dataIndex], 16) << 24) +
             (parseInt(allHexBytes[dataIndex + 1], 16) << 16) +
             (parseInt(allHexBytes[dataIndex + 2], 16) << 8) +
             parseInt(allHexBytes[dataIndex + 3], 16);
+          const odometer = rawValue / 10; // Convert from 0.1 km units to km
           
-          logger.info(LogCategory.OBD, 'Odometer read via standard PID', { km: odometer });
+          logger.info(LogCategory.OBD, 'Odometer read via standard PID', { rawValue, km: odometer });
           return { km: odometer, ecu: '7E8' }; // Standard PID typically from engine ECU
         }
       }

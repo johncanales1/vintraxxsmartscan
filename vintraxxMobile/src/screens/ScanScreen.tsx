@@ -420,17 +420,37 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
     };
   }, [lastScanResult, selectedVehicle]);
 
-  // View Clean Report: direct scanned data only, no AI
-  const handleViewCleanReport = useCallback(() => {
-    if (!lastScanResult) {
-      Alert.alert('No Scan Data', 'Please complete a scan first.');
-      return;
-    }
-    const vehicle = resolveVehicle();
-    const report = buildReportFromScanResult(lastScanResult, vehicle);
-    setCurrentReport(report);
-    navigation.navigate('CleanReport', { report });
-  }, [lastScanResult, resolveVehicle, navigation, setCurrentReport]);
+  // Clear vehicle light (MIL) - send OBD-II Mode 04 command
+  const handleClearVehicleLight = useCallback(async () => {
+    Alert.alert(
+      'Clear Vehicle Light',
+      'This will clear all diagnostic trouble codes and turn off the check engine light. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              logger.info(LogCategory.APP, 'User requested clear vehicle light');
+              const success = await scannerService.clearDTCs();
+              if (success) {
+                Alert.alert('Success', 'Vehicle light cleared successfully. The check engine light should turn off.');
+                logger.info(LogCategory.APP, 'Vehicle light cleared successfully');
+              } else {
+                Alert.alert('Failed', 'Could not clear vehicle light. Please try again.');
+                logger.warn(LogCategory.APP, 'Clear vehicle light returned false');
+              }
+            } catch (error) {
+              const msg = error instanceof Error ? error.message : 'Unknown error';
+              Alert.alert('Error', `Failed to clear vehicle light: ${msg}`);
+              logger.error(LogCategory.APP, 'Clear vehicle light failed', error);
+            }
+          },
+        },
+      ]
+    );
+  }, []);
 
   // View Full Report: send scan data to backend for AI processing
   const handleViewFullReport = useCallback(() => {
@@ -439,8 +459,10 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
       return;
     }
     const vehicle = resolveVehicle();
-    navigation.navigate('FullReport', { scanResult: lastScanResult, vehicle });
-  }, [lastScanResult, resolveVehicle, navigation]);
+    const conditionReport = buildReportFromScanResult(lastScanResult, vehicle);
+    setCurrentReport(conditionReport);
+    navigation.navigate('FullReport', { scanResult: lastScanResult, vehicle, conditionReport });
+  }, [lastScanResult, resolveVehicle, navigation, setCurrentReport]);
 
   // Cancel scan
   const handleCancelScan = useCallback(() => {
@@ -618,17 +640,17 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
               </Text>
               <View style={styles.completeButtons}>
                 <Button
-                  title="View Clean Report"
-                  onPress={handleViewCleanReport}
-                  variant="primary"
-                  size="large"
+                  title="Clear Vehicle Light"
+                  onPress={handleClearVehicleLight}
+                  variant="secondary"
+                  size="medium"
                   fullWidth
                 />
                 <Button
                   title="View Full Report"
                   onPress={handleViewFullReport}
-                  variant="secondary"
-                  size="medium"
+                  variant="primary"
+                  size="large"
                   fullWidth
                   style={styles.secondaryButton}
                 />

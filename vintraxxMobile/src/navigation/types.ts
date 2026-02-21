@@ -20,8 +20,7 @@ export type RootStackParamList = {
     params?: TabParamList[keyof TabParamList];
   } | undefined;
   Report: { report?: ConditionReport };
-  CleanReport: { report: ConditionReport };
-  FullReport: { scanResult: ScanResult; vehicle: Vehicle };
+  FullReport: { scanResult: ScanResult; vehicle: Vehicle; conditionReport?: ConditionReport };
   FullReportView: { reportData: FullReportData };
 };
 

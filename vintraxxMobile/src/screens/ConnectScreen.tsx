@@ -24,6 +24,7 @@ import { scannerService } from '../services/scanner/ScannerService';
 import { authService } from '../services/auth/AuthService';
 import { BleConnectionState, BleDevice } from '../services/ble/types';
 import { logger, LogCategory } from '../utils/Logger';
+import { getDeviceDisplayName } from '../utils/Obd2Detector';
 import { DiagnosticsScreen } from './DiagnosticsScreen';
 
 // Import SVG icons
@@ -306,7 +307,7 @@ export const ConnectScreen: React.FC<ConnectScreenProps> = ({ navigation, route 
       >
         <View style={styles.deviceInfo}>
           <Text style={[styles.deviceName, isLikelyObd && styles.deviceNameHighlighted]}>
-            VinTraxx
+            {getDeviceDisplayName(item.name)}
           </Text>
           <Text style={styles.deviceId}>{item.id}</Text>
         </View>
@@ -432,7 +433,7 @@ export const ConnectScreen: React.FC<ConnectScreenProps> = ({ navigation, route 
                     >
                       <View style={styles.deviceInfo}>
                         <Text style={[styles.deviceName, isLikelyObd && styles.deviceNameHighlighted]}>
-                          VinTraxx
+                          {getDeviceDisplayName(device.name)}
                         </Text>
                         <Text style={styles.deviceId}>{device.id}</Text>
                       </View>
@@ -461,7 +462,7 @@ export const ConnectScreen: React.FC<ConnectScreenProps> = ({ navigation, route 
                 <OBD2Icon width={24} height={24} color={colors.status.success} />
                 <View style={styles.connectedDeviceText}>
                   <Text style={styles.connectedDeviceName}>
-                    VinTraxx
+                    {getDeviceDisplayName(selectedBleDevice.name)}
                   </Text>
                   <Text style={styles.connectedDeviceId}>{selectedBleDevice.id}</Text>
                 </View>

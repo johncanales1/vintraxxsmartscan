@@ -21,6 +21,7 @@ import { authService } from '../services/auth/AuthService';
 import { scannerService } from '../services/scanner/ScannerService';
 import { logger, LogCategory } from '../utils/Logger';
 import { BleDevice, BleConnectionState } from '../services/ble/types';
+import { getDeviceDisplayName } from '../utils/Obd2Detector';
 
 // Import SVG icons
 import OBD2Icon from '../assets/icons/obd2.svg';
@@ -268,7 +269,7 @@ export const DeviceSetupScreen: React.FC<DeviceSetupScreenProps> = ({ navigation
                   <OBD2Icon width={24} height={24} color={colors.primary.navy} />
                   <View style={styles.deviceText}>
                     <Text style={styles.deviceName}>
-                      VinTraxx
+                      {getDeviceDisplayName(device.name)}
                     </Text>
                     <Text style={styles.deviceId}>{device.id}</Text>
                     {device.rssi !== null && (

@@ -25,6 +25,8 @@ import { ConditionReport } from '../models/ConditionReport';
 import { ScanResult } from '../services/scanner/ScannerService';
 import { vinDecoder } from '../services/vin/VinDecoder';
 import { kmToMiles } from '../services/obd/utils';
+import { debugLogger } from '../services/debug/DebugLogger';
+import { launchCamera, launchImageLibrary, CameraOptions, ImageLibraryOptions } from 'react-native-image-picker';
 
 // Import SVG icons
 import CheckIcon from '../assets/icons/check.svg';
@@ -121,6 +123,17 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
     { id: 'damage', label: 'Damage (optional)', uri: null, required: false },
   ]);
 
+  // Log screen mount
+  useEffect(() => {
+    debugLogger.logEvent('Appraiser: Screen opened', {
+      vin: initialVehicle.vin,
+      make: initialVehicle.make,
+      model: initialVehicle.model,
+      year: initialVehicle.year,
+      hasDiagnostics: !!conditionReport,
+    });
+  }, []);
+
   // Animation
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -178,16 +191,40 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
 
   // --- Handlers ---
   const handleScanVin = useCallback(() => {
-    Alert.alert(
-      'VIN Scanner',
-      'Camera-based VIN barcode scanning requires the react-native-vision-camera library.\n\nThis will be enabled in Phase 2. Please enter VIN manually for now.',
-      [{ text: 'OK' }]
-    );
-  }, []);
+    debugLogger.logEvent('Appraiser: VIN scan via camera initiated');
+    navigation.navigate('VinScanner', {
+      onVinScanned: (vin: string) => {
+        debugLogger.logEvent('Appraiser: VIN received from camera scanner', { vin });
+        setVinInput(vin);
+        // Auto-decode the scanned VIN
+        const decoded = vinDecoder.decodeVIN(vin);
+        if (decoded.valid) {
+          setVehicle(prev => ({
+            ...prev,
+            vin,
+            year: decoded.year,
+            make: decoded.make,
+            model: decoded.model,
+          }));
+          setVinDecoded(true);
+          debugLogger.logEvent('Appraiser: Scanned VIN decoded successfully', {
+            year: decoded.year,
+            make: decoded.make,
+            model: decoded.model,
+          });
+        } else {
+          debugLogger.logEvent('Appraiser: Scanned VIN decode failed', { error: decoded.error });
+          Alert.alert('Decode Failed', decoded.error || 'Unable to decode scanned VIN. Please verify and try manually.');
+        }
+      },
+    });
+  }, [navigation]);
 
   const handleDecodeVin = useCallback(() => {
     const vin = vinInput.trim().toUpperCase();
+    debugLogger.logEvent('Appraiser: Manual VIN decode attempted', { vin, length: vin.length });
     if (vin.length !== 17) {
+      debugLogger.logEvent('Appraiser: VIN validation failed - invalid length', { length: vin.length });
       Alert.alert('Invalid VIN', 'VIN must be exactly 17 characters.');
       return;
     }
@@ -201,27 +238,111 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
         model: decoded.model,
       }));
       setVinDecoded(true);
+      debugLogger.logEvent('Appraiser: VIN decoded successfully', {
+        vin,
+        year: decoded.year,
+        make: decoded.make,
+        model: decoded.model,
+      });
     } else {
+      debugLogger.logEvent('Appraiser: VIN decode failed', { vin, error: decoded.error });
       Alert.alert('Decode Failed', decoded.error || 'Unable to decode VIN.');
     }
   }, [vinInput]);
 
   const handleCapturePhoto = useCallback((photoId: string) => {
+    debugLogger.logEvent('Appraiser: Photo capture initiated', { photoId });
+
+    const cameraOptions: CameraOptions = {
+      mediaType: 'photo',
+      quality: 0.8,
+      maxWidth: 1920,
+      maxHeight: 1080,
+      saveToPhotos: false,
+    };
+
+    const libraryOptions: ImageLibraryOptions = {
+      mediaType: 'photo',
+      quality: 0.8,
+      maxWidth: 1920,
+      maxHeight: 1080,
+      selectionLimit: 1,
+    };
+
     Alert.alert(
-      'Photo Capture',
-      'Camera capture requires react-native-vision-camera or react-native-image-picker.\n\nThis will be enabled in Phase 2.',
-      [{ text: 'OK' }]
+      'Add Photo',
+      'Choose a source for the vehicle photo.',
+      [
+        {
+          text: 'Camera',
+          onPress: () => {
+            debugLogger.logEvent('Appraiser: Photo source selected - Camera', { photoId });
+            launchCamera(cameraOptions, (response) => {
+              if (response.didCancel) {
+                debugLogger.logEvent('Appraiser: Camera cancelled', { photoId });
+                return;
+              }
+              if (response.errorCode) {
+                debugLogger.logError('Appraiser: Camera error', response.errorMessage, { photoId, errorCode: response.errorCode });
+                Alert.alert('Camera Error', response.errorMessage || 'Failed to capture photo.');
+                return;
+              }
+              if (response.assets && response.assets.length > 0) {
+                const uri = response.assets[0].uri || null;
+                debugLogger.logEvent('Appraiser: Photo captured via camera', { photoId, uri });
+                setPhotos(prev =>
+                  prev.map(p => (p.id === photoId ? { ...p, uri } : p))
+                );
+              }
+            });
+          },
+        },
+        {
+          text: 'Photo Library',
+          onPress: () => {
+            debugLogger.logEvent('Appraiser: Photo source selected - Library', { photoId });
+            launchImageLibrary(libraryOptions, (response) => {
+              if (response.didCancel) {
+                debugLogger.logEvent('Appraiser: Library picker cancelled', { photoId });
+                return;
+              }
+              if (response.errorCode) {
+                debugLogger.logError('Appraiser: Library picker error', response.errorMessage, { photoId, errorCode: response.errorCode });
+                Alert.alert('Error', response.errorMessage || 'Failed to select photo.');
+                return;
+              }
+              if (response.assets && response.assets.length > 0) {
+                const uri = response.assets[0].uri || null;
+                debugLogger.logEvent('Appraiser: Photo selected from library', { photoId, uri });
+                setPhotos(prev =>
+                  prev.map(p => (p.id === photoId ? { ...p, uri } : p))
+                );
+              }
+            });
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
     );
   }, []);
 
   const handleStartAppraisal = useCallback(async () => {
+    debugLogger.logEvent('Appraiser: Start appraisal requested', {
+      mileage,
+      condition,
+      vinDecoded,
+      vin: vehicle.vin,
+      photoCount,
+    });
     if (!mileage || isNaN(Number(mileage))) {
+      debugLogger.logEvent('Appraiser: Appraisal blocked - mileage required');
       Alert.alert('Mileage Required', 'Please enter the vehicle mileage.');
       return;
     }
 
     setAppraisalStarted(true);
     setValuationLoading(true);
+    debugLogger.logEvent('Appraiser: Fetching market valuations');
 
     // Simulate API call delay (no real API keys yet)
     setTimeout(() => {
@@ -243,18 +364,31 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
         jdPower: mid + 400,
       });
       setValuationLoading(false);
+      debugLogger.logEvent('Appraiser: Valuation data received', {
+        smartScanLow: low,
+        smartScanHigh: high,
+      });
     }, 2500);
-  }, [mileage, vehicle.year, condition]);
+  }, [mileage, vehicle.year, condition, vinDecoded, vehicle.vin, photoCount]);
 
   const handleSaveAppraisal = useCallback(() => {
+    debugLogger.logEvent('Appraiser: Save appraisal', {
+      vin: vehicle.vin,
+      mileage,
+      condition,
+      photoCount,
+      valuationData,
+    });
     Alert.alert('Appraisal Saved', 'The appraisal has been saved locally.', [{ text: 'OK' }]);
-  }, []);
+  }, [vehicle.vin, mileage, condition, photoCount, valuationData]);
 
   const handleEmailAppraisal = useCallback(() => {
+    debugLogger.logEvent('Appraiser: Email appraisal requested');
     Alert.alert('Email Appraisal', 'Email integration will be available in Phase 2.', [{ text: 'OK' }]);
   }, []);
 
   const handleExportPdf = useCallback(() => {
+    debugLogger.logEvent('Appraiser: PDF export requested');
     Alert.alert('Export PDF', 'PDF export will be available in Phase 2.', [{ text: 'OK' }]);
   }, []);
 

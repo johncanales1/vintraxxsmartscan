@@ -97,11 +97,13 @@ export const DebugDataScreen: React.FC<DebugDataScreenProps> = ({ visible, onClo
       <SafeAreaView style={styles.container} edges={['top']}>
         {/* Header */}
         <View style={styles.header}>
-          <View>
-            <Text style={styles.headerTitle}>Debug Data</Text>
-            <Text style={styles.headerSubtitle}>
-              {logs.length} entries • {Math.round(sessionDuration / 1000)}s
-            </Text>
+          <View style={styles.headerTopRow}>
+            <View>
+              <Text style={styles.headerTitle}>Debug Data</Text>
+              <Text style={styles.headerSubtitle}>
+                {logs.length} entries • {Math.round(sessionDuration / 1000)}s
+              </Text>
+            </View>
           </View>
           <View style={styles.headerButtons}>
             <TouchableOpacity onPress={onClose} style={styles.backButton}>
@@ -200,14 +202,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.primary,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border.light,
     backgroundColor: colors.background.secondary,
+  },
+  headerTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
   },
   headerTitle: {
     ...typography.styles.h2,
@@ -221,6 +226,7 @@ const styles = StyleSheet.create({
   headerButtons: {
     flexDirection: 'row',
     gap: spacing.sm,
+    justifyContent: 'flex-start',
   },
   backButton: {
     paddingHorizontal: spacing.md,

@@ -8,6 +8,7 @@ import { LoginScreen } from '../screens/LoginScreen';
 import { DeviceSetupScreen } from '../screens/DeviceSetupScreen';
 import { ReportScreen } from '../screens/ReportScreen';
 import { FullReportScreen } from '../screens/FullReportScreen';
+import { AppraiserScreen } from '../screens/AppraiserScreen';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { RootStackParamList } from './types';
@@ -126,6 +127,15 @@ export const RootNavigator: React.FC = () => {
             options={{
               title: 'Full Report',
               headerShown: true,
+              presentation: 'card',
+            }}
+          />
+          <Stack.Screen
+            name="Appraiser"
+            component={AppraiserScreen}
+            options={{
+              title: 'Trade-In Appraisal',
+              headerShown: false,
               presentation: 'card',
             }}
           />

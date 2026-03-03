@@ -464,6 +464,17 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
     navigation.navigate('FullReport', { scanResult: lastScanResult, vehicle, conditionReport });
   }, [lastScanResult, resolveVehicle, navigation, setCurrentReport]);
 
+  // Start Appraiser: navigate to trade-in appraisal screen
+  const handleStartAppraiser = useCallback(() => {
+    if (!lastScanResult) {
+      Alert.alert('No Scan Data', 'Please complete a scan first.');
+      return;
+    }
+    const vehicle = resolveVehicle();
+    const conditionReport = buildReportFromScanResult(lastScanResult, vehicle);
+    navigation.navigate('Appraiser', { scanResult: lastScanResult, vehicle, conditionReport });
+  }, [lastScanResult, resolveVehicle, navigation]);
+
   // Cancel scan
   const handleCancelScan = useCallback(() => {
     Alert.alert(
@@ -651,6 +662,14 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
                   onPress={handleViewFullReport}
                   variant="primary"
                   size="large"
+                  fullWidth
+                  style={styles.secondaryButton}
+                />
+                <Button
+                  title="Start Appraiser"
+                  onPress={handleStartAppraiser}
+                  variant="outline"
+                  size="medium"
                   fullWidth
                   style={styles.secondaryButton}
                 />

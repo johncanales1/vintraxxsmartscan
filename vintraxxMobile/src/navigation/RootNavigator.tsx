@@ -9,6 +9,7 @@ import { DeviceSetupScreen } from '../screens/DeviceSetupScreen';
 import { ReportScreen } from '../screens/ReportScreen';
 import { FullReportScreen } from '../screens/FullReportScreen';
 import { AppraiserScreen } from '../screens/AppraiserScreen';
+import { VinScannerScreen } from '../screens/VinScannerScreen';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { RootStackParamList } from './types';
@@ -137,6 +138,16 @@ export const RootNavigator: React.FC = () => {
               title: 'Trade-In Appraisal',
               headerShown: false,
               presentation: 'card',
+            }}
+          />
+          <Stack.Screen
+            name="VinScanner"
+            component={VinScannerScreen}
+            options={{
+              title: 'Scan VIN',
+              headerShown: false,
+              presentation: 'fullScreenModal',
+              animation: 'slide_from_bottom',
             }}
           />
         </>

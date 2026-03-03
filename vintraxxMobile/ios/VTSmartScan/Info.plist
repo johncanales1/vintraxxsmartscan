@@ -33,6 +33,10 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>VTSmartScan uses the camera to scan VIN barcodes and capture vehicle photos for appraisals</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>VTSmartScan needs access to your photo library to select vehicle photos for appraisals</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>VTSmartScan uses Bluetooth to connect to your OBD-II scanner and read vehicle diagnostics</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>

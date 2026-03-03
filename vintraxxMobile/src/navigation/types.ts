@@ -23,6 +23,7 @@ export type RootStackParamList = {
   FullReport: { scanResult: ScanResult; vehicle: Vehicle; conditionReport?: ConditionReport };
   FullReportView: { reportData: FullReportData };
   Appraiser: { scanResult: ScanResult; vehicle: Vehicle; conditionReport?: ConditionReport };
+  VinScanner: { onVinScanned: (vin: string) => void };
 };
 
 // Combined navigation prop types

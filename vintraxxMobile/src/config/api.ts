@@ -44,3 +44,17 @@ export const SCAN_ENDPOINTS = {
 
 };
 
+// Appraisal endpoints (prefix: /api/v1/appraisal) - all require auth
+
+export const APPRAISAL_ENDPOINTS = {
+
+  VALUATE: '/api/v1/appraisal/valuate',
+
+  EMAIL: '/api/v1/appraisal/email',
+
+  PDF: '/api/v1/appraisal/pdf',
+
+  DASHBOARD: '/api/v1/appraisal/dashboard', // GET for list, GET /:appraisalId for single
+
+};
+

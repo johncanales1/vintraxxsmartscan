@@ -22,7 +22,7 @@ export type RootStackParamList = {
   Report: { report?: ConditionReport };
   FullReport: { scanResult: ScanResult; vehicle: Vehicle; conditionReport?: ConditionReport };
   FullReportView: { reportData: FullReportData };
-  Appraiser: { scanResult: ScanResult; vehicle: Vehicle; conditionReport?: ConditionReport };
+  Appraiser: { scanResult?: ScanResult; vehicle?: Vehicle; conditionReport?: ConditionReport } | undefined;
   VinScanner: { onVinScanned: (vin: string) => void };
 };
 

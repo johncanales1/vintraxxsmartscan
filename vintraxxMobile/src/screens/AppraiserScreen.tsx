@@ -50,8 +50,8 @@ interface AppraisalPhoto {
 
 interface AppraiserScreenProps {
   navigation: any;
-  route: {
-    params: {
+  route?: {
+    params?: {
       scanResult?: ScanResult;
       vehicle?: Vehicle;
       conditionReport?: ConditionReport;
@@ -93,9 +93,10 @@ const getHealthLabel = (score: number): string => {
 
 // --- Main Component ---
 export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, route }) => {
-  const scanResult = route.params?.scanResult;
-  const conditionReport = route.params?.conditionReport;
-  const defaultVehicle: Vehicle = route.params?.vehicle || {
+  const params = route?.params || {};
+  const scanResult = params.scanResult;
+  const conditionReport = params.conditionReport;
+  const defaultVehicle: Vehicle = params.vehicle || {
     id: 'manual-' + Date.now(),
     vin: 'UNKNOWN',
     year: new Date().getFullYear(),

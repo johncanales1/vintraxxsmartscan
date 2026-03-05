@@ -15,6 +15,7 @@ import {
   Image,
   Platform,
   KeyboardAvoidingView,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
@@ -26,7 +27,10 @@ import { ScanResult } from '../services/scanner/ScannerService';
 import { vinDecoder } from '../services/vin/VinDecoder';
 import { kmToMiles } from '../services/obd/utils';
 import { debugLogger } from '../services/debug/DebugLogger';
+import { apiService } from '../services/api/ApiService';
+import { useAppStore } from '../store/appStore';
 import { launchCamera, launchImageLibrary, CameraOptions, ImageLibraryOptions } from 'react-native-image-picker';
+import type { AiValuationOutput, AppraisalSummaryData } from '../types/api';
 
 // Import SVG icons
 import CheckIcon from '../assets/icons/check.svg';
@@ -44,20 +48,12 @@ interface AppraisalPhoto {
   required: boolean;
 }
 
-interface ValuationData {
-  smartScanLow: number;
-  smartScanHigh: number;
-  blackBook: number | null;
-  mmr: number | null;
-  jdPower: number | null;
-}
-
 interface AppraiserScreenProps {
   navigation: any;
   route: {
     params: {
-      scanResult: ScanResult;
-      vehicle: Vehicle;
+      scanResult?: ScanResult;
+      vehicle?: Vehicle;
       conditionReport?: ConditionReport;
     };
   };
@@ -97,23 +93,39 @@ const getHealthLabel = (score: number): string => {
 
 // --- Main Component ---
 export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, route }) => {
-  const { scanResult, vehicle: initialVehicle, conditionReport } = route.params;
+  const scanResult = route.params?.scanResult;
+  const conditionReport = route.params?.conditionReport;
+  const defaultVehicle: Vehicle = route.params?.vehicle || {
+    id: 'manual-' + Date.now(),
+    vin: 'UNKNOWN',
+    year: new Date().getFullYear(),
+    make: 'Unknown',
+    model: 'Vehicle',
+    mileage: null,
+  };
+
+  const { user } = useAppStore();
 
   // --- State ---
-  const [vinInput, setVinInput] = useState(initialVehicle.vin !== 'UNKNOWN' ? initialVehicle.vin : '');
-  const [vehicle, setVehicle] = useState<Vehicle>(initialVehicle);
-  const [vinDecoded, setVinDecoded] = useState(initialVehicle.vin !== 'UNKNOWN');
+  const [vinInput, setVinInput] = useState(defaultVehicle.vin !== 'UNKNOWN' ? defaultVehicle.vin : '');
+  const [vehicle, setVehicle] = useState<Vehicle>(defaultVehicle);
+  const [vinDecoded, setVinDecoded] = useState(defaultVehicle.vin !== 'UNKNOWN');
   const [mileage, setMileage] = useState(
-    initialVehicle.mileage ? String(Math.round(initialVehicle.mileage)) : ''
+    defaultVehicle.mileage ? String(Math.round(defaultVehicle.mileage)) : ''
   );
   const [zipCode, setZipCode] = useState('');
   const [condition, setCondition] = useState<ConditionLevel>('average');
   const [notes, setNotes] = useState('');
   const [appraisalStarted, setAppraisalStarted] = useState(false);
   const [valuationLoading, setValuationLoading] = useState(false);
-  const [valuationData, setValuationData] = useState<ValuationData | null>(null);
+  const [valuationData, setValuationData] = useState<AiValuationOutput | null>(null);
+  const [appraisalId, setAppraisalId] = useState<string | null>(null);
   const [showSourceAnchors, setShowSourceAnchors] = useState(false);
   const [showDiagDetails, setShowDiagDetails] = useState(false);
+  const [emailModalVisible, setEmailModalVisible] = useState(false);
+  const [emailModalType, setEmailModalType] = useState<'email' | 'pdf'>('email');
+  const [emailInput, setEmailInput] = useState('');
+  const [emailSending, setEmailSending] = useState(false);
   const [photos, setPhotos] = useState<AppraisalPhoto[]>([
     { id: 'front', label: 'Front Exterior', uri: null, required: true },
     { id: 'rear', label: 'Rear Exterior', uri: null, required: true },
@@ -126,10 +138,10 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
   // Log screen mount
   useEffect(() => {
     debugLogger.logEvent('Appraiser: Screen opened', {
-      vin: initialVehicle.vin,
-      make: initialVehicle.make,
-      model: initialVehicle.model,
-      year: initialVehicle.year,
+      vin: defaultVehicle.vin,
+      make: defaultVehicle.make,
+      model: defaultVehicle.model,
+      year: defaultVehicle.year,
       hasDiagnostics: !!conditionReport,
     });
   }, []);
@@ -339,37 +351,53 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
       Alert.alert('Mileage Required', 'Please enter the vehicle mileage.');
       return;
     }
+    if (!vinDecoded || vehicle.vin === 'UNKNOWN') {
+      debugLogger.logEvent('Appraiser: Appraisal blocked - VIN required');
+      Alert.alert('VIN Required', 'Please enter and decode a valid VIN before starting the appraisal.');
+      return;
+    }
 
     setAppraisalStarted(true);
     setValuationLoading(true);
-    debugLogger.logEvent('Appraiser: Fetching market valuations');
+    debugLogger.logEvent('Appraiser: Fetching AI market valuations from backend');
 
-    // Simulate API call delay (no real API keys yet)
-    setTimeout(() => {
-      const baseMiles = Number(mileage);
-      const yearFactor = Math.max(0, (vehicle.year - 2010) * 800);
-      const mileagePenalty = Math.round(baseMiles * 0.04);
-      const conditionAdj = condition === 'clean' ? 1500 : condition === 'rough' ? -1800 : 0;
-
-      const baseValue = 12000 + yearFactor - mileagePenalty + conditionAdj;
-      const low = Math.max(2000, Math.round(baseValue * 0.92 / 100) * 100);
-      const high = Math.round(baseValue * 1.08 / 100) * 100;
-      const mid = Math.round((low + high) / 2 / 100) * 100;
-
-      setValuationData({
-        smartScanLow: low,
-        smartScanHigh: high,
-        blackBook: mid + 200,
-        mmr: mid - 100,
-        jdPower: mid + 400,
+    try {
+      const result = await apiService.getAppraisalValuation({
+        vin: vehicle.vin,
+        year: vehicle.year,
+        make: vehicle.make,
+        model: vehicle.model,
+        trim: vehicle.trim,
+        mileage: Number(mileage),
+        condition,
+        zipCode: zipCode || undefined,
+        notes: notes || undefined,
       });
+
+      if (result.success && result.valuation && result.appraisalId) {
+        setValuationData(result.valuation);
+        setAppraisalId(result.appraisalId);
+        debugLogger.logEvent('Appraiser: AI valuation received', {
+          appraisalId: result.appraisalId,
+          tradeInLow: result.valuation.estimatedTradeInLow,
+          tradeInHigh: result.valuation.estimatedTradeInHigh,
+          confidence: result.valuation.confidenceLevel,
+          sourcesCount: result.valuation.comparableSources.length,
+        });
+      } else {
+        debugLogger.logError('Appraiser: AI valuation failed', result.message);
+        Alert.alert('Valuation Failed', result.message || 'Unable to get market valuation. Please try again.');
+        setAppraisalStarted(false);
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      debugLogger.logError('Appraiser: AI valuation exception', errorMsg);
+      Alert.alert('Error', `Failed to get valuation: ${errorMsg}`);
+      setAppraisalStarted(false);
+    } finally {
       setValuationLoading(false);
-      debugLogger.logEvent('Appraiser: Valuation data received', {
-        smartScanLow: low,
-        smartScanHigh: high,
-      });
-    }, 2500);
-  }, [mileage, vehicle.year, condition, vinDecoded, vehicle.vin, photoCount]);
+    }
+  }, [mileage, vehicle, condition, vinDecoded, zipCode, notes, photoCount]);
 
   const handleSaveAppraisal = useCallback(() => {
     debugLogger.logEvent('Appraiser: Save appraisal', {
@@ -382,15 +410,106 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
     Alert.alert('Appraisal Saved', 'The appraisal has been saved locally.', [{ text: 'OK' }]);
   }, [vehicle.vin, mileage, condition, photoCount, valuationData]);
 
+  // Build appraisal summary for email/pdf/dashboard
+  const buildAppraisalSummary = useCallback((): AppraisalSummaryData | null => {
+    if (!valuationData || !appraisalId) return null;
+    return {
+      appraisalId,
+      vehicle: {
+        vin: vehicle.vin,
+        year: vehicle.year,
+        make: vehicle.make,
+        model: vehicle.model,
+        trim: vehicle.trim,
+        mileage: Number(mileage),
+      },
+      condition,
+      zipCode: zipCode || undefined,
+      notes: notes || undefined,
+      valuation: valuationData,
+      healthScore,
+      diagnosticsSummary: conditionReport
+        ? `Health: ${healthScore}/100, ${totalIssues} issues, ${criticalIssues} critical`
+        : undefined,
+      photoCount,
+      createdAt: new Date().toISOString(),
+      userEmail: user?.email || '',
+    };
+  }, [valuationData, appraisalId, vehicle, mileage, condition, zipCode, notes, healthScore, conditionReport, totalIssues, criticalIssues, photoCount, user]);
+
   const handleEmailAppraisal = useCallback(() => {
     debugLogger.logEvent('Appraiser: Email appraisal requested');
-    Alert.alert('Email Appraisal', 'Email integration will be available in Phase 2.', [{ text: 'OK' }]);
-  }, []);
+    const summary = buildAppraisalSummary();
+    if (!summary) {
+      Alert.alert('No Data', 'Please complete the appraisal first.');
+      return;
+    }
+    setEmailInput(user?.email || '');
+    setEmailModalType('email');
+    setEmailModalVisible(true);
+  }, [buildAppraisalSummary, user]);
 
   const handleExportPdf = useCallback(() => {
     debugLogger.logEvent('Appraiser: PDF export requested');
-    Alert.alert('Export PDF', 'PDF export will be available in Phase 2.', [{ text: 'OK' }]);
-  }, []);
+    const summary = buildAppraisalSummary();
+    if (!summary) {
+      Alert.alert('No Data', 'Please complete the appraisal first.');
+      return;
+    }
+    setEmailInput(user?.email || '');
+    setEmailModalType('pdf');
+    setEmailModalVisible(true);
+  }, [buildAppraisalSummary, user]);
+
+  const handleSendEmailAction = useCallback(async () => {
+    const email = emailInput.trim();
+    if (!email || !email.includes('@')) {
+      Alert.alert('Invalid Email', 'Please enter a valid email address.');
+      return;
+    }
+    const summary = buildAppraisalSummary();
+    if (!summary) return;
+
+    setEmailSending(true);
+    debugLogger.logEvent(`Appraiser: Sending ${emailModalType}`, { toEmail: email, appraisalId });
+
+    try {
+      const result = emailModalType === 'pdf'
+        ? await apiService.sendAppraisalPdf(email, summary)
+        : await apiService.sendAppraisalEmail(email, summary);
+
+      if (result.success) {
+        debugLogger.logEvent(`Appraiser: ${emailModalType} sent successfully`, { toEmail: email });
+        setEmailModalVisible(false);
+        Alert.alert(
+          emailModalType === 'pdf' ? 'PDF Sent' : 'Email Sent',
+          `Appraisal ${emailModalType === 'pdf' ? 'PDF' : 'summary'} sent to ${email}`,
+        );
+      } else {
+        debugLogger.logError(`Appraiser: ${emailModalType} send failed`, result.message);
+        Alert.alert('Failed', result.message || `Failed to send ${emailModalType}.`);
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      debugLogger.logError(`Appraiser: ${emailModalType} exception`, msg);
+      Alert.alert('Error', `Failed to send: ${msg}`);
+    } finally {
+      setEmailSending(false);
+    }
+  }, [emailInput, emailModalType, buildAppraisalSummary, appraisalId]);
+
+  const handleDashboard = useCallback(() => {
+    debugLogger.logEvent('Appraiser: Dashboard requested', { appraisalId });
+    if (!appraisalId) {
+      Alert.alert('No Data', 'Please complete the appraisal first.');
+      return;
+    }
+    Alert.alert(
+      'Dashboard',
+      `Appraisal data is available on the dashboard.\n\nAppraisal ID: ${appraisalId}\n\nAccess via: GET /api/v1/appraisal/dashboard/${appraisalId}`,
+      [{ text: 'OK' }],
+    );
+  }, [appraisalId]);
 
   // --- Render Sections ---
   const renderVinSection = () => (
@@ -695,14 +814,62 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
         </View>
 
         <View style={styles.valuationPrimary}>
-          <Text style={styles.valuationLabel}>SmartScan Estimated Market Range</Text>
+          <Text style={styles.valuationLabel}>SmartScan Estimated Trade-In Range</Text>
           <Text style={styles.valuationRange}>
-            {formatCurrency(valuationData.smartScanLow)} – {formatCurrency(valuationData.smartScanHigh)}
+            {formatCurrency(valuationData.estimatedTradeInLow)} – {formatCurrency(valuationData.estimatedTradeInHigh)}
           </Text>
           <View style={styles.valuationBarTrack}>
             <View style={[styles.valuationBarFill, { width: '70%' }]} />
             <View style={styles.valuationBarMarker} />
           </View>
+        </View>
+
+        {/* Retail & Private Party Values */}
+        <View style={styles.valuationTiersRow}>
+          <View style={styles.valuationTierBox}>
+            <Text style={styles.valuationTierLabel}>Retail Value</Text>
+            <Text style={styles.valuationTierValue}>
+              {formatCurrency(valuationData.estimatedRetailLow)} – {formatCurrency(valuationData.estimatedRetailHigh)}
+            </Text>
+          </View>
+          <View style={styles.valuationTierBox}>
+            <Text style={styles.valuationTierLabel}>Private Party</Text>
+            <Text style={styles.valuationTierValue}>
+              {formatCurrency(valuationData.estimatedPrivatePartyLow)} – {formatCurrency(valuationData.estimatedPrivatePartyHigh)}
+            </Text>
+          </View>
+        </View>
+
+        {/* Confidence & Trend */}
+        <View style={styles.valuationMetaRow}>
+          <View style={[styles.confidenceBadge, {
+            backgroundColor: valuationData.confidenceLevel === 'high' ? colors.status.successLight :
+              valuationData.confidenceLevel === 'medium' ? '#FFF8E1' : colors.status.errorLight,
+          }]}>
+            <Text style={[styles.confidenceBadgeText, {
+              color: valuationData.confidenceLevel === 'high' ? colors.status.success :
+                valuationData.confidenceLevel === 'medium' ? '#F9A825' : colors.status.error,
+            }]}>
+              {valuationData.confidenceLevel.toUpperCase()} CONFIDENCE
+            </Text>
+          </View>
+          <View style={[styles.confidenceBadge, {
+            backgroundColor: valuationData.marketTrend === 'appreciating' ? colors.status.successLight :
+              valuationData.marketTrend === 'stable' ? '#E3F2FD' : '#FFF8E1',
+          }]}>
+            <Text style={[styles.confidenceBadgeText, {
+              color: valuationData.marketTrend === 'appreciating' ? colors.status.success :
+                valuationData.marketTrend === 'stable' ? colors.status.info : '#F9A825',
+            }]}>
+              {valuationData.marketTrend.toUpperCase()}
+            </Text>
+          </View>
+        </View>
+
+        {/* AI Summary */}
+        <View style={styles.aiSummaryBox}>
+          <Text style={styles.aiSummaryText}>{valuationData.aiSummary}</Text>
+          <Text style={styles.aiDataAsOf}>Data as of: {valuationData.dataAsOf}</Text>
         </View>
 
         <TouchableOpacity
@@ -718,30 +885,39 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
 
         {showSourceAnchors && (
           <View style={styles.sourceAnchorsContainer}>
-            <View style={styles.sourceRow}>
-              <View style={[styles.sourceDot, { backgroundColor: '#333' }]} />
-              <Text style={styles.sourceLabel}>Black Book</Text>
-              <Text style={styles.sourceValue}>
-                {valuationData.blackBook ? formatCurrency(valuationData.blackBook) : 'No API Key'}
-              </Text>
-            </View>
-            <View style={styles.sourceRow}>
-              <View style={[styles.sourceDot, { backgroundColor: '#0066CC' }]} />
-              <Text style={styles.sourceLabel}>MMR (Manheim)</Text>
-              <Text style={styles.sourceValue}>
-                {valuationData.mmr ? formatCurrency(valuationData.mmr) : 'No API Key'}
-              </Text>
-            </View>
-            <View style={styles.sourceRow}>
-              <View style={[styles.sourceDot, { backgroundColor: '#CC6600' }]} />
-              <Text style={styles.sourceLabel}>JD Power</Text>
-              <Text style={styles.sourceValue}>
-                {valuationData.jdPower ? formatCurrency(valuationData.jdPower) : 'No API Key'}
-              </Text>
-            </View>
+            {valuationData.comparableSources.map((src, idx) => {
+              const dotColors = ['#333', '#0066CC', '#CC6600'];
+              return (
+                <View key={src.sourceName} style={styles.sourceRow}>
+                  <View style={[styles.sourceDot, { backgroundColor: dotColors[idx] || '#333' }]} />
+                  <Text style={styles.sourceLabel}>{src.sourceName}</Text>
+                  <Text style={styles.sourceValue}>
+                    {formatCurrency(src.tradeInLow)} – {formatCurrency(src.tradeInHigh)}
+                  </Text>
+                </View>
+              );
+            })}
+
+            {/* Adjustments */}
+            {valuationData.adjustments.length > 0 && (
+              <View style={styles.adjustmentsContainer}>
+                <Text style={styles.adjustmentsTitle}>Value Adjustments</Text>
+                {valuationData.adjustments.map((adj, idx) => (
+                  <View key={idx} style={styles.adjustmentRow}>
+                    <Text style={styles.adjustmentFactor}>{adj.factor}</Text>
+                    <Text style={[styles.adjustmentImpact, {
+                      color: adj.impact >= 0 ? colors.status.success : colors.status.error,
+                    }]}>
+                      {adj.impact >= 0 ? '+' : ''}{formatCurrency(adj.impact)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
             <View style={styles.sourceNote}>
               <Text style={styles.sourceNoteText}>
-                Values shown are simulated estimates. Connect API keys in Settings for live data.
+                AI-estimated values based on current market data. Connect Black Book / JD Power API keys for live data.
               </Text>
             </View>
           </View>
@@ -857,7 +1033,7 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Market Range</Text>
             <Text style={[styles.summaryValue, { color: colors.status.success, fontWeight: '700' }]}>
-              {formatCurrency(valuationData.smartScanLow)} – {formatCurrency(valuationData.smartScanHigh)}
+              {formatCurrency(valuationData.estimatedTradeInLow)} – {formatCurrency(valuationData.estimatedTradeInHigh)}
             </Text>
           </View>
           <View style={styles.summaryDivider} />
@@ -875,7 +1051,7 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
             <TouchableOpacity style={styles.actionButtonSecondary} onPress={handleEmailAppraisal} activeOpacity={0.7}>
               <Text style={styles.actionButtonSecondaryText}>Email</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionButtonSecondary} onPress={() => Alert.alert('Coming Soon', 'Web Dashboard integration coming in Phase 2.')} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.actionButtonSecondary} onPress={handleDashboard} activeOpacity={0.7}>
               <Text style={styles.actionButtonSecondaryText}>Dashboard</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.actionButtonSecondary} onPress={handleExportPdf} activeOpacity={0.7}>
@@ -924,6 +1100,60 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
           <View style={{ height: 40 }} />
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Email Input Modal (cross-platform) */}
+      <Modal
+        visible={emailModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEmailModalVisible(false)}
+      >
+        <View style={styles.emailModalOverlay}>
+          <View style={styles.emailModalContent}>
+            <Text style={styles.emailModalTitle}>
+              {emailModalType === 'pdf' ? 'Send PDF Report' : 'Send Email Summary'}
+            </Text>
+            <Text style={styles.emailModalSubtitle}>
+              Enter the email address to receive the appraisal {emailModalType === 'pdf' ? 'PDF' : 'summary'}:
+            </Text>
+            <TextInput
+              style={styles.emailModalInput}
+              placeholder="email@example.com"
+              placeholderTextColor={colors.text.light}
+              value={emailInput}
+              onChangeText={setEmailInput}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!emailSending}
+            />
+            <View style={styles.emailModalButtons}>
+              <TouchableOpacity
+                style={styles.emailModalCancelBtn}
+                onPress={() => setEmailModalVisible(false)}
+                disabled={emailSending}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.emailModalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.emailModalSendBtn, emailSending && { opacity: 0.6 }]}
+                onPress={handleSendEmailAction}
+                disabled={emailSending}
+                activeOpacity={0.8}
+              >
+                {emailSending ? (
+                  <ActivityIndicator size="small" color={colors.text.inverse} />
+                ) : (
+                  <Text style={styles.emailModalSendText}>
+                    {emailModalType === 'pdf' ? 'Send PDF' : 'Send'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -1379,6 +1609,96 @@ const styles = StyleSheet.create({
     borderColor: colors.background.secondary,
     marginLeft: -6,
   },
+  valuationTiersRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  valuationTierBox: {
+    flex: 1,
+    backgroundColor: colors.background.primary,
+    borderRadius: 10,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    alignItems: 'center',
+  },
+  valuationTierLabel: {
+    fontSize: 10,
+    color: colors.text.secondary,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  valuationTierValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text.primary,
+  },
+  valuationMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  confidenceBadge: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  confidenceBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  aiSummaryBox: {
+    backgroundColor: colors.background.primary,
+    borderRadius: 10,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.primary.navy,
+  },
+  aiSummaryText: {
+    fontSize: 13,
+    color: colors.text.secondary,
+    lineHeight: 19,
+  },
+  aiDataAsOf: {
+    fontSize: 10,
+    color: colors.text.light,
+    marginTop: spacing.xs,
+    fontStyle: 'italic',
+  },
+  adjustmentsContainer: {
+    marginTop: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.light,
+  },
+  adjustmentsTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text.secondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: spacing.xs,
+  },
+  adjustmentRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  adjustmentFactor: {
+    fontSize: 13,
+    color: colors.text.secondary,
+    flex: 1,
+  },
+  adjustmentImpact: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
   sourceAnchorsContainer: {
     marginTop: spacing.sm,
     paddingTop: spacing.sm,
@@ -1567,5 +1887,78 @@ const styles = StyleSheet.create({
     color: colors.text.inverse,
     fontSize: typography.fontSize.sm,
     fontWeight: '600',
+  },
+
+  // Email Modal
+  emailModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.screenHorizontal,
+  },
+  emailModalContent: {
+    backgroundColor: colors.background.secondary,
+    borderRadius: 16,
+    padding: spacing.lg,
+    width: '100%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  emailModalTitle: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text.primary,
+    marginBottom: spacing.xs,
+  },
+  emailModalSubtitle: {
+    fontSize: typography.fontSize.sm,
+    color: colors.text.secondary,
+    marginBottom: spacing.base,
+  },
+  emailModalInput: {
+    backgroundColor: colors.background.primary,
+    borderRadius: 12,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    fontSize: typography.fontSize.base,
+    color: colors.text.primary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    marginBottom: spacing.base,
+  },
+  emailModalButtons: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  emailModalCancelBtn: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: 12,
+    alignItems: 'center',
+    backgroundColor: colors.background.primary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  },
+  emailModalCancelText: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.text.secondary,
+  },
+  emailModalSendBtn: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: 12,
+    alignItems: 'center',
+    backgroundColor: colors.primary.navy,
+  },
+  emailModalSendText: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.text.inverse,
   },
 });

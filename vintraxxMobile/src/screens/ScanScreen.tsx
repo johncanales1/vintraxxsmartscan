@@ -545,18 +545,30 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
         {/* Scan Button and Progress */}
         <View style={styles.scanSection}>
           {scanStatus === 'idle' && (
-            <TouchableOpacity 
-              onPress={handleStartScan}
-              activeOpacity={0.8}
-              style={styles.scanImageButton}
-            >
-              <Image
-                source={require('../assets/images/scan.png')}
-                style={styles.scanImage}
-                resizeMode="contain"
-              />
-              <Text style={styles.scanButtonHint}>Tap to Start Scan</Text>
-            </TouchableOpacity>
+            <View style={styles.idleScanContainer}>
+              <TouchableOpacity 
+                onPress={handleStartScan}
+                activeOpacity={0.8}
+                style={styles.scanImageButton}
+              >
+                <Image
+                  source={require('../assets/images/scan.png')}
+                  style={styles.scanImage}
+                  resizeMode="contain"
+                />
+                <Text style={styles.scanButtonHint}>Tap to Start Scan</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  logger.info(LogCategory.APP, 'Direct appraiser access from scan screen (no scan data)');
+                  navigation.navigate('Appraiser', {});
+                }}
+                activeOpacity={0.7}
+                style={styles.appraiserHintButton}
+              >
+                <Text style={styles.appraiserHintText}>Tap to Start Appraiser</Text>
+              </TouchableOpacity>
+            </View>
           )}
 
           {scanStatus === 'scanning' && (
@@ -755,8 +767,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.lg,
   },
+  idleScanContainer: {
+    alignItems: 'center',
+    width: '100%',
+  },
   scanImageButton: {
     alignItems: 'center',
+  },
+  appraiserHintButton: {
+    marginTop: spacing.lg,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: colors.primary.navy,
+    backgroundColor: 'transparent',
+  },
+  appraiserHintText: {
+    ...typography.styles.label,
+    color: colors.primary.navy,
+    fontWeight: typography.fontWeight.semiBold,
   },
   scanImage: {
     width: 180,

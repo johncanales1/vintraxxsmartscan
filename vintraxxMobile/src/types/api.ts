@@ -169,6 +169,96 @@ export interface ScanHistoryResponse {
 }
 
 // ================================================================
+// APPRAISAL TYPES
+// ================================================================
+
+export interface AppraisalValuationRequest {
+  vin: string;
+  year: number;
+  make: string;
+  model: string;
+  trim?: string;
+  mileage: number;
+  condition: 'clean' | 'average' | 'rough';
+  zipCode?: string;
+  notes?: string;
+}
+
+export interface AppraisalValuationSource {
+  sourceName: string;
+  tradeInLow: number;
+  tradeInHigh: number;
+  retailLow: number;
+  retailHigh: number;
+  privatePartyLow: number;
+  privatePartyHigh: number;
+}
+
+export interface AiValuationOutput {
+  estimatedTradeInLow: number;
+  estimatedTradeInHigh: number;
+  estimatedRetailLow: number;
+  estimatedRetailHigh: number;
+  estimatedPrivatePartyLow: number;
+  estimatedPrivatePartyHigh: number;
+  confidenceLevel: 'high' | 'medium' | 'low';
+  confidenceExplanation: string;
+  marketTrend: 'appreciating' | 'stable' | 'depreciating';
+  marketTrendExplanation: string;
+  comparableSources: AppraisalValuationSource[];
+  adjustments: Array<{
+    factor: string;
+    impact: number;
+    explanation: string;
+  }>;
+  aiSummary: string;
+  dataAsOf: string;
+}
+
+export interface AppraisalValuationResponse {
+  success: boolean;
+  appraisalId?: string;
+  valuation?: AiValuationOutput;
+  message?: string;
+}
+
+export interface AppraisalSummaryData {
+  appraisalId: string;
+  vehicle: {
+    vin: string;
+    year: number;
+    make: string;
+    model: string;
+    trim?: string;
+    mileage: number;
+  };
+  condition: 'clean' | 'average' | 'rough';
+  zipCode?: string;
+  notes?: string;
+  valuation: AiValuationOutput;
+  healthScore?: number;
+  diagnosticsSummary?: string;
+  photoCount: number;
+  createdAt: string;
+  userEmail: string;
+}
+
+export interface AppraisalEmailRequest {
+  toEmail: string;
+  appraisalData: AppraisalSummaryData;
+}
+
+export interface AppraisalPdfRequest {
+  toEmail: string;
+  appraisalData: AppraisalSummaryData;
+}
+
+export interface AppraisalActionResponse {
+  success: boolean;
+  message?: string;
+}
+
+// ================================================================
 // GENERIC API ERROR
 // ================================================================
 

@@ -2,7 +2,7 @@
 // Handles scan submission, report polling, and history
 import { logger, LogCategory } from '../../utils/Logger';
 import { authService } from '../auth/AuthService';
-import { API_CONFIG, SCAN_ENDPOINTS } from '../../config/api';
+import { API_CONFIG, SCAN_ENDPOINTS, APPRAISAL_ENDPOINTS } from '../../config/api';
 import type {
   ScanSubmissionPayload,
   ScanSubmitResponse,
@@ -10,6 +10,10 @@ import type {
   FullReportData,
   ScanHistoryResponse,
   ScanHistoryItem,
+  AppraisalValuationRequest,
+  AppraisalValuationResponse,
+  AppraisalSummaryData,
+  AppraisalActionResponse,
 } from '../../types/api';
 import { ScanResult } from '../scanner/ScannerService';
 import { kmToMiles } from '../obd/utils';
@@ -337,6 +341,191 @@ class ApiService {
     } catch (error) {
       logger.error(LogCategory.APP, 'History fetch error', error);
       return { success: false, message: 'Network error.' };
+    }
+  }
+
+  // ================================================================
+  // APPRAISAL API METHODS
+  // ================================================================
+
+  /**
+   * Get AI-based vehicle market valuation
+   */
+  async getAppraisalValuation(input: AppraisalValuationRequest): Promise<AppraisalValuationResponse> {
+    try {
+      if (!authService.isAuthenticated()) {
+        logger.warn(LogCategory.APP, 'Appraisal valuation failed: User not authenticated');
+        return { success: false, message: 'Please log in to get vehicle valuation.' };
+      }
+
+      logger.info(LogCategory.APP, 'Requesting AI appraisal valuation', {
+        vin: input.vin,
+        year: input.year,
+        make: input.make,
+        model: input.model,
+        mileage: input.mileage,
+        condition: input.condition,
+      });
+
+      const url = `${API_CONFIG.BASE_URL}${APPRAISAL_ENDPOINTS.VALUATE}`;
+      const requestHeaders = this.getAuthHeaders();
+
+      logger.debug(LogCategory.API, 'API Request: getAppraisalValuation', {
+        url,
+        method: 'POST',
+        payload: input,
+      });
+
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method: 'POST',
+          headers: requestHeaders,
+          body: JSON.stringify(input),
+        });
+      } catch (fetchError) {
+        logger.error(LogCategory.APP, 'Appraisal valuation network error', fetchError);
+        return { success: false, message: 'Unable to connect to server. Please check your internet connection.' };
+      }
+
+      if (!response.ok) {
+        let errorMessage = `Server error (${response.status})`;
+        try {
+          const errorData = await response.json();
+          if (errorData.message || errorData.error) {
+            errorMessage = errorData.message || errorData.error;
+          }
+        } catch {
+          if (response.status >= 500) {
+            errorMessage = 'Server is temporarily unavailable. Please try again later.';
+          }
+        }
+        logger.warn(LogCategory.APP, 'Appraisal valuation HTTP error', { status: response.status, errorMessage });
+        return { success: false, message: errorMessage };
+      }
+
+      let data: AppraisalValuationResponse;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        logger.error(LogCategory.APP, 'Failed to parse appraisal valuation response', parseError);
+        return { success: false, message: 'Invalid response from server.' };
+      }
+
+      logger.debug(LogCategory.API, 'API Response: getAppraisalValuation', {
+        status: response.status,
+        success: data.success,
+        appraisalId: data.appraisalId,
+      });
+
+      if (data.success && data.valuation) {
+        logger.info(LogCategory.APP, 'Appraisal valuation received', {
+          appraisalId: data.appraisalId,
+          tradeInLow: data.valuation.estimatedTradeInLow,
+          tradeInHigh: data.valuation.estimatedTradeInHigh,
+          confidence: data.valuation.confidenceLevel,
+        });
+      }
+
+      return data;
+    } catch (error) {
+      logger.error(LogCategory.APP, 'Unexpected appraisal valuation error', error);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      return { success: false, message: `An unexpected error occurred: ${errorMsg}` };
+    }
+  }
+
+  /**
+   * Send appraisal summary via email
+   */
+  async sendAppraisalEmail(toEmail: string, appraisalData: AppraisalSummaryData): Promise<AppraisalActionResponse> {
+    try {
+      if (!authService.isAuthenticated()) {
+        return { success: false, message: 'Please log in to send email.' };
+      }
+
+      logger.info(LogCategory.APP, 'Sending appraisal email', {
+        appraisalId: appraisalData.appraisalId,
+        toEmail,
+      });
+
+      const url = `${API_CONFIG.BASE_URL}${APPRAISAL_ENDPOINTS.EMAIL}`;
+      const requestHeaders = this.getAuthHeaders();
+
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method: 'POST',
+          headers: requestHeaders,
+          body: JSON.stringify({ toEmail, appraisalData }),
+        });
+      } catch (fetchError) {
+        logger.error(LogCategory.APP, 'Appraisal email network error', fetchError);
+        return { success: false, message: 'Unable to connect to server.' };
+      }
+
+      if (!response.ok) {
+        let errorMessage = `Server error (${response.status})`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        } catch {}
+        return { success: false, message: errorMessage };
+      }
+
+      const data: AppraisalActionResponse = await response.json();
+      logger.info(LogCategory.APP, 'Appraisal email result', { success: data.success });
+      return data;
+    } catch (error) {
+      logger.error(LogCategory.APP, 'Unexpected appraisal email error', error);
+      return { success: false, message: 'Failed to send email.' };
+    }
+  }
+
+  /**
+   * Generate and send appraisal PDF via email
+   */
+  async sendAppraisalPdf(toEmail: string, appraisalData: AppraisalSummaryData): Promise<AppraisalActionResponse> {
+    try {
+      if (!authService.isAuthenticated()) {
+        return { success: false, message: 'Please log in to generate PDF.' };
+      }
+
+      logger.info(LogCategory.APP, 'Requesting appraisal PDF', {
+        appraisalId: appraisalData.appraisalId,
+        toEmail,
+      });
+
+      const url = `${API_CONFIG.BASE_URL}${APPRAISAL_ENDPOINTS.PDF}`;
+      const requestHeaders = this.getAuthHeaders();
+
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method: 'POST',
+          headers: requestHeaders,
+          body: JSON.stringify({ toEmail, appraisalData }),
+        });
+      } catch (fetchError) {
+        logger.error(LogCategory.APP, 'Appraisal PDF network error', fetchError);
+        return { success: false, message: 'Unable to connect to server.' };
+      }
+
+      if (!response.ok) {
+        let errorMessage = `Server error (${response.status})`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        } catch {}
+        return { success: false, message: errorMessage };
+      }
+
+      const data: AppraisalActionResponse = await response.json();
+      logger.info(LogCategory.APP, 'Appraisal PDF result', { success: data.success });
+      return data;
+    } catch (error) {
+      logger.error(LogCategory.APP, 'Unexpected appraisal PDF error', error);
+      return { success: false, message: 'Failed to generate PDF.' };
     }
   }
 }

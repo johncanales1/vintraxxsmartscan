@@ -195,6 +195,8 @@ export interface AppraisalValuationSource {
 }
 
 export interface AiValuationOutput {
+  estimatedWholesaleLow: number;
+  estimatedWholesaleHigh: number;
   estimatedTradeInLow: number;
   estimatedTradeInHigh: number;
   estimatedRetailLow: number;
@@ -239,6 +241,7 @@ export interface AppraisalSummaryData {
   healthScore?: number;
   diagnosticsSummary?: string;
   photoCount: number;
+  photos?: string[];
   createdAt: string;
   userEmail: string;
 }

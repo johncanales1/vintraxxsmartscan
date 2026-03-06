@@ -156,6 +156,40 @@ export async function generatePdf(report: FullReportData): Promise<string> {
       const leftMargin = doc.page.margins.left;
       let y = doc.page.margins.top;
 
+      // ============ LOGO HEADER ============
+      const logoHeaderH = 70;
+      doc.save();
+      doc.rect(leftMargin, y, pageWidth, logoHeaderH).fill('#1a1a2e');
+
+      const logoH = 40;
+      const logoW = 90;
+      const logoY = y + (logoHeaderH - logoH) / 2;
+      const vintraxxLogoPath = path.resolve(__dirname, '../assets/VinTraxxLOGO.jpeg');
+      const motorsLogoPath = path.resolve(__dirname, '../assets/35MotorsLOGO.jpeg');
+
+      try {
+        if (fs.existsSync(vintraxxLogoPath)) {
+          doc.image(vintraxxLogoPath, leftMargin + 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
+        }
+      } catch (logoErr) {
+        logger.warn('Failed to load VinTraxx logo for scan PDF', { error: (logoErr as Error).message });
+      }
+
+      try {
+        if (fs.existsSync(motorsLogoPath)) {
+          doc.image(motorsLogoPath, leftMargin + pageWidth - logoW - 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
+        }
+      } catch (logoErr) {
+        logger.warn('Failed to load 35Motors logo for scan PDF', { error: (logoErr as Error).message });
+      }
+
+      doc.fontSize(18).font('Helvetica-Bold').fillColor('#FFFFFF')
+        .text('Diagnostic Scan Report', leftMargin + logoW + 20, y + 14, { width: pageWidth - (logoW + 20) * 2, align: 'center' });
+      doc.fontSize(11).font('Helvetica').fillColor('#CCCCCC')
+        .text('VinTraxx SmartScan', leftMargin + logoW + 20, y + 38, { width: pageWidth - (logoW + 20) * 2, align: 'center' });
+      doc.restore();
+      y += logoHeaderH + 12;
+
       // ============ HEADER ROW: 3 columns ============
       const boxW = Math.floor((pageWidth - 16) / 3);
       const boxH = 80;

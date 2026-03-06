@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer';
 import { env } from '../config/env';
 import { FullReportData } from '../types';
 import { formatCurrency } from '../utils/helpers';
+import { getEmailLogoHeaderHtml } from '../utils/logos';
 import logger from '../utils/logger';
 
 const transporter = nodemailer.createTransport({
@@ -74,10 +75,7 @@ export async function sendReportEmail(
 </head>
 <body>
   <div class="container">
-    <div class="header">
-      <h1>VinTraxx SmartScan</h1>
-      <p style="margin: 5px 0 0; opacity: 0.8;">Vehicle Diagnostic Report</p>
-    </div>
+    ${getEmailLogoHeaderHtml('Diagnostic Scan Report', 'VinTraxx SmartScan')}
     <div class="content">
       <p>Your vehicle scan report for your <strong>${vehicleStr}</strong> (VIN: ${vehicle.vin}) is ready.</p>
       <div style="text-align: center; margin: 20px 0;">

@@ -4,12 +4,65 @@ import { logger, LogCategory } from '../../utils/Logger';
 import { ParsedVin, ParsedDtc } from './types';
 
 /**
+ * Strip CAN headers from a single OBD response line.
+ * Handles both standard 11-bit CAN ("7E8 ...") and extended 29-bit CAN ("18 DA F1 XX ...").
+ * Returns only the data bytes as a hex string.
+ */
+export function stripCanHeader(line: string): string {
+  const trimmed = line.trim().toUpperCase();
+
+  // Extended 29-bit CAN addressing: "18 DA F1 XX ..."
+  // Pattern: starts with "18 DA" followed by two more hex byte-pairs
+  const extMatch = trimmed.match(/^18\s+DA\s+[0-9A-F]{2}\s+[0-9A-F]{2}\s+(.*)$/);
+  if (extMatch) {
+    return extMatch[1].trim();
+  }
+
+  // Standard 11-bit CAN header: 3 hex chars like "7E8", "7E0", "7EA"
+  const stdMatch = trimmed.match(/^[0-9A-F]{3}\s+(.*)$/);
+  if (stdMatch) {
+    return stdMatch[1].trim();
+  }
+
+  // ISO-TP line number format: "0: ...", "1: ..."
+  const isoMatch = trimmed.match(/^\d+:\s*(.*)$/);
+  if (isoMatch) {
+    return isoMatch[1].trim();
+  }
+
+  return trimmed;
+}
+
+/**
+ * Extract hex byte-pairs from a data string.
+ * Handles both spaced ("49 02 01") and compact ("490201") formats.
+ */
+export function extractHexBytes(data: string): string[] {
+  const bytes: string[] = [];
+  if (data.includes(' ')) {
+    for (const part of data.split(/\s+/)) {
+      if (/^[0-9A-F]{2}$/.test(part)) {
+        bytes.push(part);
+      }
+    }
+  } else {
+    for (let i = 0; i < data.length; i += 2) {
+      const pair = data.substring(i, i + 2);
+      if (/^[0-9A-F]{2}$/.test(pair)) {
+        bytes.push(pair);
+      }
+    }
+  }
+  return bytes;
+}
+
+/**
  * Parse VIN from Mode 09 PID 02 response
- * Handles multiple formats:
- * - CAN with headers: "7E8 10 14 49 02 01 XX XX XX XX\r\n7E8 21 XX XX XX XX XX XX XX\r\n..."
- * - CAN without headers: "49 02 01 XX XX XX..."
- * - ISO-TP multi-line: "0: 49 02 01 XX\r\n1: XX XX XX..."
- * - No spaces format: "490201XXXXXX..."
+ * Handles:
+ * - Standard CAN (7E8 headers) and extended CAN (18 DA F1 XX headers)
+ * - ISO-TP multi-frame: first frame (1X), consecutive frames (2X)
+ * - Single-frame responses
+ * - No spaces format
  */
 export function parseVIN(rawResponse: string): ParsedVin {
   try {
@@ -31,7 +84,7 @@ export function parseVIN(rawResponse: string): ParsedVin {
     }
 
     // Remove common ELM327 artifacts
-    let cleaned = rawResponse
+    const cleaned = rawResponse
       .replace(/>/g, '')
       .replace(/SEARCHING\.\.\./gi, '')
       .replace(/\r/g, '\n')
@@ -39,12 +92,11 @@ export function parseVIN(rawResponse: string): ParsedVin {
 
     logger.debug(LogCategory.OBD, 'Cleaned response', { cleaned });
 
-    // Collect all hex bytes from the response
-    const allHexBytes: string[] = [];
-    
-    // Split into lines and process each
+    // Split into lines, strip CAN headers, extract hex bytes per line
     const lines = cleaned.split('\n').filter(line => line.trim().length > 0);
     
+    // Process each line: strip CAN header, then extract data bytes
+    const frameDataLines: string[][] = [];
     for (const line of lines) {
       const trimmedLine = line.trim().toUpperCase();
       
@@ -52,107 +104,102 @@ export function parseVIN(rawResponse: string): ParsedVin {
       if (!trimmedLine || trimmedLine.startsWith('AT') || trimmedLine === 'OK') {
         continue;
       }
-      
-      // Handle CAN format with headers (e.g., "7E8 10 14 49 02 01 XX XX XX XX")
-      // CAN headers are 3 hex chars (7E8, 7E0, etc.)
-      let dataLine = trimmedLine;
-      
-      // Remove CAN header if present (3 hex chars at start)
-      if (/^[0-9A-F]{3}\s/.test(dataLine)) {
-        dataLine = dataLine.substring(4).trim();
-      }
-      
-      // Remove ISO-TP line numbers (0:, 1:, 2:)
-      if (/^\d+:/.test(dataLine)) {
-        dataLine = dataLine.replace(/^\d+:\s*/, '');
-      }
-      
-      // Extract hex bytes from this line
-      // Handle both spaced format "49 02 01" and no-space format "490201"
-      if (dataLine.includes(' ')) {
-        // Spaced format
-        const parts = dataLine.split(/\s+/);
-        for (const part of parts) {
-          if (/^[0-9A-F]{2}$/.test(part)) {
-            allHexBytes.push(part);
-          }
-        }
-      } else {
-        // No-space format - split into pairs
-        for (let i = 0; i < dataLine.length; i += 2) {
-          const pair = dataLine.substring(i, i + 2);
-          if (/^[0-9A-F]{2}$/.test(pair)) {
-            allHexBytes.push(pair);
-          }
-        }
+
+      const dataOnly = stripCanHeader(trimmedLine);
+      const bytes = extractHexBytes(dataOnly);
+      if (bytes.length > 0) {
+        frameDataLines.push(bytes);
       }
     }
 
-    logger.info(LogCategory.OBD, 'Extracted all hex bytes', { 
-      count: allHexBytes.length,
-      bytes: allHexBytes.join(' ')
+    logger.info(LogCategory.OBD, 'Frames after header stripping', {
+      frameCount: frameDataLines.length,
+      frames: frameDataLines.map(f => f.join(' ')),
     });
 
-    // Find the VIN data start - look for "49 02" (Mode 09 response for PID 02)
+    // Reassemble ISO-TP multi-frame data
+    // After stripping CAN headers, each line's first byte(s) are ISO-TP framing:
+    //   First Frame:       1X LL (X=high nibble of length, LL=low byte) then data
+    //   Consecutive Frame: 2X (X=sequence number) then data
+    //   Single Frame:      0X (X=data length) then data
+    // We need to strip these ISO-TP bytes and concatenate only the payload.
+
+    let payloadBytes: string[] = [];
+    let isMultiFrame = false;
+
+    for (const frameBytes of frameDataLines) {
+      if (frameBytes.length === 0) continue;
+
+      const firstByte = parseInt(frameBytes[0], 16);
+      const frameType = (firstByte >> 4) & 0x0F;
+
+      if (frameType === 1) {
+        // First Frame: 1X LL DATA...
+        // Skip first 2 bytes (1X and LL)
+        isMultiFrame = true;
+        payloadBytes = payloadBytes.concat(frameBytes.slice(2));
+      } else if (frameType === 2) {
+        // Consecutive Frame: 2X DATA...
+        // Skip first byte (2X sequence number)
+        payloadBytes = payloadBytes.concat(frameBytes.slice(1));
+      } else if (frameType === 0) {
+        // Single Frame: 0X DATA...
+        // Skip first byte (0X length)
+        payloadBytes = payloadBytes.concat(frameBytes.slice(1));
+      } else {
+        // Unknown frame type - include all bytes as-is
+        // This handles non-ISO-TP responses (e.g., already-assembled data)
+        payloadBytes = payloadBytes.concat(frameBytes);
+      }
+    }
+
+    logger.info(LogCategory.OBD, 'Reassembled ISO-TP payload', {
+      isMultiFrame,
+      count: payloadBytes.length,
+      bytes: payloadBytes.join(' '),
+    });
+
+    // Now payloadBytes should be the service response: 49 02 01 <VIN bytes>
+    // Find "49 02" marker
     let vinStartIndex = -1;
-    for (let i = 0; i < allHexBytes.length - 1; i++) {
-      if (allHexBytes[i] === '49' && allHexBytes[i + 1] === '02') {
+    for (let i = 0; i < payloadBytes.length - 1; i++) {
+      if (payloadBytes[i] === '49' && payloadBytes[i + 1] === '02') {
         vinStartIndex = i + 2; // Skip 49 02
         break;
       }
     }
 
     if (vinStartIndex === -1) {
-      // Try alternate: just look for sequence of printable ASCII after any header
-      logger.warn(LogCategory.OBD, 'Could not find 49 02 marker, trying alternate parsing');
+      logger.warn(LogCategory.OBD, 'Could not find 49 02 marker, trying raw payload');
       vinStartIndex = 0;
     }
 
-    // Extract VIN bytes - skip the first byte after 49 02 (message count byte)
-    let vinBytes = allHexBytes.slice(vinStartIndex);
-    
-    // Skip ISO-TP frame bytes if present (10, 14 for first frame; 21, 22 for consecutive)
-    // First frame format: 10 LL (where LL is length)
-    if (vinBytes.length > 2 && vinBytes[0] === '10') {
-      vinBytes = vinBytes.slice(2); // Skip 10 LL
-    }
-    
-    // Skip message count byte (usually 01 for single VIN)
-    if (vinBytes.length > 0 && (vinBytes[0] === '01' || parseInt(vinBytes[0], 16) <= 5)) {
-      vinBytes = vinBytes.slice(1);
-    }
-    
-    // Remove consecutive frame markers (21, 22, 23...)
-    vinBytes = vinBytes.filter((byte, index) => {
-      // Check if this looks like a consecutive frame marker
-      const val = parseInt(byte, 16);
-      // Consecutive frame markers are 21-2F
-      if (val >= 0x21 && val <= 0x2F) {
-        // Only filter if it's at a position that makes sense for a frame marker
-        // (every 7-8 bytes in the sequence)
-        return false;
-      }
-      return true;
-    });
+    let vinBytes = payloadBytes.slice(vinStartIndex);
 
-    logger.info(LogCategory.OBD, 'VIN bytes after filtering', { 
+    // Skip message count byte (usually 01 for single VIN)
+    if (vinBytes.length > 0) {
+      const countByte = parseInt(vinBytes[0], 16);
+      if (countByte >= 0x01 && countByte <= 0x05) {
+        vinBytes = vinBytes.slice(1);
+      }
+    }
+
+    logger.info(LogCategory.OBD, 'VIN hex bytes', {
       count: vinBytes.length,
-      bytes: vinBytes.join(' ')
+      bytes: vinBytes.join(' '),
     });
 
     // Convert hex bytes to ASCII characters
     let vin = '';
     for (const byte of vinBytes) {
       const charCode = parseInt(byte, 16);
-      // Valid VIN characters are alphanumeric ASCII (0-9, A-Z, excluding I, O, Q)
-      // ASCII range: 48-57 (0-9), 65-90 (A-Z)
-      if ((charCode >= 48 && charCode <= 57) || (charCode >= 65 && charCode <= 90)) {
+      // Valid VIN characters: 0-9 (0x30-0x39), A-Z (0x41-0x5A)
+      if ((charCode >= 0x30 && charCode <= 0x39) || (charCode >= 0x41 && charCode <= 0x5A)) {
         vin += String.fromCharCode(charCode);
-      } else if (charCode >= 97 && charCode <= 122) {
+      } else if (charCode >= 0x61 && charCode <= 0x7A) {
         // Convert lowercase to uppercase
         vin += String.fromCharCode(charCode - 32);
       }
-      
       // Stop if we have 17 characters
       if (vin.length >= 17) {
         break;
@@ -160,14 +207,12 @@ export function parseVIN(rawResponse: string): ParsedVin {
     }
 
     vin = vin.trim();
-    
     logger.info(LogCategory.OBD, 'Parsed VIN result', { vin, length: vin.length });
 
     // Validate VIN (should be 17 characters)
     if (vin.length === 17) {
-      // Additional VIN validation - check for invalid characters (I, O, Q)
       if (/[IOQ]/i.test(vin)) {
-        logger.warn(LogCategory.OBD, 'VIN contains invalid characters', { vin });
+        logger.warn(LogCategory.OBD, 'VIN contains invalid characters (I, O, or Q)', { vin });
       }
       logger.info(LogCategory.OBD, 'VIN parsed successfully', { vin });
       return { vin, valid: true };
@@ -175,9 +220,9 @@ export function parseVIN(rawResponse: string): ParsedVin {
       logger.warn(LogCategory.OBD, 'VIN length invalid', { vin, length: vin.length });
       return { vin, valid: false, error: `Invalid VIN length: ${vin.length}` };
     } else {
-      logger.warn(LogCategory.OBD, 'No VIN data found in response', { 
-        allHexBytes: allHexBytes.join(' '), 
-        cleaned 
+      logger.warn(LogCategory.OBD, 'No VIN data found in response', {
+        payloadBytes: payloadBytes.join(' '),
+        cleaned,
       });
       return {
         vin: '',
@@ -253,31 +298,28 @@ export function parseDTCs(rawResponse: string, mode: '03' | '07' | '0A' = '03'):
       let ecuId = 'UNKNOWN';
       let dataLine = trimmedLine;
       
-      // Extract CAN header if present (3 hex chars at start like 7E8)
-      if (/^[0-9A-F]{3}\s/.test(dataLine)) {
+      // Extract CAN header and ECU ID
+      // Extended 29-bit CAN: "18 DA F1 58 ..." → ECU from 4th byte (58→7E8 mapping)
+      const extHeaderMatch = dataLine.match(/^18\s+DA\s+F1\s+([0-9A-F]{2})\s+(.*)$/);
+      if (extHeaderMatch) {
+        // Map extended address byte to standard ECU ID
+        // 58→7E8(PCM), 59→7E9(TCM), 5A→7EA, 87→7E0(hybrid)
+        const addrByte = extHeaderMatch[1];
+        const addrMap: Record<string, string> = {
+          '58': '7E8', '59': '7E9', '5A': '7EA', '5B': '7EB',
+          '5C': '7EC', '5D': '7ED', '5E': '7EE', '5F': '7EF',
+          '87': '7E0', '88': '7E1',
+        };
+        ecuId = addrMap[addrByte] || addrByte;
+        dataLine = extHeaderMatch[2].trim();
+      } else if (/^[0-9A-F]{3}\s/.test(dataLine)) {
+        // Standard 11-bit CAN: "7E8 ..."
         ecuId = dataLine.substring(0, 3);
         dataLine = dataLine.substring(4).trim();
       }
       
       // Extract hex bytes from this line
-      const lineBytes: string[] = [];
-      if (dataLine.includes(' ')) {
-        // Spaced format
-        const parts = dataLine.split(/\s+/);
-        for (const part of parts) {
-          if (/^[0-9A-F]{2}$/.test(part)) {
-            lineBytes.push(part);
-          }
-        }
-      } else {
-        // No-space format - split into pairs
-        for (let i = 0; i < dataLine.length; i += 2) {
-          const pair = dataLine.substring(i, i + 2);
-          if (/^[0-9A-F]{2}$/.test(pair)) {
-            lineBytes.push(pair);
-          }
-        }
-      }
+      const lineBytes = extractHexBytes(dataLine);
       
       if (lineBytes.length > 0) {
         ecuResponses.push({ ecu: ecuId, bytes: lineBytes });

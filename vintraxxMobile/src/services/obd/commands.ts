@@ -3,7 +3,7 @@
 import { Elm327Service } from './Elm327';
 import { logger, LogCategory } from '../../utils/Logger';
 import { ObdMode, ObdPid, ParsedVin, ParsedDtc } from './types';
-import { parseVIN, parseDTCs } from './parsers';
+import { parseVIN, parseDTCs, stripCanHeader, extractHexBytes } from './parsers';
 
 /**
  * Helper to extract per-ECU hex bytes from normalized OBD response
@@ -20,8 +20,20 @@ function extractPerEcuBytes(normalized: string): Record<string, string[]> {
     let ecuId = 'UNKNOWN';
     let dataLine = trimmedLine;
     
-    // Extract ECU ID if present (format: "7E8 03 41 00 ...")
-    if (/^[0-9A-F]{3}\s/.test(dataLine)) {
+    // Extract CAN header and ECU ID
+    // Extended 29-bit CAN: "18 DA F1 58 ..." → ECU from 4th byte
+    const extMatch = dataLine.match(/^18\s+DA\s+F1\s+([0-9A-F]{2})\s+(.*)$/);
+    if (extMatch) {
+      const addrByte = extMatch[1];
+      const addrMap: Record<string, string> = {
+        '58': '7E8', '59': '7E9', '5A': '7EA', '5B': '7EB',
+        '5C': '7EC', '5D': '7ED', '5E': '7EE', '5F': '7EF',
+        '87': '7E0', '88': '7E1',
+      };
+      ecuId = addrMap[addrByte] || addrByte;
+      dataLine = extMatch[2].trim();
+    } else if (/^[0-9A-F]{3}\s/.test(dataLine)) {
+      // Standard 11-bit CAN: "7E8 ..."
       ecuId = dataLine.substring(0, 3);
       dataLine = dataLine.substring(4).trim();
     }
@@ -46,6 +58,22 @@ function extractPerEcuBytes(normalized: string): Record<string, string[]> {
   }
   
   return ecuData;
+}
+
+/**
+ * Extract all hex bytes from a normalized OBD response, stripping CAN headers (both standard and extended).
+ * Reusable across all OBD response parsers.
+ */
+function extractAllHexBytes(normalized: string): string[] {
+  const allHexBytes: string[] = [];
+  const lines = normalized.split('\n').filter(line => line.trim().length > 0);
+  for (const line of lines) {
+    const trimmedLine = line.trim().toUpperCase();
+    if (!trimmedLine || trimmedLine.startsWith('AT') || trimmedLine === 'OK') continue;
+    const dataOnly = stripCanHeader(trimmedLine);
+    allHexBytes.push(...extractHexBytes(dataOnly));
+  }
+  return allHexBytes;
 }
 
 type OdometerReadAbortSignal = { aborted: boolean };
@@ -475,30 +503,8 @@ export class ObdCommands {
       // With headers: 7E8 06 41 01 XX YY ZZ WW
       // XX byte: bit 7 = MIL status, bits 0-6 = DTC count
       
-      // Extract all hex bytes from response
-      const allHexBytes: string[] = [];
-      const lines = response.normalized.split('\n').filter(line => line.trim().length > 0);
-      
-      for (const line of lines) {
-        const trimmedLine = line.trim().toUpperCase();
-        if (!trimmedLine || trimmedLine.startsWith('AT') || trimmedLine === 'OK') continue;
-        
-        let dataLine = trimmedLine;
-        // Remove CAN header if present (3 hex chars at start like 7E8)
-        if (/^[0-9A-F]{3}\s/.test(dataLine)) {
-          dataLine = dataLine.substring(4).trim();
-        }
-        
-        // Extract hex bytes
-        if (dataLine.includes(' ')) {
-          const parts = dataLine.split(/\s+/);
-          for (const part of parts) {
-            if (/^[0-9A-F]{2}$/.test(part)) {
-              allHexBytes.push(part);
-            }
-          }
-        }
-      }
+      // Extract all hex bytes from response (handles both standard and extended CAN headers)
+      const allHexBytes = extractAllHexBytes(response.normalized);
       
       logger.debug(LogCategory.OBD, 'MIL status hex bytes', { bytes: allHexBytes.join(' ') });
       
@@ -575,27 +581,7 @@ export class ObdCommands {
         };
       }
 
-      const allHexBytes: string[] = [];
-      const lines = response.normalized.split('\n').filter(line => line.trim().length > 0);
-      
-      for (const line of lines) {
-        const trimmedLine = line.trim().toUpperCase();
-        if (!trimmedLine || trimmedLine.startsWith('AT') || trimmedLine === 'OK') continue;
-        
-        let dataLine = trimmedLine;
-        if (/^[0-9A-F]{3}\s/.test(dataLine)) {
-          dataLine = dataLine.substring(4).trim();
-        }
-        
-        if (dataLine.includes(' ')) {
-          const parts = dataLine.split(/\s+/);
-          for (const part of parts) {
-            if (/^[0-9A-F]{2}$/.test(part)) {
-              allHexBytes.push(part);
-            }
-          }
-        }
-      }
+      const allHexBytes = extractAllHexBytes(response.normalized);
       
       let dataIndex = -1;
       for (let i = 0; i < allHexBytes.length - 1; i++) {
@@ -641,30 +627,7 @@ export class ObdCommands {
       // Parse response: 41 31 XX YY (distance in km)
       // With headers: 7E8 04 41 31 XX YY
       
-      // Extract all hex bytes from response
-      const allHexBytes: string[] = [];
-      const lines = response.normalized.split('\n').filter(line => line.trim().length > 0);
-      
-      for (const line of lines) {
-        const trimmedLine = line.trim().toUpperCase();
-        if (!trimmedLine || trimmedLine.startsWith('AT') || trimmedLine === 'OK') continue;
-        
-        let dataLine = trimmedLine;
-        // Remove CAN header if present
-        if (/^[0-9A-F]{3}\s/.test(dataLine)) {
-          dataLine = dataLine.substring(4).trim();
-        }
-        
-        // Extract hex bytes
-        if (dataLine.includes(' ')) {
-          const parts = dataLine.split(/\s+/);
-          for (const part of parts) {
-            if (/^[0-9A-F]{2}$/.test(part)) {
-              allHexBytes.push(part);
-            }
-          }
-        }
-      }
+      const allHexBytes = extractAllHexBytes(response.normalized);
       
       logger.debug(LogCategory.OBD, 'Distance hex bytes', { bytes: allHexBytes.join(' ') });
       
@@ -710,27 +673,7 @@ export class ObdCommands {
         };
       }
 
-      const allHexBytes: string[] = [];
-      const lines = response.normalized.split('\n').filter(line => line.trim().length > 0);
-      
-      for (const line of lines) {
-        const trimmedLine = line.trim().toUpperCase();
-        if (!trimmedLine || trimmedLine.startsWith('AT') || trimmedLine === 'OK') continue;
-        
-        let dataLine = trimmedLine;
-        if (/^[0-9A-F]{3}\s/.test(dataLine)) {
-          dataLine = dataLine.substring(4).trim();
-        }
-        
-        if (dataLine.includes(' ')) {
-          const parts = dataLine.split(/\s+/);
-          for (const part of parts) {
-            if (/^[0-9A-F]{2}$/.test(part)) {
-              allHexBytes.push(part);
-            }
-          }
-        }
-      }
+      const allHexBytes = extractAllHexBytes(response.normalized);
       
       let dataIndex = -1;
       for (let i = 0; i < allHexBytes.length - 1; i++) {
@@ -776,30 +719,7 @@ export class ObdCommands {
       // Parse response: 41 4D XX YY (time in minutes)
       // With headers: 7E8 04 41 4D XX YY
       
-      // Extract all hex bytes from response
-      const allHexBytes: string[] = [];
-      const lines = response.normalized.split('\n').filter(line => line.trim().length > 0);
-      
-      for (const line of lines) {
-        const trimmedLine = line.trim().toUpperCase();
-        if (!trimmedLine || trimmedLine.startsWith('AT') || trimmedLine === 'OK') continue;
-        
-        let dataLine = trimmedLine;
-        // Remove CAN header if present
-        if (/^[0-9A-F]{3}\s/.test(dataLine)) {
-          dataLine = dataLine.substring(4).trim();
-        }
-        
-        // Extract hex bytes
-        if (dataLine.includes(' ')) {
-          const parts = dataLine.split(/\s+/);
-          for (const part of parts) {
-            if (/^[0-9A-F]{2}$/.test(part)) {
-              allHexBytes.push(part);
-            }
-          }
-        }
-      }
+      const allHexBytes = extractAllHexBytes(response.normalized);
       
       logger.debug(LogCategory.OBD, 'Time hex bytes', { bytes: allHexBytes.join(' ') });
       
@@ -840,27 +760,7 @@ export class ObdCommands {
         return null;
       }
 
-      const allHexBytes: string[] = [];
-      const lines = response.normalized.split('\n').filter(line => line.trim().length > 0);
-      
-      for (const line of lines) {
-        const trimmedLine = line.trim().toUpperCase();
-        if (!trimmedLine || trimmedLine.startsWith('AT') || trimmedLine === 'OK') continue;
-        
-        let dataLine = trimmedLine;
-        if (/^[0-9A-F]{3}\s/.test(dataLine)) {
-          dataLine = dataLine.substring(4).trim();
-        }
-        
-        if (dataLine.includes(' ')) {
-          const parts = dataLine.split(/\s+/);
-          for (const part of parts) {
-            if (/^[0-9A-F]{2}$/.test(part)) {
-              allHexBytes.push(part);
-            }
-          }
-        }
-      }
+      const allHexBytes = extractAllHexBytes(response.normalized);
       
       let dataIndex = -1;
       for (let i = 0; i < allHexBytes.length - 1; i++) {
@@ -1099,29 +999,7 @@ export class ObdCommands {
 
       if (response.success && !response.raw.toUpperCase().includes('NO DATA')) {
         // Parse response: 41 A6 XX XX XX XX (odometer in km)
-        const allHexBytes: string[] = [];
-        const lines = response.normalized.split('\n').filter(line => line.trim().length > 0);
-        
-        for (const line of lines) {
-          const trimmedLine = line.trim().toUpperCase();
-          if (!trimmedLine || trimmedLine.startsWith('AT') || trimmedLine === 'OK') continue;
-          
-          let dataLine = trimmedLine;
-          // Remove CAN header if present
-          if (/^[0-9A-F]{3}\s/.test(dataLine)) {
-            dataLine = dataLine.substring(4).trim();
-          }
-          
-          // Extract hex bytes
-          if (dataLine.includes(' ')) {
-            const parts = dataLine.split(/\s+/);
-            for (const part of parts) {
-              if (/^[0-9A-F]{2}$/.test(part)) {
-                allHexBytes.push(part);
-              }
-            }
-          }
-        }
+        const allHexBytes = extractAllHexBytes(response.normalized);
         
         logger.debug(LogCategory.OBD, 'Odometer hex bytes', { bytes: allHexBytes.join(' ') });
         
@@ -1183,12 +1061,25 @@ export class ObdCommands {
         const discoveryResponse = await this.elm327.sendCommand('3E00');
         
         if (discoveryResponse.success && !discoveryResponse.raw.toUpperCase().includes('NO DATA')) {
-          // Parse response to find responding ECU IDs (format: 7E8, 7E9, 77E, etc.)
+          // Parse response to find responding ECU IDs
+          // Standard CAN: "7E8 ...", Extended CAN: "18 DA F1 XX ..."
           const lines = discoveryResponse.normalized.split('\n');
           for (const line of lines) {
-            const match = line.trim().match(/^([0-9A-F]{3})\s/i);
-            if (match) {
-              const ecuId = match[1].toUpperCase();
+            const trimmed = line.trim().toUpperCase();
+            // Standard 11-bit CAN header
+            const stdMatch = trimmed.match(/^([0-9A-F]{3})\s/);
+            if (stdMatch) {
+              const ecuId = stdMatch[1];
+              if (!discoveredECUs.includes(ecuId)) {
+                discoveredECUs.push(ecuId);
+              }
+            }
+            // Extended 29-bit CAN header: derive ECU ID from address byte
+            const extMatch = trimmed.match(/^18\s+DA\s+F1\s+([0-9A-F]{2})\s/);
+            if (extMatch) {
+              const addrByte = extMatch[1];
+              const addrMap: Record<string, string> = { '10': '7E8', '18': '7E9', '58': '77E', '28': '7C8' };
+              const ecuId = addrMap[addrByte] || addrByte;
               if (!discoveredECUs.includes(ecuId)) {
                 discoveredECUs.push(ecuId);
               }
@@ -1479,11 +1370,8 @@ export class ObdCommands {
             const trimmedLine = line.trim().toUpperCase();
             if (!trimmedLine || trimmedLine.startsWith('AT') || trimmedLine === 'OK') continue;
             
-            let dataLine = trimmedLine;
-            // Remove CAN header if present (e.g., "7E8 10 0C 62 F4 0D ...")
-            if (/^[0-9A-F]{3}\s/.test(dataLine)) {
-              dataLine = dataLine.substring(4).trim();
-            }
+            // Remove CAN header (standard 11-bit or extended 29-bit)
+            const dataLine = stripCanHeader(trimmedLine);
             
             // Extract hex bytes and skip ISO-TP frame indicators
             if (dataLine.includes(' ')) {

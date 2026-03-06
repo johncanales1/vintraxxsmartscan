@@ -61,7 +61,8 @@ interface AppraiserScreenProps {
 }
 
 // --- Helpers ---
-const formatCurrency = (value: number): string => {
+const formatCurrency = (value: number | undefined | null): string => {
+  if (value == null || isNaN(value)) return '$—';
   return '$' + value.toLocaleString('en-US', { maximumFractionDigits: 0 });
 };
 
@@ -920,7 +921,7 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
 
         {showSourceAnchors && (
           <View style={styles.sourceAnchorsContainer}>
-            {valuationData.comparableSources.map((src, idx) => {
+            {(valuationData.comparableSources || []).map((src, idx) => {
               const dotColors = ['#333', '#0066CC', '#CC6600'];
               return (
                 <View key={src.sourceName} style={styles.sourceRow}>
@@ -934,10 +935,10 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
             })}
 
             {/* Adjustments */}
-            {valuationData.adjustments.length > 0 && (
+            {(valuationData.adjustments || []).length > 0 && (
               <View style={styles.adjustmentsContainer}>
                 <Text style={styles.adjustmentsTitle}>Value Adjustments</Text>
-                {valuationData.adjustments.map((adj, idx) => (
+                {(valuationData.adjustments || []).map((adj, idx) => (
                   <View key={idx} style={styles.adjustmentRow}>
                     <Text style={styles.adjustmentFactor}>{adj.factor}</Text>
                     <Text style={[styles.adjustmentImpact, {
@@ -1111,7 +1112,13 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
             <Text style={styles.backText}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Trade-In Appraisal</Text>
-          <View style={styles.headerSpacer} />
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Main', { screen: 'Scan' })}
+            style={styles.homeButton}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.homeText}>Home</Text>
+          </TouchableOpacity>
         </View>
 
         <ScrollView
@@ -1224,8 +1231,14 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.lg,
     fontWeight: typography.fontWeight.bold,
   },
-  headerSpacer: {
-    width: 60,
+  homeButton: {
+    paddingVertical: spacing.xs,
+    paddingLeft: spacing.md,
+  },
+  homeText: {
+    color: colors.text.inverse,
+    fontSize: typography.fontSize.md,
+    fontWeight: typography.fontWeight.semiBold,
   },
   scrollView: {
     flex: 1,

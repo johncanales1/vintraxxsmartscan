@@ -31,6 +31,8 @@ export const appraisalEmailSchema = z.object({
       zipCode: z.string().optional(),
       notes: z.string().optional(),
       valuation: z.object({
+        estimatedWholesaleLow: z.number().optional(),
+        estimatedWholesaleHigh: z.number().optional(),
         estimatedTradeInLow: z.number(),
         estimatedTradeInHigh: z.number(),
         estimatedRetailLow: z.number(),
@@ -61,6 +63,7 @@ export const appraisalEmailSchema = z.object({
       healthScore: z.number().optional(),
       diagnosticsSummary: z.string().optional(),
       photoCount: z.number(),
+      photos: z.array(z.string()).optional(),
       createdAt: z.string(),
       userEmail: z.string(),
     }),
@@ -84,6 +87,8 @@ export const appraisalPdfSchema = z.object({
       zipCode: z.string().optional(),
       notes: z.string().optional(),
       valuation: z.object({
+        estimatedWholesaleLow: z.number().optional(),
+        estimatedWholesaleHigh: z.number().optional(),
         estimatedTradeInLow: z.number(),
         estimatedTradeInHigh: z.number(),
         estimatedRetailLow: z.number(),
@@ -114,6 +119,7 @@ export const appraisalPdfSchema = z.object({
       healthScore: z.number().optional(),
       diagnosticsSummary: z.string().optional(),
       photoCount: z.number(),
+      photos: z.array(z.string()).optional(),
       createdAt: z.string(),
       userEmail: z.string(),
     }),

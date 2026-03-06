@@ -117,15 +117,41 @@ export async function generateAppraisalPdf(appraisal: AppraisalSummaryData): Pro
       const leftMargin = doc.page.margins.left;
       let y = doc.page.margins.top;
 
-      // ============ HEADER ============
+      // ============ HEADER WITH LOGOS ============
+      const headerH = 70;
       doc.save();
-      doc.rect(leftMargin, y, pageWidth, 60).fill(C.navy);
-      doc.fontSize(20).font('Helvetica-Bold').fillColor('#FFFFFF')
-        .text('VinTraxx SmartScan', leftMargin + 16, y + 12, { width: pageWidth - 32 });
-      doc.fontSize(12).font('Helvetica').fillColor('#CCCCCC')
-        .text('Trade-In Appraisal Report', leftMargin + 16, y + 36, { width: pageWidth - 32 });
+      doc.rect(leftMargin, y, pageWidth, headerH).fill(C.navy);
+
+      // Logos
+      const logoH = 40;
+      const logoW = 90;
+      const logoY = y + (headerH - logoH) / 2;
+      const vintraxxLogoPath = path.resolve(__dirname, '../assets/VinTraxxLOGO.jpeg');
+      const motorsLogoPath = path.resolve(__dirname, '../assets/35MotorsLOGO.jpeg');
+
+      try {
+        if (fs.existsSync(vintraxxLogoPath)) {
+          doc.image(vintraxxLogoPath, leftMargin + 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
+        }
+      } catch (logoErr) {
+        logger.warn('Failed to load VinTraxx logo for PDF', { error: (logoErr as Error).message });
+      }
+
+      try {
+        if (fs.existsSync(motorsLogoPath)) {
+          doc.image(motorsLogoPath, leftMargin + pageWidth - logoW - 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
+        }
+      } catch (logoErr) {
+        logger.warn('Failed to load 35Motors logo for PDF', { error: (logoErr as Error).message });
+      }
+
+      // Center title
+      doc.fontSize(18).font('Helvetica-Bold').fillColor('#FFFFFF')
+        .text('Trade-In Appraisal', leftMargin + logoW + 20, y + 14, { width: pageWidth - (logoW + 20) * 2, align: 'center' });
+      doc.fontSize(11).font('Helvetica').fillColor('#CCCCCC')
+        .text('VinTraxx SmartScan Report', leftMargin + logoW + 20, y + 38, { width: pageWidth - (logoW + 20) * 2, align: 'center' });
       doc.restore();
-      y += 72;
+      y += headerH + 12;
 
       // ============ VEHICLE INFO ============
       doc.save();
@@ -147,37 +173,46 @@ export async function generateAppraisalPdf(appraisal: AppraisalSummaryData): Pro
       doc.restore();
       y += 78;
 
-      // ============ VALUE TIERS ROW ============
-      const tierBoxW = Math.floor((pageWidth - 16) / 3);
+      // ============ VALUE TIERS ROW (4 columns) ============
+      const tierBoxW = Math.floor((pageWidth - 18) / 4);
       const tierBoxH = 50;
-      const gap = 8;
+      const gap = 6;
+
+      // Wholesale Value
+      doc.save();
+      doc.strokeColor(C.border).lineWidth(1).rect(leftMargin, y, tierBoxW, tierBoxH).stroke();
+      doc.fontSize(7).font('Helvetica').fillColor(C.medGray)
+        .text('WHOLESALE (AUCTION)', leftMargin, y + 6, { width: tierBoxW, align: 'center' });
+      doc.fontSize(11).font('Helvetica-Bold').fillColor(C.black)
+        .text(`${fmtCurrency(valuation.estimatedWholesaleLow)} – ${fmtCurrency(valuation.estimatedWholesaleHigh)}`, leftMargin, y + 24, { width: tierBoxW, align: 'center' });
+      doc.restore();
 
       // Retail Value
       doc.save();
-      doc.strokeColor(C.border).lineWidth(1).rect(leftMargin, y, tierBoxW, tierBoxH).stroke();
-      doc.fontSize(8).font('Helvetica').fillColor(C.medGray)
-        .text('RETAIL VALUE', leftMargin, y + 8, { width: tierBoxW, align: 'center' });
-      doc.fontSize(13).font('Helvetica-Bold').fillColor(C.black)
-        .text(`${fmtCurrency(valuation.estimatedRetailLow)} – ${fmtCurrency(valuation.estimatedRetailHigh)}`, leftMargin, y + 24, { width: tierBoxW, align: 'center' });
+      doc.strokeColor(C.border).lineWidth(1).rect(leftMargin + (tierBoxW + gap), y, tierBoxW, tierBoxH).stroke();
+      doc.fontSize(7).font('Helvetica').fillColor(C.medGray)
+        .text('RETAIL VALUE', leftMargin + (tierBoxW + gap), y + 6, { width: tierBoxW, align: 'center' });
+      doc.fontSize(11).font('Helvetica-Bold').fillColor(C.black)
+        .text(`${fmtCurrency(valuation.estimatedRetailLow)} – ${fmtCurrency(valuation.estimatedRetailHigh)}`, leftMargin + (tierBoxW + gap), y + 24, { width: tierBoxW, align: 'center' });
       doc.restore();
 
       // Private Party Value
       doc.save();
-      doc.strokeColor(C.border).lineWidth(1).rect(leftMargin + tierBoxW + gap, y, tierBoxW, tierBoxH).stroke();
-      doc.fontSize(8).font('Helvetica').fillColor(C.medGray)
-        .text('PRIVATE PARTY VALUE', leftMargin + tierBoxW + gap, y + 8, { width: tierBoxW, align: 'center' });
-      doc.fontSize(13).font('Helvetica-Bold').fillColor(C.black)
-        .text(`${fmtCurrency(valuation.estimatedPrivatePartyLow)} – ${fmtCurrency(valuation.estimatedPrivatePartyHigh)}`, leftMargin + tierBoxW + gap, y + 24, { width: tierBoxW, align: 'center' });
+      doc.strokeColor(C.border).lineWidth(1).rect(leftMargin + (tierBoxW + gap) * 2, y, tierBoxW, tierBoxH).stroke();
+      doc.fontSize(7).font('Helvetica').fillColor(C.medGray)
+        .text('PRIVATE PARTY', leftMargin + (tierBoxW + gap) * 2, y + 6, { width: tierBoxW, align: 'center' });
+      doc.fontSize(11).font('Helvetica-Bold').fillColor(C.black)
+        .text(`${fmtCurrency(valuation.estimatedPrivatePartyLow)} – ${fmtCurrency(valuation.estimatedPrivatePartyHigh)}`, leftMargin + (tierBoxW + gap) * 2, y + 24, { width: tierBoxW, align: 'center' });
       doc.restore();
 
       // Confidence & Trend
       doc.save();
-      doc.strokeColor(C.border).lineWidth(1).rect(leftMargin + (tierBoxW + gap) * 2, y, tierBoxW, tierBoxH).stroke();
-      doc.fontSize(8).font('Helvetica').fillColor(C.medGray)
-        .text('CONFIDENCE / TREND', leftMargin + (tierBoxW + gap) * 2, y + 8, { width: tierBoxW, align: 'center' });
+      doc.strokeColor(C.border).lineWidth(1).rect(leftMargin + (tierBoxW + gap) * 3, y, tierBoxW, tierBoxH).stroke();
+      doc.fontSize(7).font('Helvetica').fillColor(C.medGray)
+        .text('CONFIDENCE / TREND', leftMargin + (tierBoxW + gap) * 3, y + 6, { width: tierBoxW, align: 'center' });
       const confColor = valuation.confidenceLevel === 'high' ? C.green : valuation.confidenceLevel === 'medium' ? C.orange : C.red;
-      doc.fontSize(13).font('Helvetica-Bold').fillColor(confColor)
-        .text(`${valuation.confidenceLevel.toUpperCase()} / ${valuation.marketTrend.toUpperCase()}`, leftMargin + (tierBoxW + gap) * 2, y + 24, { width: tierBoxW, align: 'center' });
+      doc.fontSize(11).font('Helvetica-Bold').fillColor(confColor)
+        .text(`${valuation.confidenceLevel.toUpperCase()} / ${valuation.marketTrend.toUpperCase()}`, leftMargin + (tierBoxW + gap) * 3, y + 24, { width: tierBoxW, align: 'center' });
       doc.restore();
 
       y += tierBoxH + 20;
@@ -235,6 +270,47 @@ export async function generateAppraisalPdf(appraisal: AppraisalSummaryData): Pro
         .text(valuation.aiSummary, leftMargin + 12, y + 4, { width: pageWidth - 20 });
       doc.restore();
       y += 70;
+
+      // ============ VEHICLE PHOTOS ============
+      if (appraisal.photos && appraisal.photos.length > 0) {
+        if (y + 80 > doc.page.height - 60) { doc.addPage(); y = 50; }
+        doc.fontSize(13).font('Helvetica-Bold').fillColor(C.darkGray).text('Vehicle Photos', leftMargin, y);
+        y += 16;
+        doc.strokeColor(C.darkGray).lineWidth(2).moveTo(leftMargin, y).lineTo(leftMargin + pageWidth, y).stroke();
+        y += 10;
+
+        const photoW = Math.floor((pageWidth - 12) / 2);
+        const photoH = 150;
+        let col = 0;
+
+        for (const photoDataUri of appraisal.photos) {
+          if (y + photoH + 10 > doc.page.height - 60) {
+            doc.addPage();
+            y = 50;
+            col = 0;
+          }
+
+          try {
+            // Extract base64 data from data URI
+            const base64Match = photoDataUri.match(/^data:image\/\w+;base64,(.+)$/);
+            if (base64Match) {
+              const imgBuffer = Buffer.from(base64Match[1], 'base64');
+              const x = leftMargin + col * (photoW + 12);
+              doc.image(imgBuffer, x, y, { width: photoW, height: photoH, fit: [photoW, photoH] });
+              col++;
+              if (col >= 2) {
+                col = 0;
+                y += photoH + 10;
+              }
+            }
+          } catch (photoErr) {
+            logger.warn('Failed to embed photo in PDF', { error: (photoErr as Error).message });
+          }
+        }
+
+        if (col > 0) y += photoH + 10;
+        y += 10;
+      }
 
       // ============ FOOTER ============
       if (y + 30 > doc.page.height - 36) { doc.addPage(); y = doc.page.height - 70; }

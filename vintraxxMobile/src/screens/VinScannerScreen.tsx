@@ -11,6 +11,7 @@ import {
   Easing,
   Platform,
   Linking,
+  Vibration,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -46,6 +47,8 @@ export const VinScannerScreen: React.FC<VinScannerScreenProps> = ({ navigation, 
   const [scannedVin, setScannedVin] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
+  const lastScanTimeRef = useRef<number>(0);
+  const scanCooldownMs = 800;
 
   // Scanning line animation
   const scanLineAnim = useRef(new Animated.Value(0)).current;
@@ -81,9 +84,14 @@ export const VinScannerScreen: React.FC<VinScannerScreenProps> = ({ navigation, 
   }, [hasPermission, requestPermission]);
 
   const codeScanner = useCodeScanner({
-    codeTypes: ['code-128', 'code-39', 'code-93', 'qr', 'data-matrix', 'ean-13'],
+    codeTypes: ['code-128', 'code-39', 'code-93', 'itf', 'qr', 'data-matrix', 'ean-13', 'codabar'],
     onCodeScanned: (codes) => {
       if (isProcessing || scannedVin) return;
+
+      // Debounce: prevent rapid-fire scanning
+      const now = Date.now();
+      if (now - lastScanTimeRef.current < scanCooldownMs) return;
+      lastScanTimeRef.current = now;
 
       for (const code of codes) {
         const value = code.value;
@@ -95,6 +103,8 @@ export const VinScannerScreen: React.FC<VinScannerScreenProps> = ({ navigation, 
         if (isValidVinFormat(cleaned)) {
           setIsProcessing(true);
           setScannedVin(cleaned);
+          // Haptic feedback on successful scan
+          Vibration.vibrate(100);
           debugLogger.logEvent('VIN Scanner: VIN detected', {
             vin: cleaned,
             codeType: code.type,
@@ -108,6 +118,7 @@ export const VinScannerScreen: React.FC<VinScannerScreenProps> = ({ navigation, 
         if (vinMatch) {
           setIsProcessing(true);
           setScannedVin(vinMatch[0]);
+          Vibration.vibrate(100);
           debugLogger.logEvent('VIN Scanner: VIN extracted from barcode', {
             vin: vinMatch[0],
             codeType: code.type,
@@ -205,45 +216,53 @@ export const VinScannerScreen: React.FC<VinScannerScreenProps> = ({ navigation, 
               style={[styles.topBarButton, torchOn && styles.torchActive]}
             >
               <Text style={styles.topBarButtonText}>
-                {torchOn ? 'Light ON' : 'Light OFF'}
+                {torchOn ? '💡 ON' : '💡 OFF'}
               </Text>
             </TouchableOpacity>
           </View>
         </SafeAreaView>
 
-        {/* Scan area */}
+        {/* Scan area with darkened mask overlay */}
         <View style={styles.scanAreaContainer}>
-          <View style={styles.scanArea}>
-            {/* Corner markers */}
-            <View style={[styles.corner, styles.cornerTL]} />
-            <View style={[styles.corner, styles.cornerTR]} />
-            <View style={[styles.corner, styles.cornerBL]} />
-            <View style={[styles.corner, styles.cornerBR]} />
+          {/* Dark mask above scan area */}
+          <View style={styles.maskOverlay} />
+          <View style={styles.scanMiddleRow}>
+            <View style={styles.maskSide} />
+            <View style={styles.scanArea}>
+              {/* Corner markers */}
+              <View style={[styles.corner, styles.cornerTL]} />
+              <View style={[styles.corner, styles.cornerTR]} />
+              <View style={[styles.corner, styles.cornerBL]} />
+              <View style={[styles.corner, styles.cornerBR]} />
 
-            {/* Animated scan line */}
-            {!scannedVin && (
-              <Animated.View
-                style={[
-                  styles.scanLine,
-                  {
-                    transform: [
-                      {
-                        translateY: scanLineAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [-40, 40],
-                        }),
-                      },
-                    ],
-                  },
-                ]}
-              />
-            )}
+              {/* Animated scan line */}
+              {!scannedVin && (
+                <Animated.View
+                  style={[
+                    styles.scanLine,
+                    {
+                      transform: [
+                        {
+                          translateY: scanLineAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [-60, 60],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                />
+              )}
+            </View>
+            <View style={styles.maskSide} />
           </View>
+          {/* Dark mask below scan area */}
+          <View style={styles.maskOverlay} />
 
           <Text style={styles.scanHint}>
             {scannedVin
-              ? 'VIN barcode detected!'
-              : 'Position the VIN barcode within the frame'}
+              ? '✅ VIN barcode detected!'
+              : 'Hold steady — position the VIN barcode within the frame'}
           </Text>
         </View>
 
@@ -327,13 +346,28 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,200,0,0.4)',
   },
 
-  // Scan area
+  // Scan area with mask
   scanAreaContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
   },
+  maskOverlay: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  scanMiddleRow: {
+    flexDirection: 'row',
+    height: 150,
+  },
+  maskSide: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
   scanArea: {
-    width: 300,
-    height: 100,
+    width: 320,
+    height: 150,
     position: 'relative',
     justifyContent: 'center',
     alignItems: 'center',

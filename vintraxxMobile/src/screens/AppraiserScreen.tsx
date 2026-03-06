@@ -45,6 +45,7 @@ interface AppraisalPhoto {
   id: string;
   label: string;
   uri: string | null;
+  base64?: string | null;
   required: boolean;
 }
 
@@ -202,6 +203,62 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
     : 0;
   const photoCount = photos.filter(p => p.uri !== null).length;
 
+  // --- Helper: decode VIN with NHTSA (async) then update vehicle state ---
+  const decodeAndSetVehicle = useCallback(async (vin: string, source: 'camera' | 'manual') => {
+    // Immediate local decode for fast UI feedback
+    const localDecoded = vinDecoder.decodeVIN(vin);
+    if (localDecoded.valid) {
+      setVehicle(prev => ({
+        ...prev,
+        vin,
+        year: localDecoded.year,
+        make: localDecoded.make,
+        model: localDecoded.model,
+      }));
+      setVinDecoded(true);
+      debugLogger.logEvent(`Appraiser: VIN local decode (${source})`, {
+        vin, year: localDecoded.year, make: localDecoded.make, model: localDecoded.model,
+      });
+    }
+
+    // Then fetch full decode from NHTSA API for accurate make/model/trim
+    try {
+      debugLogger.logEvent(`Appraiser: NHTSA decode started (${source})`, { vin });
+      const nhtsaResult = await vinDecoder.decodeVINRemote(vin);
+      if (nhtsaResult.valid && nhtsaResult.make !== 'Unknown') {
+        setVehicle(prev => ({
+          ...prev,
+          vin,
+          year: nhtsaResult.year,
+          make: nhtsaResult.make,
+          model: nhtsaResult.model,
+          trim: nhtsaResult.trim || prev.trim,
+        }));
+        setVinDecoded(true);
+        debugLogger.logEvent(`Appraiser: NHTSA decode success (${source})`, {
+          vin, year: nhtsaResult.year, make: nhtsaResult.make,
+          model: nhtsaResult.model, trim: nhtsaResult.trim, bodyClass: nhtsaResult.bodyClass,
+        });
+      } else {
+        debugLogger.logEvent(`Appraiser: NHTSA decode incomplete (${source}), using local`, {
+          error: nhtsaResult.error,
+        });
+        // Keep local decode result if NHTSA failed but local was valid
+        if (!localDecoded.valid) {
+          Alert.alert('Decode Failed', 'Unable to decode VIN. Please verify and try again.');
+        }
+      }
+    } catch (error) {
+      debugLogger.logEvent(`Appraiser: NHTSA decode error (${source}), using local`, {
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+      // Keep local decode result
+      if (!localDecoded.valid) {
+        Alert.alert('Decode Failed', 'Unable to decode VIN. Please verify and try again.');
+      }
+    }
+  }, []);
+
   // --- Handlers ---
   const handleScanVin = useCallback(() => {
     debugLogger.logEvent('Appraiser: VIN scan via camera initiated');
@@ -209,29 +266,10 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
       onVinScanned: (vin: string) => {
         debugLogger.logEvent('Appraiser: VIN received from camera scanner', { vin });
         setVinInput(vin);
-        // Auto-decode the scanned VIN
-        const decoded = vinDecoder.decodeVIN(vin);
-        if (decoded.valid) {
-          setVehicle(prev => ({
-            ...prev,
-            vin,
-            year: decoded.year,
-            make: decoded.make,
-            model: decoded.model,
-          }));
-          setVinDecoded(true);
-          debugLogger.logEvent('Appraiser: Scanned VIN decoded successfully', {
-            year: decoded.year,
-            make: decoded.make,
-            model: decoded.model,
-          });
-        } else {
-          debugLogger.logEvent('Appraiser: Scanned VIN decode failed', { error: decoded.error });
-          Alert.alert('Decode Failed', decoded.error || 'Unable to decode scanned VIN. Please verify and try manually.');
-        }
+        decodeAndSetVehicle(vin, 'camera');
       },
     });
-  }, [navigation]);
+  }, [navigation, decodeAndSetVehicle]);
 
   const handleDecodeVin = useCallback(() => {
     const vin = vinInput.trim().toUpperCase();
@@ -241,45 +279,28 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
       Alert.alert('Invalid VIN', 'VIN must be exactly 17 characters.');
       return;
     }
-    const decoded = vinDecoder.decodeVIN(vin);
-    if (decoded.valid) {
-      setVehicle(prev => ({
-        ...prev,
-        vin,
-        year: decoded.year,
-        make: decoded.make,
-        model: decoded.model,
-      }));
-      setVinDecoded(true);
-      debugLogger.logEvent('Appraiser: VIN decoded successfully', {
-        vin,
-        year: decoded.year,
-        make: decoded.make,
-        model: decoded.model,
-      });
-    } else {
-      debugLogger.logEvent('Appraiser: VIN decode failed', { vin, error: decoded.error });
-      Alert.alert('Decode Failed', decoded.error || 'Unable to decode VIN.');
-    }
-  }, [vinInput]);
+    decodeAndSetVehicle(vin, 'manual');
+  }, [vinInput, decodeAndSetVehicle]);
 
   const handleCapturePhoto = useCallback((photoId: string) => {
     debugLogger.logEvent('Appraiser: Photo capture initiated', { photoId });
 
     const cameraOptions: CameraOptions = {
       mediaType: 'photo',
-      quality: 0.8,
-      maxWidth: 1920,
-      maxHeight: 1080,
+      quality: 0.6,
+      maxWidth: 1280,
+      maxHeight: 960,
       saveToPhotos: false,
+      includeBase64: true,
     };
 
     const libraryOptions: ImageLibraryOptions = {
       mediaType: 'photo',
-      quality: 0.8,
-      maxWidth: 1920,
-      maxHeight: 1080,
+      quality: 0.6,
+      maxWidth: 1280,
+      maxHeight: 960,
       selectionLimit: 1,
+      includeBase64: true,
     };
 
     Alert.alert(
@@ -301,10 +322,12 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
                 return;
               }
               if (response.assets && response.assets.length > 0) {
-                const uri = response.assets[0].uri || null;
-                debugLogger.logEvent('Appraiser: Photo captured via camera', { photoId, uri });
+                const asset = response.assets[0];
+                const uri = asset.uri || null;
+                const base64 = asset.base64 || null;
+                debugLogger.logEvent('Appraiser: Photo captured via camera', { photoId, uri, hasBase64: !!base64 });
                 setPhotos(prev =>
-                  prev.map(p => (p.id === photoId ? { ...p, uri } : p))
+                  prev.map(p => (p.id === photoId ? { ...p, uri, base64 } : p))
                 );
               }
             });
@@ -325,10 +348,12 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
                 return;
               }
               if (response.assets && response.assets.length > 0) {
-                const uri = response.assets[0].uri || null;
-                debugLogger.logEvent('Appraiser: Photo selected from library', { photoId, uri });
+                const asset = response.assets[0];
+                const uri = asset.uri || null;
+                const base64 = asset.base64 || null;
+                debugLogger.logEvent('Appraiser: Photo selected from library', { photoId, uri, hasBase64: !!base64 });
                 setPhotos(prev =>
-                  prev.map(p => (p.id === photoId ? { ...p, uri } : p))
+                  prev.map(p => (p.id === photoId ? { ...p, uri, base64 } : p))
                 );
               }
             });
@@ -433,10 +458,13 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
         ? `Health: ${healthScore}/100, ${totalIssues} issues, ${criticalIssues} critical`
         : undefined,
       photoCount,
+      photos: photos
+        .filter(p => p.base64)
+        .map(p => `data:image/jpeg;base64,${p.base64}`),
       createdAt: new Date().toISOString(),
       userEmail: user?.email || '',
     };
-  }, [valuationData, appraisalId, vehicle, mileage, condition, zipCode, notes, healthScore, conditionReport, totalIssues, criticalIssues, photoCount, user]);
+  }, [valuationData, appraisalId, vehicle, mileage, condition, zipCode, notes, healthScore, conditionReport, totalIssues, criticalIssues, photoCount, photos, user]);
 
   const handleEmailAppraisal = useCallback(() => {
     debugLogger.logEvent('Appraiser: Email appraisal requested');
@@ -825,10 +853,16 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
           </View>
         </View>
 
-        {/* Retail & Private Party Values */}
+        {/* Wholesale, Retail & Private Party Values */}
         <View style={styles.valuationTiersRow}>
           <View style={styles.valuationTierBox}>
-            <Text style={styles.valuationTierLabel}>Retail Value</Text>
+            <Text style={styles.valuationTierLabel}>Wholesale</Text>
+            <Text style={styles.valuationTierValue}>
+              {formatCurrency(valuationData.estimatedWholesaleLow)} – {formatCurrency(valuationData.estimatedWholesaleHigh)}
+            </Text>
+          </View>
+          <View style={styles.valuationTierBox}>
+            <Text style={styles.valuationTierLabel}>Retail</Text>
             <Text style={styles.valuationTierValue}>
               {formatCurrency(valuationData.estimatedRetailLow)} – {formatCurrency(valuationData.estimatedRetailHigh)}
             </Text>

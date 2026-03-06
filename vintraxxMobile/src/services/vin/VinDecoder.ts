@@ -5,6 +5,17 @@ export interface VinDecodeResult {
   year: number;
   make: string;
   model: string;
+  trim?: string;
+  valid: boolean;
+  error?: string;
+}
+
+export interface NhtsaDecodeResult {
+  year: number;
+  make: string;
+  model: string;
+  trim: string;
+  bodyClass: string;
   valid: boolean;
   error?: string;
 }
@@ -56,7 +67,7 @@ export class VinDecoder {
       return {
         year,
         make,
-        model: 'Vehicle', // Model requires external API or database
+        model: 'Vehicle',
         valid: true,
       };
     } catch (error) {
@@ -143,6 +154,25 @@ export class VinDecoder {
       '3N1': 'Nissan',
       '3VW': 'Volkswagen',
       
+      // USA (4, 5)
+      '4JG': 'Mercedes-Benz',
+      '4T1': 'Toyota',
+      '4T3': 'Toyota',
+      '4T4': 'Toyota',
+      '4US': 'BMW',
+      '5FN': 'Honda',
+      '5FP': 'Honda',
+      '5J6': 'Honda',
+      '5J8': 'Acura',
+      '5NP': 'Hyundai',
+      '5TD': 'Toyota',
+      '5UX': 'BMW',
+      '5YJ': 'Tesla',
+      '5YF': 'Tesla',
+      '5LM': 'Lincoln',
+      '5LJ': 'Lincoln',
+      '5XY': 'Kia',
+
       // Japan (J)
       'JA3': 'Mitsubishi',
       'JA4': 'Mitsubishi',
@@ -192,7 +222,8 @@ export class VinDecoder {
       'WBS': 'BMW',
       'WDB': 'Mercedes-Benz',
       'WDD': 'Mercedes-Benz',
-      'WDC': 'DaimlerChrysler',
+      'WDC': 'Mercedes-Benz',
+      'WDF': 'Mercedes-Benz',
       'WEB': 'Evobus',
       'WF0': 'Ford',
       'WMA': 'MAN',
@@ -259,6 +290,84 @@ export class VinDecoder {
     };
 
     return countryMap[countryCode] || 'Unknown';
+  }
+
+  /**
+   * Decode VIN via NHTSA API for full year/make/model/trim
+   * This is async and should be used when network is available
+   */
+  async decodeVINRemote(vin: string): Promise<NhtsaDecodeResult> {
+    if (!vin || vin.length !== 17) {
+      return {
+        year: new Date().getFullYear(),
+        make: 'Unknown',
+        model: 'Unknown',
+        trim: '',
+        bodyClass: '',
+        valid: false,
+        error: 'Invalid VIN length',
+      };
+    }
+
+    try {
+      const url = `https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/${vin}?format=json`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        throw new Error(`NHTSA API returned status ${response.status}`);
+      }
+
+      const data = await response.json();
+      const result = data.Results?.[0];
+
+      if (!result) {
+        throw new Error('No results from NHTSA API');
+      }
+
+      const year = result.ModelYear ? parseInt(result.ModelYear, 10) : new Date().getFullYear();
+      const make = result.Make || 'Unknown';
+      const model = result.Model || 'Vehicle';
+      const trim = result.Trim || '';
+      const bodyClass = result.BodyClass || '';
+
+      if (!result.Make || result.Make === '' || result.ErrorCode !== '0') {
+        // NHTSA returned no data or error
+        return {
+          year,
+          make: make || 'Unknown',
+          model: model || 'Vehicle',
+          trim,
+          bodyClass,
+          valid: false,
+          error: 'NHTSA could not decode this VIN',
+        };
+      }
+
+      return {
+        year,
+        make,
+        model,
+        trim,
+        bodyClass,
+        valid: true,
+      };
+    } catch (error) {
+      // Network failure or timeout - fall back to local decode
+      const localResult = this.decodeVIN(vin);
+      return {
+        year: localResult.year,
+        make: localResult.make,
+        model: localResult.model,
+        trim: '',
+        bodyClass: '',
+        valid: localResult.valid,
+        error: error instanceof Error ? error.message : 'NHTSA decode failed',
+      };
+    }
   }
 }
 

@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer';
 import { env } from '../config/env';
 import { AppraisalSummaryData } from '../types';
 import { formatCurrency } from '../utils/helpers';
+import { getEmailLogoHeaderHtml } from '../utils/logos';
 import logger from '../utils/logger';
 
 const transporter = nodemailer.createTransport({
@@ -106,10 +107,7 @@ export async function sendAppraisalEmail(
 </head>
 <body>
   <div class="container">
-    <div class="header">
-      <h1>VinTraxx SmartScan</h1>
-      <p>Trade-In Appraisal Report</p>
-    </div>
+    ${getEmailLogoHeaderHtml('Trade-In Appraisal', 'VinTraxx SmartScan Report')}
     <div class="content">
       <div class="vehicle-info">
         <div class="vehicle-name">${vehicleStr}</div>
@@ -124,17 +122,21 @@ export async function sendAppraisalEmail(
       <div style="text-align: center; margin-bottom: 20px;">
         <table style="margin: 0 auto;">
           <tr>
-            <td style="padding: 10px 20px; text-align: center;">
-              <div style="font-size: 11px; color: #666; text-transform: uppercase;">Retail Value</div>
-              <div style="font-size: 16px; font-weight: bold; color: #1a1a2e;">${formatCurrency(valuation.estimatedRetailLow)} – ${formatCurrency(valuation.estimatedRetailHigh)}</div>
+            ${valuation.estimatedWholesaleLow ? `<td style="padding: 8px 14px; text-align: center;">
+              <div style="font-size: 10px; color: #666; text-transform: uppercase;">Wholesale (Auction)</div>
+              <div style="font-size: 14px; font-weight: bold; color: #1a1a2e;">${formatCurrency(valuation.estimatedWholesaleLow)} – ${formatCurrency(valuation.estimatedWholesaleHigh)}</div>
+            </td>` : ''}
+            <td style="padding: 8px 14px; text-align: center;">
+              <div style="font-size: 10px; color: #666; text-transform: uppercase;">Retail Value</div>
+              <div style="font-size: 14px; font-weight: bold; color: #1a1a2e;">${formatCurrency(valuation.estimatedRetailLow)} – ${formatCurrency(valuation.estimatedRetailHigh)}</div>
             </td>
-            <td style="padding: 10px 20px; text-align: center;">
-              <div style="font-size: 11px; color: #666; text-transform: uppercase;">Private Party</div>
-              <div style="font-size: 16px; font-weight: bold; color: #1a1a2e;">${formatCurrency(valuation.estimatedPrivatePartyLow)} – ${formatCurrency(valuation.estimatedPrivatePartyHigh)}</div>
+            <td style="padding: 8px 14px; text-align: center;">
+              <div style="font-size: 10px; color: #666; text-transform: uppercase;">Private Party</div>
+              <div style="font-size: 14px; font-weight: bold; color: #1a1a2e;">${formatCurrency(valuation.estimatedPrivatePartyLow)} – ${formatCurrency(valuation.estimatedPrivatePartyHigh)}</div>
             </td>
-            <td style="padding: 10px 20px; text-align: center;">
-              <div style="font-size: 11px; color: #666; text-transform: uppercase;">Confidence</div>
-              <div style="font-size: 16px; font-weight: bold; color: #1565C0;">${confidenceLabel}</div>
+            <td style="padding: 8px 14px; text-align: center;">
+              <div style="font-size: 10px; color: #666; text-transform: uppercase;">Confidence</div>
+              <div style="font-size: 14px; font-weight: bold; color: #1565C0;">${confidenceLabel}</div>
             </td>
           </tr>
         </table>
@@ -162,6 +164,15 @@ export async function sendAppraisalEmail(
 
       <div class="section-title">AI Summary</div>
       <div class="summary-text">${valuation.aiSummary}</div>
+
+      ${appraisal.photos && appraisal.photos.length > 0 ? `
+      <div class="section-title">Vehicle Photos</div>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px;">
+        ${appraisal.photos.map((photoDataUri: string, idx: number) => `
+          <img src="${photoDataUri}" alt="Vehicle photo ${idx + 1}" style="width: 48%; max-width: 300px; height: auto; border-radius: 8px; border: 1px solid #eee;" />
+        `).join('')}
+      </div>
+      ` : ''}
 
       <p style="text-align: center; margin-top: 20px; font-size: 13px; color: #666;">${pdfNote}</p>
       <p style="text-align: center; font-size: 11px; color: #999;">Data as of: ${valuation.dataAsOf} | Market Trend: ${valuation.marketTrend}</p>

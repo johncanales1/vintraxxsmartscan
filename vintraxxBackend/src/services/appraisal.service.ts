@@ -17,6 +17,8 @@ const VALUATION_JSON_SCHEMA = {
   schema: {
     type: 'object' as const,
     properties: {
+      estimatedWholesaleLow: { type: 'number' as const },
+      estimatedWholesaleHigh: { type: 'number' as const },
       estimatedTradeInLow: { type: 'number' as const },
       estimatedTradeInHigh: { type: 'number' as const },
       estimatedRetailLow: { type: 'number' as const },
@@ -61,6 +63,7 @@ const VALUATION_JSON_SCHEMA = {
       dataAsOf: { type: 'string' as const },
     },
     required: [
+      'estimatedWholesaleLow', 'estimatedWholesaleHigh',
       'estimatedTradeInLow', 'estimatedTradeInHigh',
       'estimatedRetailLow', 'estimatedRetailHigh',
       'estimatedPrivatePartyLow', 'estimatedPrivatePartyHigh',
@@ -77,52 +80,58 @@ const VALUATION_JSON_SCHEMA = {
 // VALUATION SYSTEM PROMPT - carefully tuned for accurate pricing
 // ================================================================
 
-const VALUATION_SYSTEM_PROMPT = `You are a certified automotive appraiser and market analyst with 25+ years of experience in wholesale and retail vehicle valuation. You have deep expertise matching the data accuracy of industry-standard valuation providers including Black Book, Manheim Market Report (MMR), JD Power (NADA), and Kelley Blue Book.
+const VALUATION_SYSTEM_PROMPT = `You are a certified automotive appraiser and wholesale market analyst. You specialize in providing ACCURATE wholesale and trade-in vehicle valuations that match real auction data from Manheim (MMR), Black Book, and JD Power (NADA). Dealers use your valuations to make real purchase decisions, so accuracy is critical.
 
-Your task is to provide ACCURATE vehicle market valuations based on real-world market data you have been trained on. You must treat this as a serious financial valuation tool used by dealerships for trade-in decisions.
+Your valuations MUST reflect actual wholesale auction market prices — NOT inflated retail or MSRP-based estimates.
 
 CRITICAL VALUATION METHODOLOGY:
-1. BASE VALUE: Start with the known MSRP for the year/make/model/trim and apply standard depreciation curves. New vehicles typically depreciate 20-25% in year 1, then 15-18% per year for years 2-3, then 10-12% per year for years 4-6, then 7-9% per year thereafter.
 
-2. MILEAGE ADJUSTMENT: The average annual mileage is 12,000-15,000 miles/year. For vehicles above average mileage, deduct approximately $0.08-$0.15 per excess mile depending on vehicle class (luxury vehicles have higher per-mile deductions). For below-average mileage, add approximately $0.05-$0.10 per mile under average.
+1. WHOLESALE/AUCTION BASE VALUE:
+   - Start from the CURRENT wholesale auction market value for this exact year/make/model/trim.
+   - Do NOT start from MSRP and depreciate. Instead, estimate what this vehicle would sell for TODAY at a Manheim or ADESA auction.
+   - Wholesale values are typically 55-70% of original MSRP for 3-5 year old vehicles, and 35-55% for 5-8 year old vehicles.
+   - Example calibration: A 2021 Mercedes-Benz GLE 350 with ~112K miles in clean condition has a wholesale/MMR value around $20,000-$24,000 (NOT $30,000+).
+   - Example calibration: A 2017 Ford F-150 with ~110K miles has a wholesale value around $18,000-$22,000.
+
+2. MILEAGE ADJUSTMENT (critical — apply aggressively):
+   - Average annual mileage: 12,000-15,000 miles/year.
+   - HIGH MILEAGE penalty: For each 10,000 miles ABOVE average for the vehicle age, deduct 3-5% from wholesale value. Luxury vehicles get higher deductions.
+   - Example: A 5-year-old vehicle (expected ~60-75K miles) with 112K miles is ~40-50K miles over average = significant deduction of $3,000-$6,000.
+   - LOW MILEAGE premium: Add 1-2% per 10,000 miles under average.
 
 3. CONDITION ADJUSTMENT:
-   - "clean": Vehicle is in above-average condition with no mechanical issues. Add 5-10% to base value.
-   - "average": Vehicle is in typical condition for its age/mileage. No adjustment.
-   - "rough": Vehicle has visible wear, mechanical issues, or cosmetic damage. Deduct 15-25% from base value.
+   - "clean": Above-average condition. Add 3-5% to wholesale base.
+   - "average": Typical condition. No adjustment.
+   - "rough": Visible wear, mechanical issues. Deduct 10-20% from wholesale base.
 
-4. REGIONAL ADJUSTMENT: If ZIP code is provided, adjust for regional market conditions:
-   - Trucks/SUVs command premium in rural/southern markets
-   - Fuel-efficient vehicles command premium in urban/coastal markets
-   - 4WD/AWD vehicles command premium in northern/mountain markets
-   - Apply regional adjustment of -5% to +5%
+4. REGIONAL ADJUSTMENT: If ZIP code provided, adjust ±5% based on local demand.
 
-5. MARKET TREND: Consider current supply/demand dynamics, seasonal trends, and model-specific factors (redesigns, discontinuation, recalls, etc.)
+5. VALUE TIERS (all USD, rounded to nearest $100):
+   - Wholesale Value: What the vehicle would sell for at auction (Manheim/ADESA). This is the LOWEST tier and the anchor for all other values.
+   - Trade-In Value: What a dealer offers a customer. Typically equal to or slightly above wholesale (0-5% above wholesale).
+   - Private Party Value: What a private seller could expect. Typically 15-25% above wholesale.
+   - Retail Value: What a dealer lists it for sale. Typically 25-40% above wholesale.
 
-6. VALUE TIERS (all values in USD, rounded to nearest $100):
-   - Trade-In Value: What a dealer would offer (wholesale). This is the LOWEST tier.
-   - Private Party Value: What a private seller could expect. Typically 10-20% above trade-in.
-   - Retail Value: What a dealer would list it for sale. Typically 20-35% above trade-in.
+6. COMPARABLE SOURCES: Provide estimated values as they would appear from:
+   - "MMR (Manheim)" — auction-based wholesale values. This should be your PRIMARY anchor.
+   - "Black Book" — wholesale-focused, used by dealers. Usually within 5% of MMR.
+   - "JD Power (NADA)" — retail-focused, used by lenders. Retail values are higher than wholesale.
+   Each source should show realistic, slightly different values.
 
-7. COMPARABLE SOURCES: Provide estimated values as they would appear from these three sources:
-   - "Black Book" (wholesale-focused, used by dealers)
-   - "MMR (Manheim)" (auction-based wholesale values)
-   - "JD Power (NADA)" (retail-focused, used by lenders)
-   Each source should show slightly different values reflecting their methodology.
-
-8. SPREAD: The difference between low and high estimates within each tier should be reasonable:
-   - For vehicles under $20,000: spread of $1,000-$2,500
-   - For vehicles $20,000-$40,000: spread of $1,500-$3,500
-   - For vehicles over $40,000: spread of $2,000-$5,000
+7. SPREAD between low and high within each tier:
+   - Under $15,000: spread of $1,000-$2,000
+   - $15,000-$30,000: spread of $1,500-$3,000
+   - Over $30,000: spread of $2,000-$4,000
 
 RULES:
-- All dollar amounts must be whole numbers rounded to the nearest $100
-- Valuations MUST be realistic and defensible - they will be compared against actual data sources
-- Never return $0 or negative values
-- Minimum trade-in value for any running vehicle is $1,500
-- The "dataAsOf" field should be the current month and year in format "March 2026"
-- Provide 2-5 adjustment factors that explain how you arrived at the final value
-- The aiSummary should be 2-3 sentences explaining the valuation in plain language for a dealer`;
+- All dollar amounts must be whole numbers rounded to nearest $100
+- Valuations MUST be realistic — they will be compared against live MMR and Black Book data
+- Wholesale and trade-in values must be LOWER than private party, which must be LOWER than retail
+- Never return $0 or negative values. Minimum wholesale for any running vehicle: $1,500
+- The "dataAsOf" field: current month and year, e.g. "March 2026"
+- Provide 2-5 adjustment factors explaining how you arrived at the value
+- The aiSummary: 2-3 sentences in plain language for a dealer, mentioning wholesale/auction context
+- IMPORTANT: Do NOT inflate values. When in doubt, err on the conservative/wholesale side.`;
 
 // ================================================================
 // ZOD VALIDATION SCHEMA
@@ -139,6 +148,8 @@ const valuationSourceSchema = z.object({
 });
 
 const valuationOutputSchema = z.object({
+  estimatedWholesaleLow: z.number().min(500),
+  estimatedWholesaleHigh: z.number().min(500),
   estimatedTradeInLow: z.number().min(500),
   estimatedTradeInHigh: z.number().min(500),
   estimatedRetailLow: z.number().min(500),
@@ -183,7 +194,7 @@ Condition: ${conditionStr}`;
     prompt += `\nAdditional Notes: ${input.notes}`;
   }
 
-  prompt += `\n\nProvide your complete valuation analysis with trade-in, retail, and private party values. Include comparable source estimates from Black Book, MMR (Manheim), and JD Power (NADA).`;
+  prompt += `\n\nProvide your complete valuation analysis with wholesale (auction), trade-in, retail, and private party values. Include comparable source estimates from MMR (Manheim), Black Book, and JD Power (NADA). Start from wholesale auction value as the anchor.`;
 
   return prompt;
 }
@@ -234,6 +245,7 @@ function sanitizeValuation(raw: AiValuationOutput): AiValuationOutput {
     return [Math.max(1500, lo), Math.max(1500, hi)];
   };
 
+  const [wholesaleLow, wholesaleHigh] = fix(raw.estimatedWholesaleLow, raw.estimatedWholesaleHigh);
   const [tradeInLow, tradeInHigh] = fix(raw.estimatedTradeInLow, raw.estimatedTradeInHigh);
   const [retailLow, retailHigh] = fix(raw.estimatedRetailLow, raw.estimatedRetailHigh);
   const [ppLow, ppHigh] = fix(raw.estimatedPrivatePartyLow, raw.estimatedPrivatePartyHigh);
@@ -256,6 +268,8 @@ function sanitizeValuation(raw: AiValuationOutput): AiValuationOutput {
 
   return {
     ...raw,
+    estimatedWholesaleLow: wholesaleLow,
+    estimatedWholesaleHigh: wholesaleHigh,
     estimatedTradeInLow: tradeInLow,
     estimatedTradeInHigh: tradeInHigh,
     estimatedRetailLow: retailLow,
@@ -304,6 +318,7 @@ export async function getAiValuation(input: AppraisalValuationRequest): Promise<
 
       logger.info('OpenAI valuation completed successfully', {
         vin: input.vin,
+        wholesaleRange: `$${sanitized.estimatedWholesaleLow} - $${sanitized.estimatedWholesaleHigh}`,
         tradeInRange: `$${sanitized.estimatedTradeInLow} - $${sanitized.estimatedTradeInHigh}`,
         retailRange: `$${sanitized.estimatedRetailLow} - $${sanitized.estimatedRetailHigh}`,
         confidence: sanitized.confidenceLevel,

@@ -31,8 +31,8 @@ export const appraisalEmailSchema = z.object({
       zipCode: z.string().optional(),
       notes: z.string().optional(),
       valuation: z.object({
-        estimatedWholesaleLow: z.number().optional(),
-        estimatedWholesaleHigh: z.number().optional(),
+        estimatedWholesaleLow: z.number(),
+        estimatedWholesaleHigh: z.number(),
         estimatedTradeInLow: z.number(),
         estimatedTradeInHigh: z.number(),
         estimatedRetailLow: z.number(),
@@ -45,6 +45,8 @@ export const appraisalEmailSchema = z.object({
         marketTrendExplanation: z.string(),
         comparableSources: z.array(z.object({
           sourceName: z.string(),
+          wholesaleLow: z.number(),
+          wholesaleHigh: z.number(),
           tradeInLow: z.number(),
           tradeInHigh: z.number(),
           retailLow: z.number(),
@@ -87,8 +89,8 @@ export const appraisalPdfSchema = z.object({
       zipCode: z.string().optional(),
       notes: z.string().optional(),
       valuation: z.object({
-        estimatedWholesaleLow: z.number().optional(),
-        estimatedWholesaleHigh: z.number().optional(),
+        estimatedWholesaleLow: z.number(),
+        estimatedWholesaleHigh: z.number(),
         estimatedTradeInLow: z.number(),
         estimatedTradeInHigh: z.number(),
         estimatedRetailLow: z.number(),
@@ -101,6 +103,8 @@ export const appraisalPdfSchema = z.object({
         marketTrendExplanation: z.string(),
         comparableSources: z.array(z.object({
           sourceName: z.string(),
+          wholesaleLow: z.number(),
+          wholesaleHigh: z.number(),
           tradeInLow: z.number(),
           tradeInHigh: z.number(),
           retailLow: z.number(),

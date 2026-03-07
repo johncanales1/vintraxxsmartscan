@@ -5,11 +5,25 @@ import { Vehicle } from '../models/Vehicle';
 import { ConditionReport } from '../models/ConditionReport';
 import { BleDevice, BleConnectionState } from '../services/ble/types';
 import { User, OBDDevice } from '../services/auth/AuthService';
+import type { AiValuationOutput } from '../types/api';
 
 export interface ScanProgress {
   step: string;
   progress: number;
   message: string;
+}
+
+export interface SavedAppraisal {
+  id: string;
+  vehicle: Vehicle;
+  mileage: number;
+  condition: 'clean' | 'average' | 'rough';
+  zipCode?: string;
+  notes?: string;
+  valuation: AiValuationOutput;
+  healthScore?: number;
+  photoUris: string[];
+  createdAt: Date;
 }
 
 interface AppState {
@@ -36,6 +50,7 @@ interface AppState {
   
   // History
   savedReports: ConditionReport[];
+  savedAppraisals: SavedAppraisal[];
   
   // DEV Settings
   devModeActivated: boolean;
@@ -63,6 +78,10 @@ interface AppState {
   
   setSavedReports: (reports: ConditionReport[]) => void;
   addSavedReport: (report: ConditionReport) => void;
+  removeSavedReport: (reportId: string) => void;
+  
+  addSavedAppraisal: (appraisal: SavedAppraisal) => void;
+  removeSavedAppraisal: (appraisalId: string) => void;
   
   // DEV Actions
   setDevModeActivated: (activated: boolean) => void;
@@ -85,6 +104,7 @@ const initialState = {
   scanProgress: null,
   currentReport: null,
   savedReports: [],
+  savedAppraisals: [],
   devModeActivated: false,
 };
 
@@ -138,6 +158,21 @@ export const useAppStore = create<AppState>((set) => ({
   addSavedReport: (report) =>
     set((state) => ({
       savedReports: [report, ...state.savedReports],
+    })),
+
+  removeSavedReport: (reportId) =>
+    set((state) => ({
+      savedReports: state.savedReports.filter((r) => r.id !== reportId),
+    })),
+
+  addSavedAppraisal: (appraisal) =>
+    set((state) => ({
+      savedAppraisals: [appraisal, ...state.savedAppraisals],
+    })),
+
+  removeSavedAppraisal: (appraisalId) =>
+    set((state) => ({
+      savedAppraisals: state.savedAppraisals.filter((a) => a.id !== appraisalId),
     })),
 
   // DEV Actions

@@ -224,13 +224,15 @@ export async function generateAppraisalPdf(appraisal: AppraisalSummaryData): Pro
       y += 8;
 
       const sourceHeaders = [
-        { label: 'Source', width: Math.floor(pageWidth * 0.25) },
-        { label: 'Trade-In', width: Math.floor(pageWidth * 0.25), align: 'center' },
-        { label: 'Retail', width: Math.floor(pageWidth * 0.25), align: 'center' },
-        { label: 'Private Party', width: Math.floor(pageWidth * 0.25), align: 'center' },
+        { label: 'Source', width: Math.floor(pageWidth * 0.20) },
+        { label: 'Wholesale', width: Math.floor(pageWidth * 0.20), align: 'center' },
+        { label: 'Trade-In', width: Math.floor(pageWidth * 0.20), align: 'center' },
+        { label: 'Retail', width: Math.floor(pageWidth * 0.20), align: 'center' },
+        { label: 'Private Party', width: Math.floor(pageWidth * 0.20), align: 'center' },
       ];
       const sourceRows = valuation.comparableSources.map(src => [
         src.sourceName,
+        `${fmtCurrency(src.wholesaleLow)} - ${fmtCurrency(src.wholesaleHigh)}`,
         `${fmtCurrency(src.tradeInLow)} - ${fmtCurrency(src.tradeInHigh)}`,
         `${fmtCurrency(src.retailLow)} - ${fmtCurrency(src.retailHigh)}`,
         `${fmtCurrency(src.privatePartyLow)} - ${fmtCurrency(src.privatePartyHigh)}`,

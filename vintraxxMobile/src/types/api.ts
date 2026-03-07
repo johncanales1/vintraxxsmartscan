@@ -186,6 +186,8 @@ export interface AppraisalValuationRequest {
 
 export interface AppraisalValuationSource {
   sourceName: string;
+  wholesaleLow: number;
+  wholesaleHigh: number;
   tradeInLow: number;
   tradeInHigh: number;
   retailLow: number;
@@ -221,6 +223,12 @@ export interface AppraisalValuationResponse {
   success: boolean;
   appraisalId?: string;
   valuation?: AiValuationOutput;
+  vehicle?: {
+    year: number;
+    make: string;
+    model: string;
+    trim?: string;
+  };
   message?: string;
 }
 

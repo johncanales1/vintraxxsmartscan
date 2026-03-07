@@ -107,7 +107,7 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
     mileage: null,
   };
 
-  const { user } = useAppStore();
+  const { user, addSavedAppraisal } = useAppStore();
 
   // --- State ---
   const [vinInput, setVinInput] = useState(defaultVehicle.vin !== 'UNKNOWN' ? defaultVehicle.vin : '');
@@ -386,7 +386,7 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
 
     setAppraisalStarted(true);
     setValuationLoading(true);
-    debugLogger.logEvent('Appraiser: Fetching AI market valuations from backend');
+    debugLogger.logEvent('Appraiser: Fetching market valuations (Black Book + AI)');
 
     try {
       const result = await apiService.getAppraisalValuation({
@@ -404,15 +404,37 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
       if (result.success && result.valuation && result.appraisalId) {
         setValuationData(result.valuation);
         setAppraisalId(result.appraisalId);
-        debugLogger.logEvent('Appraiser: AI valuation received', {
+
+        // Update vehicle info from Black Book if returned
+        if (result.vehicle) {
+          setVehicle(prev => ({
+            ...prev,
+            year: result.vehicle!.year || prev.year,
+            make: result.vehicle!.make || prev.make,
+            model: result.vehicle!.model || prev.model,
+            trim: result.vehicle!.trim || prev.trim,
+          }));
+          debugLogger.logEvent('Appraiser: Vehicle info updated from Black Book', {
+            year: result.vehicle.year,
+            make: result.vehicle.make,
+            model: result.vehicle.model,
+            trim: result.vehicle.trim,
+          });
+        }
+
+        debugLogger.logEvent('Appraiser: Valuation received', {
           appraisalId: result.appraisalId,
+          wholesaleLow: result.valuation.estimatedWholesaleLow,
+          wholesaleHigh: result.valuation.estimatedWholesaleHigh,
           tradeInLow: result.valuation.estimatedTradeInLow,
           tradeInHigh: result.valuation.estimatedTradeInHigh,
+          retailLow: result.valuation.estimatedRetailLow,
+          retailHigh: result.valuation.estimatedRetailHigh,
           confidence: result.valuation.confidenceLevel,
           sourcesCount: result.valuation.comparableSources.length,
         });
       } else {
-        debugLogger.logError('Appraiser: AI valuation failed', result.message);
+        debugLogger.logError('Appraiser: Valuation failed', result.message);
         Alert.alert('Valuation Failed', result.message || 'Unable to get market valuation. Please try again.');
         setAppraisalStarted(false);
       }
@@ -427,6 +449,10 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
   }, [mileage, vehicle, condition, vinDecoded, zipCode, notes, photoCount]);
 
   const handleSaveAppraisal = useCallback(() => {
+    if (!valuationData || !appraisalId) {
+      Alert.alert('No Data', 'Please complete the appraisal first.');
+      return;
+    }
     debugLogger.logEvent('Appraiser: Save appraisal', {
       vin: vehicle.vin,
       mileage,
@@ -434,8 +460,23 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
       photoCount,
       valuationData,
     });
-    Alert.alert('Appraisal Saved', 'The appraisal has been saved locally.', [{ text: 'OK' }]);
-  }, [vehicle.vin, mileage, condition, photoCount, valuationData]);
+    addSavedAppraisal({
+      id: appraisalId,
+      vehicle,
+      mileage: Number(mileage),
+      condition,
+      zipCode: zipCode || undefined,
+      notes: notes || undefined,
+      valuation: valuationData,
+      healthScore,
+      photoUris: photos.filter(p => p.uri).map(p => p.uri!),
+      createdAt: new Date(),
+    });
+    Alert.alert('Appraisal Saved', 'The appraisal has been saved to your history.', [
+      { text: 'OK' },
+      { text: 'View History', onPress: () => navigation.navigate('Main', { screen: 'History' }) },
+    ]);
+  }, [vehicle, mileage, condition, photoCount, valuationData, appraisalId, zipCode, notes, healthScore, photos, addSavedAppraisal, navigation]);
 
   // Build appraisal summary for email/pdf/dashboard
   const buildAppraisalSummary = useCallback((): AppraisalSummaryData | null => {
@@ -578,31 +619,31 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
       {vinDecoded && (
         <View style={styles.vehicleInfoGrid}>
           <View style={styles.vehicleInfoRow}>
-            <View style={styles.vehicleInfoItem}>
+            <View style={styles.vehicleInfoItemSmall}>
               <Text style={styles.vehicleInfoLabel}>Year</Text>
               <Text style={styles.vehicleInfoValue}>{vehicle.year}</Text>
             </View>
-            <View style={styles.vehicleInfoItem}>
+            <View style={styles.vehicleInfoItemLarge}>
               <Text style={styles.vehicleInfoLabel}>Make</Text>
-              <Text style={styles.vehicleInfoValue}>{vehicle.make}</Text>
+              <Text style={styles.vehicleInfoValue} numberOfLines={1}>{vehicle.make}</Text>
             </View>
           </View>
           <View style={styles.vehicleInfoRow}>
-            <View style={styles.vehicleInfoItem}>
+            <View style={styles.vehicleInfoItemLarge}>
               <Text style={styles.vehicleInfoLabel}>Model</Text>
-              <Text style={styles.vehicleInfoValue}>{vehicle.model}</Text>
+              <Text style={styles.vehicleInfoValue} numberOfLines={1}>
+                {vehicle.model && vehicle.model !== 'Vehicle' ? vehicle.model : '—'}
+              </Text>
             </View>
-            <View style={styles.vehicleInfoItem}>
+            <View style={styles.vehicleInfoItemSmall}>
               <Text style={styles.vehicleInfoLabel}>Trim</Text>
-              <Text style={styles.vehicleInfoValue}>{vehicle.trim || '—'}</Text>
+              <Text style={styles.vehicleInfoValue} numberOfLines={1}>{vehicle.trim || '—'}</Text>
             </View>
           </View>
-          {scanResult?.vin?.vin && (
-            <View style={styles.vinDisplayRow}>
-              <Text style={styles.vinDisplayLabel}>VIN</Text>
-              <Text style={styles.vinDisplayValue}>{vehicle.vin}</Text>
-            </View>
-          )}
+          <View style={styles.vinDisplayRow}>
+            <Text style={styles.vinDisplayLabel}>VIN</Text>
+            <Text style={styles.vinDisplayValue} selectable>{vehicle.vin}</Text>
+          </View>
         </View>
       )}
     </View>
@@ -844,9 +885,9 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
         </View>
 
         <View style={styles.valuationPrimary}>
-          <Text style={styles.valuationLabel}>SmartScan Estimated Trade-In Range</Text>
+          <Text style={styles.valuationLabel}>Market Range (Trade-In → Retail)</Text>
           <Text style={styles.valuationRange}>
-            {formatCurrency(valuationData.estimatedTradeInLow)} – {formatCurrency(valuationData.estimatedTradeInHigh)}
+            {formatCurrency(valuationData.estimatedTradeInLow)} – {formatCurrency(valuationData.estimatedRetailHigh)}
           </Text>
           <View style={styles.valuationBarTrack}>
             <View style={[styles.valuationBarFill, { width: '70%' }]} />
@@ -924,12 +965,25 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
             {(valuationData.comparableSources || []).map((src, idx) => {
               const dotColors = ['#333', '#0066CC', '#CC6600'];
               return (
-                <View key={src.sourceName} style={styles.sourceRow}>
-                  <View style={[styles.sourceDot, { backgroundColor: dotColors[idx] || '#333' }]} />
-                  <Text style={styles.sourceLabel}>{src.sourceName}</Text>
-                  <Text style={styles.sourceValue}>
-                    {formatCurrency(src.tradeInLow)} – {formatCurrency(src.tradeInHigh)}
-                  </Text>
+                <View key={src.sourceName} style={styles.sourceBlock}>
+                  <View style={styles.sourceRow}>
+                    <View style={[styles.sourceDot, { backgroundColor: dotColors[idx] || '#333' }]} />
+                    <Text style={styles.sourceLabel}>{src.sourceName}</Text>
+                  </View>
+                  <View style={styles.sourceTiersRow}>
+                    <View style={styles.sourceTierItem}>
+                      <Text style={styles.sourceTierLabel}>Wholesale</Text>
+                      <Text style={styles.sourceTierValue}>{formatCurrency(src.wholesaleLow)} – {formatCurrency(src.wholesaleHigh)}</Text>
+                    </View>
+                    <View style={styles.sourceTierItem}>
+                      <Text style={styles.sourceTierLabel}>Trade-In</Text>
+                      <Text style={styles.sourceTierValue}>{formatCurrency(src.tradeInLow)} – {formatCurrency(src.tradeInHigh)}</Text>
+                    </View>
+                    <View style={styles.sourceTierItem}>
+                      <Text style={styles.sourceTierLabel}>Retail</Text>
+                      <Text style={styles.sourceTierValue}>{formatCurrency(src.retailLow)} – {formatCurrency(src.retailHigh)}</Text>
+                    </View>
+                  </View>
                 </View>
               );
             })}
@@ -953,7 +1007,7 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
 
             <View style={styles.sourceNote}>
               <Text style={styles.sourceNoteText}>
-                AI-estimated values based on current market data. Connect Black Book / JD Power API keys for live data.
+                Pricing powered by Black Book with mileage and condition adjustments. AI analysis provides market trend and context.
               </Text>
             </View>
           </View>
@@ -1067,9 +1121,23 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
           </View>
           <View style={styles.summaryDivider} />
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Market Range</Text>
+            <Text style={styles.summaryLabel}>Wholesale</Text>
+            <Text style={[styles.summaryValue, { fontWeight: '700' }]}>
+              {formatCurrency(valuationData.estimatedWholesaleLow)} – {formatCurrency(valuationData.estimatedWholesaleHigh)}
+            </Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Trade-In</Text>
             <Text style={[styles.summaryValue, { color: colors.status.success, fontWeight: '700' }]}>
               {formatCurrency(valuationData.estimatedTradeInLow)} – {formatCurrency(valuationData.estimatedTradeInHigh)}
+            </Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Retail</Text>
+            <Text style={[styles.summaryValue, { fontWeight: '700' }]}>
+              {formatCurrency(valuationData.estimatedRetailLow)} – {formatCurrency(valuationData.estimatedRetailHigh)}
             </Text>
           </View>
           <View style={styles.summaryDivider} />
@@ -1113,7 +1181,7 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Trade-In Appraisal</Text>
           <TouchableOpacity
-            onPress={() => navigation.navigate('Main', { screen: 'Scan' })}
+            onPress={() => navigation.popToTop()}
             style={styles.homeButton}
             activeOpacity={0.7}
           >
@@ -1130,7 +1198,7 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
           <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
             {renderVinSection()}
             {renderAppraisalInputSection()}
-            {renderDiagnosticsSection()}
+            {conditionReport ? renderDiagnosticsSection() : null}
             {renderStartAppraisalButton()}
             {renderValuationSection()}
             {renderRiskSummary()}
@@ -1346,6 +1414,12 @@ const styles = StyleSheet.create({
   },
   vehicleInfoItem: {
     flex: 1,
+  },
+  vehicleInfoItemSmall: {
+    flex: 1,
+  },
+  vehicleInfoItemLarge: {
+    flex: 2,
   },
   vehicleInfoLabel: {
     fontSize: 11,
@@ -1753,11 +1827,38 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border.light,
   },
+  sourceBlock: {
+    marginBottom: spacing.md,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.light,
+  },
   sourceRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 6,
+    paddingVertical: 4,
     gap: spacing.sm,
+  },
+  sourceTiersRow: {
+    flexDirection: 'row',
+    marginTop: 4,
+    marginLeft: 18,
+    gap: spacing.sm,
+  },
+  sourceTierItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  sourceTierLabel: {
+    fontSize: 10,
+    color: colors.text.muted,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  sourceTierValue: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.text.primary,
   },
   sourceDot: {
     width: 10,
@@ -1768,11 +1869,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.base,
     color: colors.text.secondary,
     flex: 1,
-  },
-  sourceValue: {
-    fontSize: typography.fontSize.base,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.text.primary,
+    fontWeight: typography.fontWeight.semiBold,
   },
   sourceNote: {
     marginTop: spacing.sm,

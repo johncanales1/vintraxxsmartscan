@@ -4,6 +4,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   TouchableOpacity,
   Alert,
@@ -34,10 +35,38 @@ interface VinScannerScreenProps {
   };
 }
 
+// VIN transliteration values for check digit calculation (ISO 3779)
+const VIN_TRANSLITERATE: Record<string, number> = {
+  'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5, 'F': 6, 'G': 7, 'H': 8,
+  'J': 1, 'K': 2, 'L': 3, 'M': 4, 'N': 5, 'P': 7, 'R': 9,
+  'S': 2, 'T': 3, 'U': 4, 'V': 5, 'W': 6, 'X': 7, 'Y': 8, 'Z': 9,
+  '0': 0, '1': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9,
+};
+const VIN_WEIGHTS = [8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2];
+
+// VIN check digit validation (position 9 is check digit per ISO 3779)
+const isValidVinCheckDigit = (vin: string): boolean => {
+  if (vin.length !== 17) return false;
+  let sum = 0;
+  for (let i = 0; i < 17; i++) {
+    const val = VIN_TRANSLITERATE[vin[i]];
+    if (val === undefined) return false;
+    sum += val * VIN_WEIGHTS[i];
+  }
+  const remainder = sum % 11;
+  const checkChar = remainder === 10 ? 'X' : String(remainder);
+  return vin[8] === checkChar;
+};
+
 // VIN validation: 17 alphanumeric chars, no I, O, Q
 const isValidVinFormat = (vin: string): boolean => {
   const cleaned = vin.replace(/[^A-HJ-NPR-Z0-9]/gi, '').toUpperCase();
   return cleaned.length === 17 && /^[A-HJ-NPR-Z0-9]{17}$/.test(cleaned);
+};
+
+// Full VIN validation: format + check digit
+const isValidVin = (vin: string): boolean => {
+  return isValidVinFormat(vin) && isValidVinCheckDigit(vin);
 };
 
 export const VinScannerScreen: React.FC<VinScannerScreenProps> = ({ navigation, route }) => {
@@ -45,10 +74,15 @@ export const VinScannerScreen: React.FC<VinScannerScreenProps> = ({ navigation, 
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice('back');
   const [scannedVin, setScannedVin] = useState<string | null>(null);
+  const [editableVin, setEditableVin] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
+  const [checkDigitValid, setCheckDigitValid] = useState(true);
   const lastScanTimeRef = useRef<number>(0);
-  const scanCooldownMs = 800;
+  const scanCooldownMs = 600;
+  // Consensus voting: track scan results to require agreement
+  const scanVotesRef = useRef<Map<string, number>>(new Map());
+  const CONSENSUS_THRESHOLD = 2; // require same VIN scanned N times
 
   // Scanning line animation
   const scanLineAnim = useRef(new Animated.Value(0)).current;
@@ -83,8 +117,24 @@ export const VinScannerScreen: React.FC<VinScannerScreenProps> = ({ navigation, 
     }
   }, [hasPermission, requestPermission]);
 
+  const acceptVin = useCallback((vin: string, codeType: string, rawValue: string, method: string) => {
+    const valid = isValidVinCheckDigit(vin);
+    setIsProcessing(true);
+    setScannedVin(vin);
+    setEditableVin(vin);
+    setCheckDigitValid(valid);
+    Vibration.vibrate(100);
+    debugLogger.logEvent(`VIN Scanner: ${method}`, {
+      vin,
+      codeType,
+      rawValue,
+      checkDigitValid: valid,
+    });
+  }, []);
+
   const codeScanner = useCodeScanner({
-    codeTypes: ['code-128', 'code-39', 'code-93', 'itf', 'qr', 'data-matrix', 'ean-13', 'codabar'],
+    // Only VIN-relevant barcode types — reduces misreads
+    codeTypes: ['code-128', 'code-39', 'qr', 'data-matrix'],
     onCodeScanned: (codes) => {
       if (isProcessing || scannedVin) return;
 
@@ -100,48 +150,67 @@ export const VinScannerScreen: React.FC<VinScannerScreenProps> = ({ navigation, 
         // Try to extract a VIN from the scanned value
         const cleaned = value.replace(/[^A-HJ-NPR-Z0-9]/gi, '').toUpperCase();
 
+        let candidate: string | null = null;
         if (isValidVinFormat(cleaned)) {
-          setIsProcessing(true);
-          setScannedVin(cleaned);
-          // Haptic feedback on successful scan
-          Vibration.vibrate(100);
-          debugLogger.logEvent('VIN Scanner: VIN detected', {
-            vin: cleaned,
-            codeType: code.type,
-            rawValue: value,
-          });
-          break;
+          candidate = cleaned;
+        } else {
+          // Some barcodes embed VIN within a larger string
+          const vinMatch = cleaned.match(/[A-HJ-NPR-Z0-9]{17}/);
+          if (vinMatch) candidate = vinMatch[0];
         }
 
-        // Some barcodes embed VIN within a larger string - try to find 17-char VIN pattern
-        const vinMatch = cleaned.match(/[A-HJ-NPR-Z0-9]{17}/);
-        if (vinMatch) {
-          setIsProcessing(true);
-          setScannedVin(vinMatch[0]);
-          Vibration.vibrate(100);
-          debugLogger.logEvent('VIN Scanner: VIN extracted from barcode', {
-            vin: vinMatch[0],
-            codeType: code.type,
-            rawValue: value,
-          });
-          break;
+        if (!candidate) continue;
+
+        // If check digit passes, accept immediately — it's very unlikely to be wrong
+        if (isValidVinCheckDigit(candidate)) {
+          acceptVin(candidate, code.type, value, 'VIN detected (check digit valid)');
+          return;
+        }
+
+        // Check digit failed — use consensus voting (require multiple identical scans)
+        const votes = scanVotesRef.current;
+        const count = (votes.get(candidate) || 0) + 1;
+        votes.set(candidate, count);
+
+        debugLogger.logEvent('VIN Scanner: candidate (check digit failed, voting)', {
+          vin: candidate,
+          votes: count,
+          threshold: CONSENSUS_THRESHOLD,
+          codeType: code.type,
+        });
+
+        if (count >= CONSENSUS_THRESHOLD) {
+          // Enough consistent reads — accept despite check digit failure
+          acceptVin(candidate, code.type, value, `VIN accepted via consensus (${count} votes)`);
+          return;
         }
       }
     },
   });
 
   const handleConfirmVin = useCallback(() => {
-    if (scannedVin) {
-      debugLogger.logEvent('VIN Scanner: VIN confirmed by user', { vin: scannedVin });
-      onVinScanned(scannedVin);
+    // Use the (possibly edited) VIN
+    const finalVin = editableVin.replace(/[^A-HJ-NPR-Z0-9]/gi, '').toUpperCase();
+    if (finalVin && isValidVinFormat(finalVin)) {
+      debugLogger.logEvent('VIN Scanner: VIN confirmed by user', {
+        vin: finalVin,
+        wasEdited: finalVin !== scannedVin,
+        checkDigitValid: isValidVinCheckDigit(finalVin),
+      });
+      onVinScanned(finalVin);
       navigation.goBack();
+    } else {
+      Alert.alert('Invalid VIN', 'Please enter a valid 17-character VIN.');
     }
-  }, [scannedVin, onVinScanned, navigation]);
+  }, [editableVin, scannedVin, onVinScanned, navigation]);
 
   const handleRescan = useCallback(() => {
     debugLogger.logEvent('VIN Scanner: Rescan requested');
     setScannedVin(null);
+    setEditableVin('');
     setIsProcessing(false);
+    setCheckDigitValid(true);
+    scanVotesRef.current.clear();
   }, []);
 
   const handleClose = useCallback(() => {
@@ -272,7 +341,24 @@ export const VinScannerScreen: React.FC<VinScannerScreenProps> = ({ navigation, 
             {scannedVin ? (
               <View style={styles.resultContainer}>
                 <Text style={styles.resultLabel}>Scanned VIN</Text>
-                <Text style={styles.resultVin}>{scannedVin}</Text>
+                <TextInput
+                  style={styles.resultVinInput}
+                  value={editableVin}
+                  onChangeText={(text) => {
+                    const upper = text.replace(/[^A-HJ-NPR-Z0-9]/gi, '').toUpperCase();
+                    setEditableVin(upper);
+                    setCheckDigitValid(isValidVinCheckDigit(upper));
+                  }}
+                  maxLength={17}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  selectTextOnFocus
+                />
+                {!checkDigitValid && (
+                  <Text style={styles.checkDigitWarning}>
+                    VIN check digit invalid — verify before confirming
+                  </Text>
+                )}
                 <View style={styles.resultButtons}>
                   <TouchableOpacity
                     style={styles.rescanButton}
@@ -452,6 +538,26 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     letterSpacing: 2,
     marginBottom: spacing.lg,
+  },
+  resultVinInput: {
+    color: '#FFF',
+    fontSize: 20,
+    fontWeight: '800',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    letterSpacing: 2,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'rgba(255,255,255,0.4)',
+    paddingVertical: spacing.sm,
+    width: '100%',
+  },
+  checkDigitWarning: {
+    color: '#FFD60A',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: spacing.sm,
   },
   resultButtons: {
     flexDirection: 'row',

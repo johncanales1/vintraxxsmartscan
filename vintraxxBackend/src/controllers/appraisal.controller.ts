@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import { AppraisalValuationRequest, AppraisalSummaryData } from '../types';
+import { AppraisalValuationRequest, AppraisalSummaryData, AiValuationOutput } from '../types';
 import { getAiValuation } from '../services/appraisal.service';
+import { fetchBlackBookByVin, mapBlackBookToValuation } from '../services/blackbook.service';
 import { generateAppraisalPdf } from '../services/appraisal-pdf.service';
 import { sendAppraisalEmail } from '../services/appraisal-email.service';
 import { env } from '../config/env';
@@ -31,7 +32,101 @@ export async function valuateVehicle(req: Request, res: Response, next: NextFunc
       zipCode: input.zipCode,
     });
 
-    const valuation = await getAiValuation(input);
+    // ---- 1. Fetch Black Book data (primary pricing source) ----
+    const bbResult = await fetchBlackBookByVin(input.vin, input.mileage);
+
+    let valuation: AiValuationOutput;
+    let vehicleYear = input.year;
+    let vehicleMake = input.make;
+    let vehicleModel = input.model;
+    let vehicleTrim = input.trim;
+
+    if (bbResult.success && bbResult.pricing && bbResult.vehicle) {
+      // Use Black Book vehicle info (more accurate than local decode)
+      const bbVehicle = bbResult.vehicle;
+      if (bbVehicle.year) vehicleYear = bbVehicle.year;
+      if (bbVehicle.make) vehicleMake = bbVehicle.make;
+      if (bbVehicle.model) vehicleModel = bbVehicle.model;
+      if (bbVehicle.series) vehicleTrim = bbVehicle.series;
+
+      // Map BB pricing to our valuation structure
+      const bbPrices = mapBlackBookToValuation(bbResult.pricing, input.condition);
+
+      logger.info('Black Book pricing mapped', {
+        vin: input.vin,
+        condition: input.condition,
+        bbPrices,
+      });
+
+      // Build Black Book comparable source
+      const bbSource = {
+        sourceName: 'Black Book',
+        wholesaleLow: bbPrices.wholesaleLow,
+        wholesaleHigh: bbPrices.wholesaleHigh,
+        tradeInLow: bbPrices.tradeInLow,
+        tradeInHigh: bbPrices.tradeInHigh,
+        retailLow: bbPrices.retailLow,
+        retailHigh: bbPrices.retailHigh,
+        privatePartyLow: bbPrices.privatePartyLow,
+        privatePartyHigh: bbPrices.privatePartyHigh,
+      };
+
+      // ---- 2. Call AI for supplementary analysis (trend, adjustments, summary) ----
+      let aiValuation: AiValuationOutput | null = null;
+      try {
+        aiValuation = await getAiValuation({
+          ...input,
+          year: vehicleYear,
+          make: vehicleMake,
+          model: vehicleModel,
+          trim: vehicleTrim,
+        });
+      } catch (aiError) {
+        logger.warn('AI valuation failed, using Black Book data only', {
+          error: (aiError as Error).message,
+        });
+      }
+
+      // Build AI-derived sources (if available)
+      const aiSources = aiValuation?.comparableSources?.filter(
+        s => s.sourceName !== 'Black Book'
+      ) || [];
+
+      // Combine: BB source first, then AI sources
+      const comparableSources = [bbSource, ...aiSources.slice(0, 2)];
+
+      // Use BB for primary prices, AI for analysis context
+      const now = new Date();
+      const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      valuation = {
+        estimatedWholesaleLow: bbPrices.wholesaleLow,
+        estimatedWholesaleHigh: bbPrices.wholesaleHigh,
+        estimatedTradeInLow: bbPrices.tradeInLow,
+        estimatedTradeInHigh: bbPrices.tradeInHigh,
+        estimatedRetailLow: bbPrices.retailLow,
+        estimatedRetailHigh: bbPrices.retailHigh,
+        estimatedPrivatePartyLow: bbPrices.privatePartyLow,
+        estimatedPrivatePartyHigh: bbPrices.privatePartyHigh,
+        confidenceLevel: 'high',
+        confidenceExplanation: aiValuation?.confidenceExplanation || 'Pricing sourced from Black Book with mileage and condition adjustments.',
+        marketTrend: aiValuation?.marketTrend || 'stable',
+        marketTrendExplanation: aiValuation?.marketTrendExplanation || 'Market trend based on current wholesale market conditions.',
+        comparableSources,
+        adjustments: aiValuation?.adjustments || [
+          { factor: 'Mileage', impact: 0, explanation: 'Mileage adjustment applied by Black Book.' },
+          { factor: 'Condition', impact: 0, explanation: `Vehicle condition rated as ${input.condition}.` },
+        ],
+        aiSummary: aiValuation?.aiSummary || `Black Book valuation for ${vehicleYear} ${vehicleMake} ${vehicleModel} with ${input.mileage.toLocaleString()} miles in ${input.condition} condition. Trade-in range: $${bbPrices.tradeInLow.toLocaleString()}-$${bbPrices.tradeInHigh.toLocaleString()}, Retail range: $${bbPrices.retailLow.toLocaleString()}-$${bbPrices.retailHigh.toLocaleString()}.`,
+        dataAsOf: `${monthNames[now.getMonth()]} ${now.getFullYear()}`,
+      };
+    } else {
+      // Black Book failed — fallback to AI-only valuation
+      logger.warn('Black Book unavailable, falling back to AI valuation', {
+        vin: input.vin,
+        bbError: bbResult.error,
+      });
+      valuation = await getAiValuation(input);
+    }
 
     // Generate an appraisal ID
     const appraisalId = `appr-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
@@ -41,10 +136,10 @@ export async function valuateVehicle(req: Request, res: Response, next: NextFunc
       appraisalId,
       vehicle: {
         vin: input.vin,
-        year: input.year,
-        make: input.make,
-        model: input.model,
-        trim: input.trim,
+        year: vehicleYear,
+        make: vehicleMake,
+        model: vehicleModel,
+        trim: vehicleTrim,
         mileage: input.mileage,
       },
       condition: input.condition,
@@ -61,7 +156,10 @@ export async function valuateVehicle(req: Request, res: Response, next: NextFunc
     logger.info('Appraisal valuation completed and stored', {
       appraisalId,
       vin: input.vin,
+      source: bbResult.success ? 'BlackBook+AI' : 'AI-only',
+      wholesaleRange: `$${valuation.estimatedWholesaleLow} - $${valuation.estimatedWholesaleHigh}`,
       tradeInRange: `$${valuation.estimatedTradeInLow} - $${valuation.estimatedTradeInHigh}`,
+      retailRange: `$${valuation.estimatedRetailLow} - $${valuation.estimatedRetailHigh}`,
       confidence: valuation.confidenceLevel,
     });
 
@@ -69,6 +167,13 @@ export async function valuateVehicle(req: Request, res: Response, next: NextFunc
       success: true,
       appraisalId,
       valuation,
+      // Include BB vehicle info so frontend can update display
+      vehicle: {
+        year: vehicleYear,
+        make: vehicleMake,
+        model: vehicleModel,
+        trim: vehicleTrim,
+      },
     });
   } catch (error) {
     logger.error('Appraisal valuation failed', {

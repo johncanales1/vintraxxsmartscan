@@ -18,6 +18,8 @@ const envSchema = z.object({
   SMTP_PASS: z.string().min(1),
   EMAIL_FROM: z.string().email(),
   EMAIL_FROM_NAME: z.string().default('VinTraxx SmartScan'),
+  BLACKBOOK_CUSTOMER_ID: z.string().default('test'),
+  BLACKBOOK_BASE_URL: z.string().default('https://service.blackbookcloud.com/UsedCarWS/UsedCarWS'),
   REPORT_VERSION: z.string().default('5.1'),
   APP_URL: z.string().url().default('https://app.vintraxx.com'),
 });

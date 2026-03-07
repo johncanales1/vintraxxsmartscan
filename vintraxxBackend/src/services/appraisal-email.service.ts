@@ -59,6 +59,7 @@ export async function sendAppraisalEmail(
     sourceAnchorsHtml += `
       <tr>
         <td style="padding: 8px 12px; border-bottom: 1px solid #eee; font-weight: bold;">${src.sourceName}</td>
+        <td style="padding: 8px 12px; border-bottom: 1px solid #eee; text-align: center;">${formatCurrency(src.wholesaleLow)} - ${formatCurrency(src.wholesaleHigh)}</td>
         <td style="padding: 8px 12px; border-bottom: 1px solid #eee; text-align: center;">${formatCurrency(src.tradeInLow)} - ${formatCurrency(src.tradeInHigh)}</td>
         <td style="padding: 8px 12px; border-bottom: 1px solid #eee; text-align: center;">${formatCurrency(src.retailLow)} - ${formatCurrency(src.retailHigh)}</td>
       </tr>`;
@@ -122,10 +123,10 @@ export async function sendAppraisalEmail(
       <div style="text-align: center; margin-bottom: 20px;">
         <table style="margin: 0 auto;">
           <tr>
-            ${valuation.estimatedWholesaleLow ? `<td style="padding: 8px 14px; text-align: center;">
+            <td style="padding: 8px 14px; text-align: center;">
               <div style="font-size: 10px; color: #666; text-transform: uppercase;">Wholesale (Auction)</div>
               <div style="font-size: 14px; font-weight: bold; color: #1a1a2e;">${formatCurrency(valuation.estimatedWholesaleLow)} – ${formatCurrency(valuation.estimatedWholesaleHigh)}</div>
-            </td>` : ''}
+            </td>
             <td style="padding: 8px 14px; text-align: center;">
               <div style="font-size: 10px; color: #666; text-transform: uppercase;">Retail Value</div>
               <div style="font-size: 14px; font-weight: bold; color: #1a1a2e;">${formatCurrency(valuation.estimatedRetailLow)} – ${formatCurrency(valuation.estimatedRetailHigh)}</div>
@@ -146,6 +147,7 @@ export async function sendAppraisalEmail(
       <table>
         <tr>
           <th>Source</th>
+          <th style="text-align: center;">Wholesale</th>
           <th style="text-align: center;">Trade-In</th>
           <th style="text-align: center;">Retail</th>
         </tr>

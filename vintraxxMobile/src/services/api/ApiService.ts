@@ -1,6 +1,7 @@
 // API Service for VinTraxx SmartScan
 // Handles scan submission, report polling, and history
 import { logger, LogCategory } from '../../utils/Logger';
+import { debugLogger } from '../debug/DebugLogger';
 import { authService } from '../auth/AuthService';
 import { API_CONFIG, SCAN_ENDPOINTS, APPRAISAL_ENDPOINTS } from '../../config/api';
 import type {
@@ -84,6 +85,7 @@ class ApiService {
       const url = `${API_CONFIG.BASE_URL}${SCAN_ENDPOINTS.SUBMIT}`;
       const requestHeaders = this.getAuthHeaders();
       const requestBody = JSON.stringify(payload);
+      const reqId = `scan-${Date.now()}`;
 
       // Log request details
       logger.debug(LogCategory.API, 'API Request: submitScan', {
@@ -92,6 +94,7 @@ class ApiService {
         headers: { ...requestHeaders, Authorization: requestHeaders.Authorization ? '[REDACTED]' : undefined },
         payload,
       });
+      debugLogger.logNetworkStart(reqId, 'POST', url);
 
       let response: Response;
       try {
@@ -102,6 +105,7 @@ class ApiService {
         });
       } catch (fetchError) {
         // Network-level error (DNS failure, no internet, CORS, etc.)
+        debugLogger.logNetworkError(reqId, fetchError);
         logger.error(LogCategory.APP, 'Scan submission network error', fetchError);
         return { 
           success: false, 
@@ -110,6 +114,7 @@ class ApiService {
       }
 
       // Log response status
+      debugLogger.logNetworkEnd(reqId, response.status);
       logger.debug(LogCategory.API, 'API Response status: submitScan', {
         status: response.status,
         statusText: response.statusText,
@@ -369,12 +374,15 @@ class ApiService {
 
       const url = `${API_CONFIG.BASE_URL}${APPRAISAL_ENDPOINTS.VALUATE}`;
       const requestHeaders = this.getAuthHeaders();
+      const reqId = `valuation-${Date.now()}`;
 
       logger.debug(LogCategory.API, 'API Request: getAppraisalValuation', {
         url,
         method: 'POST',
         payload: input,
       });
+      debugLogger.logNetworkStart(reqId, 'POST', url);
+      debugLogger.perfStart('appraisal-valuation');
 
       let response: Response;
       try {
@@ -384,9 +392,13 @@ class ApiService {
           body: JSON.stringify(input),
         });
       } catch (fetchError) {
+        debugLogger.logNetworkError(reqId, fetchError);
+        debugLogger.perfEnd('appraisal-valuation');
         logger.error(LogCategory.APP, 'Appraisal valuation network error', fetchError);
         return { success: false, message: 'Unable to connect to server. Please check your internet connection.' };
       }
+
+      debugLogger.logNetworkEnd(reqId, response.status);
 
       if (!response.ok) {
         let errorMessage = `Server error (${response.status})`;
@@ -400,6 +412,7 @@ class ApiService {
             errorMessage = 'Server is temporarily unavailable. Please try again later.';
           }
         }
+        debugLogger.perfEnd('appraisal-valuation');
         logger.warn(LogCategory.APP, 'Appraisal valuation HTTP error', { status: response.status, errorMessage });
         return { success: false, message: errorMessage };
       }
@@ -408,19 +421,24 @@ class ApiService {
       try {
         data = await response.json();
       } catch (parseError) {
+        debugLogger.perfEnd('appraisal-valuation');
         logger.error(LogCategory.APP, 'Failed to parse appraisal valuation response', parseError);
         return { success: false, message: 'Invalid response from server.' };
       }
 
+      const valuationMs = debugLogger.perfEnd('appraisal-valuation');
       logger.debug(LogCategory.API, 'API Response: getAppraisalValuation', {
         status: response.status,
         success: data.success,
         appraisalId: data.appraisalId,
+        durationMs: valuationMs,
       });
 
       if (data.success && data.valuation) {
         logger.info(LogCategory.APP, 'Appraisal valuation received', {
           appraisalId: data.appraisalId,
+          wholesaleLow: data.valuation.estimatedWholesaleLow,
+          wholesaleHigh: data.valuation.estimatedWholesaleHigh,
           tradeInLow: data.valuation.estimatedTradeInLow,
           tradeInHigh: data.valuation.estimatedTradeInHigh,
           confidence: data.valuation.confidenceLevel,
@@ -451,6 +469,8 @@ class ApiService {
 
       const url = `${API_CONFIG.BASE_URL}${APPRAISAL_ENDPOINTS.EMAIL}`;
       const requestHeaders = this.getAuthHeaders();
+      const reqId = `email-${Date.now()}`;
+      debugLogger.logNetworkStart(reqId, 'POST', url);
 
       let response: Response;
       try {
@@ -460,10 +480,12 @@ class ApiService {
           body: JSON.stringify({ toEmail, appraisalData }),
         });
       } catch (fetchError) {
+        debugLogger.logNetworkError(reqId, fetchError);
         logger.error(LogCategory.APP, 'Appraisal email network error', fetchError);
         return { success: false, message: 'Unable to connect to server.' };
       }
 
+      debugLogger.logNetworkEnd(reqId, response.status);
       if (!response.ok) {
         let errorMessage = `Server error (${response.status})`;
         try {
@@ -498,6 +520,8 @@ class ApiService {
 
       const url = `${API_CONFIG.BASE_URL}${APPRAISAL_ENDPOINTS.PDF}`;
       const requestHeaders = this.getAuthHeaders();
+      const reqId = `pdf-${Date.now()}`;
+      debugLogger.logNetworkStart(reqId, 'POST', url);
 
       let response: Response;
       try {
@@ -507,10 +531,12 @@ class ApiService {
           body: JSON.stringify({ toEmail, appraisalData }),
         });
       } catch (fetchError) {
+        debugLogger.logNetworkError(reqId, fetchError);
         logger.error(LogCategory.APP, 'Appraisal PDF network error', fetchError);
         return { success: false, message: 'Unable to connect to server.' };
       }
 
+      debugLogger.logNetworkEnd(reqId, response.status);
       if (!response.ok) {
         let errorMessage = `Server error (${response.status})`;
         try {

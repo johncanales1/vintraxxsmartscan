@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { ScanSubmissionPayload, FullReportData } from '../types';
 import { decodeVin } from '../services/vin.service';
+import { fetchBlackBookByVin } from '../services/blackbook.service';
 import { analyzeWithAI } from '../services/ai.service';
 import { assembleFullReport } from '../services/report.service';
 import { generatePdf } from '../services/pdf.service';
@@ -75,17 +76,36 @@ async function processScanInBackground(scanId: string, userId: string, userEmail
       vin: scan.vin,
     });
 
-    // Step 1: Decode VIN
+    // Step 1: Decode VIN (NHTSA for engine info, Black Book for accurate year/make/model)
     await prisma.scan.update({ where: { id: scanId }, data: { status: 'DECODING_VIN' } });
     logger.info(`[${scanId}] Decoding VIN: ${scan.vin}`);
 
     const vinData = await decodeVin(scan.vin);
+
+    // Try Black Book for more accurate vehicle info
+    let bbYear = vinData.year;
+    let bbMake = vinData.make;
+    let bbModel = vinData.model;
+    try {
+      const bbResult = await fetchBlackBookByVin(scan.vin, scan.mileage ?? 0);
+      if (bbResult.success && bbResult.vehicle) {
+        if (bbResult.vehicle.year) bbYear = bbResult.vehicle.year;
+        if (bbResult.vehicle.make) bbMake = bbResult.vehicle.make;
+        if (bbResult.vehicle.model) bbModel = bbResult.vehicle.model;
+        logger.info(`[${scanId}] Black Book vehicle info: ${bbYear} ${bbMake} ${bbModel}`);
+      }
+    } catch (bbErr) {
+      logger.warn(`[${scanId}] Black Book lookup failed, using NHTSA data`, {
+        error: (bbErr as Error).message,
+      });
+    }
+
     await prisma.scan.update({
       where: { id: scanId },
       data: {
-        vehicleYear: vinData.year,
-        vehicleMake: vinData.make,
-        vehicleModel: vinData.model,
+        vehicleYear: bbYear,
+        vehicleMake: bbMake,
+        vehicleModel: bbModel,
         vehicleEngine: vinData.engine,
       },
     });
@@ -96,9 +116,9 @@ async function processScanInBackground(scanId: string, userId: string, userEmail
 
     const aiOutput = await analyzeWithAI({
       vin: scan.vin,
-      year: vinData.year,
-      make: vinData.make,
-      model: vinData.model,
+      year: bbYear,
+      make: bbMake,
+      model: bbModel,
       mileage: scan.mileage,
       milOn: scan.milOn,
       dtcCount: scan.dtcCount,

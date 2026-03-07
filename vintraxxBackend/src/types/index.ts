@@ -142,6 +142,8 @@ export interface AppraisalValuationRequest {
 
 export interface AppraisalValuationSource {
   sourceName: string;
+  wholesaleLow: number;
+  wholesaleHigh: number;
   tradeInLow: number;
   tradeInHigh: number;
   retailLow: number;

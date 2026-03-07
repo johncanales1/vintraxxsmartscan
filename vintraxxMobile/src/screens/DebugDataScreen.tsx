@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -13,23 +14,28 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
-import { debugLogger, DebugLogEntry, LogDirection } from '../services/debug/DebugLogger';
+import { debugLogger, DebugLogEntry, LogDirection, LogCategory } from '../services/debug/DebugLogger';
 
 interface DebugDataScreenProps {
   visible: boolean;
   onClose: () => void;
 }
 
+type FilterMode = 'all' | 'errors' | 'network' | 'ble' | 'appraisal';
+
 export const DebugDataScreen: React.FC<DebugDataScreenProps> = ({ visible, onClose }) => {
   const [logs, setLogs] = useState<DebugLogEntry[]>([]);
   const [sessionDuration, setSessionDuration] = useState(0);
+  const [filter, setFilter] = useState<FilterMode>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [errorCount, setErrorCount] = useState(0);
+  const [networkCount, setNetworkCount] = useState(0);
+  const [appraisalCount, setAppraisalCount] = useState(0);
 
   // Refresh logs when modal becomes visible
   useEffect(() => {
     if (visible) {
-      // Get fresh logs from debugLogger when modal opens
-      setLogs(debugLogger.getLogs());
-      setSessionDuration(debugLogger.getSessionDuration());
+      refreshLogs();
     }
   }, [visible]);
 
@@ -37,7 +43,30 @@ export const DebugDataScreen: React.FC<DebugDataScreenProps> = ({ visible, onClo
   const refreshLogs = useCallback(() => {
     setLogs(debugLogger.getLogs());
     setSessionDuration(debugLogger.getSessionDuration());
+    const stats = debugLogger.getStats();
+    setErrorCount(stats.errorCount + stats.warnCount);
+    setNetworkCount(stats.networkCount);
+    setAppraisalCount((stats.byCategory[LogCategory.APPRAISAL] || 0) + (stats.byCategory[LogCategory.BLACKBOOK] || 0));
   }, []);
+
+  const filteredLogs = logs.filter(log => {
+    // Apply search query first
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      const matchesSearch =
+        log.message.toLowerCase().includes(q) ||
+        log.error?.toLowerCase().includes(q) ||
+        log.category?.toLowerCase().includes(q) ||
+        (log.metadata && JSON.stringify(log.metadata).toLowerCase().includes(q));
+      if (!matchesSearch) return false;
+    }
+    if (filter === 'all') return true;
+    if (filter === 'errors') return log.direction === LogDirection.ERROR || log.direction === LogDirection.WARN;
+    if (filter === 'network') return log.direction === LogDirection.NETWORK || log.category === LogCategory.NETWORK;
+    if (filter === 'ble') return log.category === LogCategory.BLE || log.direction === LogDirection.TX || log.direction === LogDirection.RX;
+    if (filter === 'appraisal') return log.category === LogCategory.APPRAISAL || log.category === LogCategory.BLACKBOOK || log.category === LogCategory.VIN;
+    return true;
+  });
 
   const handleExport = async () => {
     try {
@@ -59,6 +88,12 @@ export const DebugDataScreen: React.FC<DebugDataScreenProps> = ({ visible, onClo
         return colors.status.success;
       case LogDirection.ERROR:
         return colors.status.error;
+      case LogDirection.WARN:
+        return colors.status.warning;
+      case LogDirection.NETWORK:
+        return '#7C3AED';
+      case LogDirection.PERF:
+        return '#0891B2';
       case LogDirection.EVENT:
         return colors.text.secondary;
       default:
@@ -74,6 +109,12 @@ export const DebugDataScreen: React.FC<DebugDataScreenProps> = ({ visible, onClo
         return '←';
       case LogDirection.ERROR:
         return '✗';
+      case LogDirection.WARN:
+        return '⚠';
+      case LogDirection.NETWORK:
+        return '◆';
+      case LogDirection.PERF:
+        return '⏱';
       case LogDirection.EVENT:
         return '●';
       default:
@@ -101,9 +142,31 @@ export const DebugDataScreen: React.FC<DebugDataScreenProps> = ({ visible, onClo
             <View>
               <Text style={styles.headerTitle}>Debug Data</Text>
               <Text style={styles.headerSubtitle}>
-                {logs.length} entries • {Math.round(sessionDuration / 1000)}s
+                {logs.length} entries • {Math.round(sessionDuration / 1000)}s{errorCount > 0 ? ` • ${errorCount} errors` : ''}{networkCount > 0 ? ` • ${networkCount} net` : ''}
               </Text>
             </View>
+          </View>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search logs..."
+            placeholderTextColor={colors.text.muted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCorrect={false}
+            clearButtonMode="while-editing"
+          />
+          <View style={styles.filterRow}>
+            {(['all', 'errors', 'network', 'ble', 'appraisal'] as FilterMode[]).map(f => (
+              <TouchableOpacity
+                key={f}
+                onPress={() => setFilter(f)}
+                style={[styles.filterTab, filter === f && styles.filterTabActive]}
+              >
+                <Text style={[styles.filterTabText, filter === f && styles.filterTabTextActive]}>
+                  {f === 'all' ? `All (${logs.length})` : f === 'errors' ? `Errors (${errorCount})` : f === 'network' ? `Net (${networkCount})` : f === 'appraisal' ? `Appr (${appraisalCount})` : 'BLE'}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
           <View style={styles.headerButtons}>
             <TouchableOpacity onPress={onClose} style={styles.backButton}>
@@ -128,8 +191,8 @@ export const DebugDataScreen: React.FC<DebugDataScreenProps> = ({ visible, onClo
               </Text>
             </View>
           ) : (
-            logs.map((log, index) => (
-              <View key={index} style={styles.logEntry}>
+            filteredLogs.map((log, index) => (
+              <View key={index} style={[styles.logEntry, { borderLeftColor: getDirectionColor(log.direction) }]}>
                 {/* Header Line */}
                 <View style={styles.logHeader}>
                   <View style={styles.logHeaderLeft}>
@@ -141,6 +204,11 @@ export const DebugDataScreen: React.FC<DebugDataScreenProps> = ({ visible, onClo
                     >
                       {getDirectionIcon(log.direction)} {log.direction}
                     </Text>
+                    {log.category && (
+                      <View style={styles.categoryBadge}>
+                        <Text style={styles.categoryBadgeText}>{log.category}</Text>
+                      </View>
+                    )}
                     <Text style={styles.logTimestamp}>
                       {formatTimestamp(log.timestamp)}
                     </Text>
@@ -222,6 +290,56 @@ const styles = StyleSheet.create({
     ...typography.styles.caption,
     color: colors.text.secondary,
     marginTop: spacing.xs,
+  },
+  searchInput: {
+    backgroundColor: colors.background.primary,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    fontSize: 13,
+    color: colors.text.primary,
+    marginBottom: spacing.sm,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+    flexWrap: 'wrap',
+  },
+  filterTab: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: colors.background.primary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  },
+  filterTabActive: {
+    backgroundColor: colors.primary.navy,
+    borderColor: colors.primary.navy,
+  },
+  filterTabText: {
+    fontSize: 11,
+    color: colors.text.secondary,
+    fontWeight: '600',
+  },
+  filterTabTextActive: {
+    color: colors.text.inverse,
+  },
+  categoryBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+    backgroundColor: colors.background.primary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  },
+  categoryBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.text.muted,
   },
   headerButtons: {
     flexDirection: 'row',

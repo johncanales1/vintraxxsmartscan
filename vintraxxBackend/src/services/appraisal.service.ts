@@ -35,6 +35,8 @@ const VALUATION_JSON_SCHEMA = {
           type: 'object' as const,
           properties: {
             sourceName: { type: 'string' as const },
+            wholesaleLow: { type: 'number' as const },
+            wholesaleHigh: { type: 'number' as const },
             tradeInLow: { type: 'number' as const },
             tradeInHigh: { type: 'number' as const },
             retailLow: { type: 'number' as const },
@@ -42,7 +44,7 @@ const VALUATION_JSON_SCHEMA = {
             privatePartyLow: { type: 'number' as const },
             privatePartyHigh: { type: 'number' as const },
           },
-          required: ['sourceName', 'tradeInLow', 'tradeInHigh', 'retailLow', 'retailHigh', 'privatePartyLow', 'privatePartyHigh'],
+          required: ['sourceName', 'wholesaleLow', 'wholesaleHigh', 'tradeInLow', 'tradeInHigh', 'retailLow', 'retailHigh', 'privatePartyLow', 'privatePartyHigh'],
           additionalProperties: false,
         },
       },
@@ -112,11 +114,12 @@ CRITICAL VALUATION METHODOLOGY:
    - Private Party Value: What a private seller could expect. Typically 15-25% above wholesale.
    - Retail Value: What a dealer lists it for sale. Typically 25-40% above wholesale.
 
-6. COMPARABLE SOURCES: Provide estimated values as they would appear from:
-   - "MMR (Manheim)" — auction-based wholesale values. This should be your PRIMARY anchor.
-   - "Black Book" — wholesale-focused, used by dealers. Usually within 5% of MMR.
-   - "JD Power (NADA)" — retail-focused, used by lenders. Retail values are higher than wholesale.
-   Each source should show realistic, slightly different values.
+6. COMPARABLE SOURCES: For EACH source, provide wholesale (auction), trade-in, retail, and private party value ranges:
+   - "MMR (Manheim)" — auction-based wholesale values. This should be your PRIMARY anchor. MMR wholesale = the raw auction sale price.
+   - "Black Book" — wholesale-focused, used by dealers. Usually within 5% of MMR. Black Book wholesale = dealer-to-dealer transfer price.
+   - "JD Power (NADA)" — retail-focused, used by lenders. NADA wholesale is typically 5-10% above MMR since it targets dealer lending.
+   Each source MUST include wholesaleLow, wholesaleHigh, tradeInLow, tradeInHigh, retailLow, retailHigh, privatePartyLow, privatePartyHigh.
+   Wholesale values per source should be realistic and slightly different between sources.
 
 7. SPREAD between low and high within each tier:
    - Under $15,000: spread of $1,000-$2,000
@@ -139,6 +142,8 @@ RULES:
 
 const valuationSourceSchema = z.object({
   sourceName: z.string(),
+  wholesaleLow: z.number(),
+  wholesaleHigh: z.number(),
   tradeInLow: z.number(),
   tradeInHigh: z.number(),
   retailLow: z.number(),
@@ -253,6 +258,8 @@ function sanitizeValuation(raw: AiValuationOutput): AiValuationOutput {
   // Ensure tier ordering: tradeIn < privateParty < retail
   const sanitizedSources = raw.comparableSources.map(src => ({
     ...src,
+    wholesaleLow: Math.max(1500, Math.round(src.wholesaleLow / 100) * 100),
+    wholesaleHigh: Math.max(1500, Math.round(src.wholesaleHigh / 100) * 100),
     tradeInLow: Math.round(src.tradeInLow / 100) * 100,
     tradeInHigh: Math.round(src.tradeInHigh / 100) * 100,
     retailLow: Math.round(src.retailLow / 100) * 100,

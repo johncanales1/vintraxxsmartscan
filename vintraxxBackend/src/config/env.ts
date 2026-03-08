@@ -3,6 +3,11 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+const optionalNonEmptyString = z.preprocess(
+  value => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z.string().min(1).optional(),
+);
+
 const envSchema = z.object({
   PORT: z.string().default('3000').transform(Number),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
@@ -20,6 +25,8 @@ const envSchema = z.object({
   EMAIL_FROM_NAME: z.string().default('VinTraxx SmartScan'),
   BLACKBOOK_CUSTOMER_ID: z.string().default('test'),
   BLACKBOOK_BASE_URL: z.string().default('https://service.blackbookcloud.com/UsedCarWS/UsedCarWS'),
+  BLACKBOOK_USERNAME: optionalNonEmptyString,
+  BLACKBOOK_PASSWORD: optionalNonEmptyString,
   REPORT_VERSION: z.string().default('5.1'),
   APP_URL: z.string().url().default('https://app.vintraxx.com'),
 });

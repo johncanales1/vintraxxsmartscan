@@ -288,18 +288,18 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
 
     const cameraOptions: CameraOptions = {
       mediaType: 'photo',
-      quality: 0.6,
-      maxWidth: 1280,
-      maxHeight: 960,
+      quality: 0.3,
+      maxWidth: 800,
+      maxHeight: 600,
       saveToPhotos: false,
       includeBase64: true,
     };
 
     const libraryOptions: ImageLibraryOptions = {
       mediaType: 'photo',
-      quality: 0.6,
-      maxWidth: 1280,
-      maxHeight: 960,
+      quality: 0.3,
+      maxWidth: 800,
+      maxHeight: 600,
       selectionLimit: 1,
       includeBase64: true,
     };

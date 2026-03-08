@@ -69,13 +69,38 @@ interface BlackBookStyleData {
 // FETCH BLACK BOOK DATA BY VIN
 // ================================================================
 
+function buildBlackBookUrl(vin: string, mileage: number): string {
+  const normalizedBaseUrl = env.BLACKBOOK_BASE_URL.replace(/\/+$/, '').replace(/\/UsedVehicle$/, '');
+  return `${normalizedBaseUrl}/UsedVehicle/${encodeURIComponent('VIN')}/${encodeURIComponent(vin)}?language=${encodeURIComponent('en')}&customerid=${encodeURIComponent(env.BLACKBOOK_CUSTOMER_ID)}&mileage=${Math.round(mileage)}`;
+}
+
 export async function fetchBlackBookByVin(
   vin: string,
   mileage: number,
 ): Promise<BlackBookResult> {
-  const url = `${env.BLACKBOOK_BASE_URL}/UsedVehicle/VIN/${vin}?customerid=${env.BLACKBOOK_CUSTOMER_ID}&language=en&mileage=${Math.round(mileage)}`;
+  const url = buildBlackBookUrl(vin, mileage);
+  const hasBasicAuth = Boolean(env.BLACKBOOK_USERNAME && env.BLACKBOOK_PASSWORD);
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+  };
 
-  logger.info('Black Book API request', { vin, mileage, url: url.replace(env.BLACKBOOK_CUSTOMER_ID, '***') });
+  if (!hasBasicAuth) {
+    logger.error('Black Book credentials missing', {
+      hasUsername: Boolean(env.BLACKBOOK_USERNAME),
+      hasPassword: Boolean(env.BLACKBOOK_PASSWORD),
+    });
+    return { success: false, error: 'Black Book credentials are missing. Set BLACKBOOK_USERNAME and BLACKBOOK_PASSWORD.' };
+  }
+
+  const credentials = Buffer.from(`${env.BLACKBOOK_USERNAME}:${env.BLACKBOOK_PASSWORD}`).toString('base64');
+  headers.Authorization = `Basic ${credentials}`;
+
+  logger.info('Black Book API request', {
+    vin,
+    mileage,
+    url: url.replace(env.BLACKBOOK_CUSTOMER_ID, '***'),
+    authMode: 'basic+customerid',
+  });
 
   try {
     const controller = new AbortController();
@@ -83,16 +108,19 @@ export async function fetchBlackBookByVin(
 
     const response = await fetch(url, {
       method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
+      headers,
       signal: controller.signal,
     });
     clearTimeout(timeout);
 
     if (!response.ok) {
       const text = await response.text().catch(() => '');
-      logger.error('Black Book API HTTP error', { status: response.status, statusText: response.statusText, body: text.substring(0, 500) });
+      logger.error('Black Book API HTTP error', {
+        status: response.status,
+        statusText: response.statusText,
+        body: text.substring(0, 500),
+        authMode: 'basic+customerid',
+      });
       return { success: false, error: `Black Book API returned ${response.status}: ${response.statusText}` };
     }
 

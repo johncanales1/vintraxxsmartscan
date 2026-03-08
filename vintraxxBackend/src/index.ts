@@ -20,7 +20,7 @@ app.use(cors({
     : ['https://app.vintraxx.com', 'https://vintraxx.com', 'http://localhost:3000', 'capacitor://localhost', 'http://localhost'], 
   credentials: true 
 }));
-app.use(express.json({ limit: '15mb' }));
+app.use(express.json({ limit: '50mb' }));
 
 app.get('/api/v1/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });

@@ -169,10 +169,15 @@ export async function sendAppraisalEmail(
 
       ${appraisal.photos && appraisal.photos.length > 0 ? `
       <div class="section-title">Vehicle Photos</div>
-      <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px;">
+      <div style="margin-bottom: 20px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
         ${appraisal.photos.map((photoDataUri: string, idx: number) => `
-          <img src="${photoDataUri}" alt="Vehicle photo ${idx + 1}" style="width: 48%; max-width: 300px; height: auto; border-radius: 8px; border: 1px solid #eee;" />
+          ${idx > 0 && idx % 2 === 0 ? '</tr><tr>' : ''}
+          <td style="padding: 4px; width: 50%;">
+            <img src="cid:photo${idx}" alt="Vehicle photo ${idx + 1}" style="width: 100%; max-width: 300px; height: auto; border-radius: 8px; border: 1px solid #eee;" />
+          </td>
         `).join('')}
+        </tr></table>
       </div>
       ` : ''}
 
@@ -196,19 +201,43 @@ export async function sendAppraisalEmail(
       hasPdf: Boolean(pdfPath),
     });
 
+    // Build attachments: PDF (if any) + photo CID attachments
+    const attachments: Array<{ filename: string; path?: string; content?: Buffer; cid?: string; contentType?: string }> = [];
+
+    if (pdfPath) {
+      attachments.push({
+        filename: `VinTraxx-Appraisal-${vehicle.vin}.pdf`,
+        path: pdfPath,
+      });
+    }
+
+    // Add photos as CID attachments for inline embedding
+    if (appraisal.photos && appraisal.photos.length > 0) {
+      for (let idx = 0; idx < appraisal.photos.length; idx++) {
+        const photoDataUri = appraisal.photos[idx];
+        const base64Match = photoDataUri.match(/^data:image\/(\w+);base64,(.+)$/);
+        if (base64Match) {
+          const ext = base64Match[1] === 'jpeg' ? 'jpg' : base64Match[1];
+          attachments.push({
+            filename: `photo${idx}.${ext}`,
+            content: Buffer.from(base64Match[2], 'base64'),
+            cid: `photo${idx}`,
+            contentType: `image/${base64Match[1]}`,
+          });
+        }
+      }
+      logger.info('Email photo attachments prepared', {
+        appraisalId: appraisal.appraisalId,
+        photoAttachments: attachments.length - (pdfPath ? 1 : 0),
+      });
+    }
+
     const info = await transporter.sendMail({
       from: `"${env.EMAIL_FROM_NAME}" <${env.EMAIL_FROM}>`,
       to: toEmail,
       subject,
       html: htmlBody,
-      attachments: pdfPath
-        ? [
-            {
-              filename: `VinTraxx-Appraisal-${vehicle.vin}.pdf`,
-              path: pdfPath,
-            },
-          ]
-        : [],
+      attachments,
     });
 
     logger.info('Appraisal email sent', {

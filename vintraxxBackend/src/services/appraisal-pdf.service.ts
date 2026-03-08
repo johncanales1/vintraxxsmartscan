@@ -126,11 +126,30 @@ export async function generateAppraisalPdf(appraisal: AppraisalSummaryData): Pro
       const logoH = 40;
       const logoW = 90;
       const logoY = y + (headerH - logoH) / 2;
-      const vintraxxLogoPath = path.resolve(__dirname, '../assets/VinTraxxLOGO.jpeg');
-      const motorsLogoPath = path.resolve(__dirname, '../assets/35MotorsLOGO.jpeg');
+
+      // Try multiple paths for logo resolution (works in both dev and production)
+      const findLogoPath = (filename: string): string | null => {
+        const candidates = [
+          path.resolve(__dirname, '../assets', filename),
+          path.resolve(__dirname, '../../src/assets', filename),
+          path.resolve(process.cwd(), 'src/assets', filename),
+          path.resolve(process.cwd(), 'dist/assets', filename),
+        ];
+        for (const p of candidates) {
+          if (fs.existsSync(p)) {
+            logger.info('Logo found', { filename, path: p });
+            return p;
+          }
+        }
+        logger.warn('Logo not found in any candidate path', { filename, candidates });
+        return null;
+      };
+
+      const vintraxxLogoPath = findLogoPath('VinTraxxLOGO.jpeg');
+      const motorsLogoPath = findLogoPath('35MotorsLOGO.jpeg');
 
       try {
-        if (fs.existsSync(vintraxxLogoPath)) {
+        if (vintraxxLogoPath) {
           doc.image(vintraxxLogoPath, leftMargin + 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
         }
       } catch (logoErr) {
@@ -138,7 +157,7 @@ export async function generateAppraisalPdf(appraisal: AppraisalSummaryData): Pro
       }
 
       try {
-        if (fs.existsSync(motorsLogoPath)) {
+        if (motorsLogoPath) {
           doc.image(motorsLogoPath, leftMargin + pageWidth - logoW - 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
         }
       } catch (logoErr) {
@@ -274,6 +293,12 @@ export async function generateAppraisalPdf(appraisal: AppraisalSummaryData): Pro
       y += 70;
 
       // ============ VEHICLE PHOTOS ============
+      logger.info('PDF photo embedding check', {
+        appraisalId: appraisal.appraisalId,
+        hasPhotos: !!(appraisal.photos && appraisal.photos.length > 0),
+        photoCount: appraisal.photos?.length || 0,
+      });
+
       if (appraisal.photos && appraisal.photos.length > 0) {
         if (y + 80 > doc.page.height - 60) { doc.addPage(); y = 50; }
         doc.fontSize(13).font('Helvetica-Bold').fillColor(C.darkGray).text('Vehicle Photos', leftMargin, y);
@@ -284,8 +309,10 @@ export async function generateAppraisalPdf(appraisal: AppraisalSummaryData): Pro
         const photoW = Math.floor((pageWidth - 12) / 2);
         const photoH = 150;
         let col = 0;
+        let embeddedCount = 0;
 
-        for (const photoDataUri of appraisal.photos) {
+        for (let idx = 0; idx < appraisal.photos.length; idx++) {
+          const photoDataUri = appraisal.photos[idx];
           if (y + photoH + 10 > doc.page.height - 60) {
             doc.addPage();
             y = 50;
@@ -297,18 +324,31 @@ export async function generateAppraisalPdf(appraisal: AppraisalSummaryData): Pro
             const base64Match = photoDataUri.match(/^data:image\/\w+;base64,(.+)$/);
             if (base64Match) {
               const imgBuffer = Buffer.from(base64Match[1], 'base64');
+              logger.debug('Embedding photo in PDF', {
+                index: idx,
+                bufferSizeKB: Math.round(imgBuffer.length / 1024),
+              });
               const x = leftMargin + col * (photoW + 12);
               doc.image(imgBuffer, x, y, { width: photoW, height: photoH, fit: [photoW, photoH] });
+              embeddedCount++;
               col++;
               if (col >= 2) {
                 col = 0;
                 y += photoH + 10;
               }
+            } else {
+              logger.warn('Photo data URI format invalid, skipping', { index: idx });
             }
           } catch (photoErr) {
-            logger.warn('Failed to embed photo in PDF', { error: (photoErr as Error).message });
+            logger.warn('Failed to embed photo in PDF', { index: idx, error: (photoErr as Error).message });
           }
         }
+
+        logger.info('PDF photos embedded', {
+          appraisalId: appraisal.appraisalId,
+          attempted: appraisal.photos.length,
+          embedded: embeddedCount,
+        });
 
         if (col > 0) y += photoH + 10;
         y += 10;

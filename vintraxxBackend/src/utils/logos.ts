@@ -7,12 +7,21 @@ let motorsLogoBase64: string | null = null;
 
 function loadLogoBase64(filename: string): string | null {
   try {
-    const filePath = path.resolve(__dirname, '../assets', filename);
-    if (fs.existsSync(filePath)) {
-      const buffer = fs.readFileSync(filePath);
-      return `data:image/jpeg;base64,${buffer.toString('base64')}`;
+    // Try multiple paths for logo resolution (works in both dev and production)
+    const candidates = [
+      path.resolve(__dirname, '../assets', filename),
+      path.resolve(__dirname, '../../src/assets', filename),
+      path.resolve(process.cwd(), 'src/assets', filename),
+      path.resolve(process.cwd(), 'dist/assets', filename),
+    ];
+    for (const filePath of candidates) {
+      if (fs.existsSync(filePath)) {
+        const buffer = fs.readFileSync(filePath);
+        logger.info(`Logo loaded for email: ${filename}`, { path: filePath, sizeKB: Math.round(buffer.length / 1024) });
+        return `data:image/jpeg;base64,${buffer.toString('base64')}`;
+      }
     }
-    logger.warn(`Logo file not found: ${filePath}`);
+    logger.warn(`Logo file not found in any candidate path`, { filename, candidates });
     return null;
   } catch (error) {
     logger.warn(`Failed to load logo: ${filename}`, { error: (error as Error).message });

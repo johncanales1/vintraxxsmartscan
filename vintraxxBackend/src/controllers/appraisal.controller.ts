@@ -4,6 +4,7 @@ import { getAiValuation } from '../services/appraisal.service';
 import { fetchBlackBookByVin, mapBlackBookToValuation } from '../services/blackbook.service';
 import { generateAppraisalPdf } from '../services/appraisal-pdf.service';
 import { sendAppraisalEmail } from '../services/appraisal-email.service';
+import { processPhotosForEmbedding } from '../utils/imageCompressor';
 import { env } from '../config/env';
 import logger from '../utils/logger';
 import fs from 'fs';
@@ -203,6 +204,9 @@ export async function emailAppraisal(req: Request, res: Response, next: NextFunc
       vin: appraisalData.vehicle.vin,
     });
 
+    // Process photos for embedding (compress/validate)
+    appraisalData.photos = processPhotosForEmbedding(appraisalData.photos);
+
     // Store appraisal data if not already stored
     if (!appraisalStore.has(appraisalData.appraisalId)) {
       appraisalStore.set(appraisalData.appraisalId, appraisalData);
@@ -245,6 +249,9 @@ export async function pdfAppraisal(req: Request, res: Response, next: NextFuncti
       toEmail,
       vin: appraisalData.vehicle.vin,
     });
+
+    // Process photos for embedding (compress/validate)
+    appraisalData.photos = processPhotosForEmbedding(appraisalData.photos);
 
     // Store appraisal data if not already stored
     if (!appraisalStore.has(appraisalData.appraisalId)) {

@@ -470,6 +470,12 @@ class ApiService {
       const url = `${API_CONFIG.BASE_URL}${APPRAISAL_ENDPOINTS.EMAIL}`;
       const requestHeaders = this.getAuthHeaders();
       const reqId = `email-${Date.now()}`;
+      const requestBody = JSON.stringify({ toEmail, appraisalData });
+      const payloadSizeKB = Math.round(requestBody.length / 1024);
+      logger.info(LogCategory.APP, 'Appraisal email payload size', {
+        sizeKB: payloadSizeKB,
+        photoCount: appraisalData.photos?.length || 0,
+      });
       debugLogger.logNetworkStart(reqId, 'POST', url);
 
       let response: Response;
@@ -477,7 +483,7 @@ class ApiService {
         response = await fetch(url, {
           method: 'POST',
           headers: requestHeaders,
-          body: JSON.stringify({ toEmail, appraisalData }),
+          body: requestBody,
         });
       } catch (fetchError) {
         debugLogger.logNetworkError(reqId, fetchError);
@@ -521,6 +527,12 @@ class ApiService {
       const url = `${API_CONFIG.BASE_URL}${APPRAISAL_ENDPOINTS.PDF}`;
       const requestHeaders = this.getAuthHeaders();
       const reqId = `pdf-${Date.now()}`;
+      const requestBody = JSON.stringify({ toEmail, appraisalData });
+      const payloadSizeKB = Math.round(requestBody.length / 1024);
+      logger.info(LogCategory.APP, 'Appraisal PDF payload size', {
+        sizeKB: payloadSizeKB,
+        photoCount: appraisalData.photos?.length || 0,
+      });
       debugLogger.logNetworkStart(reqId, 'POST', url);
 
       let response: Response;
@@ -528,7 +540,7 @@ class ApiService {
         response = await fetch(url, {
           method: 'POST',
           headers: requestHeaders,
-          body: JSON.stringify({ toEmail, appraisalData }),
+          body: requestBody,
         });
       } catch (fetchError) {
         debugLogger.logNetworkError(reqId, fetchError);

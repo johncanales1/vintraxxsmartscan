@@ -556,7 +556,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
                   style={styles.scanImage}
                   resizeMode="contain"
                 />
-                <Text style={styles.scanButtonHint}>Tap to Start OBD-2 Scanner</Text>
+                <Text style={styles.scanButtonHint}>Tap to Start OBD2 Scan</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
@@ -571,7 +571,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
                   style={styles.scanImage}
                   resizeMode="contain"
                 />
-                <Text style={styles.scanButtonHint}>Tap to Start Appraiser</Text>
+                <Text style={styles.scanButtonHint}>Tap to Start Appraisal</Text>
               </TouchableOpacity>
             </View>
           )}

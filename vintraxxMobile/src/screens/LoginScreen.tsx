@@ -483,7 +483,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
             {showApiDebug && (
               <View style={styles.apiDebugContainer}>
                 <View style={styles.apiDebugHeader}>
-                  <Text style={styles.apiDebugTitle}>API Debug</Text>
+                  <Text style={styles.apiDebugTitle}>API Status</Text>
                   <TouchableOpacity
                     onPress={() => setShowApiDebug(false)}
                     disabled={isLoading}

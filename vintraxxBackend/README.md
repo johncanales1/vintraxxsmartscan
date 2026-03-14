@@ -51,7 +51,12 @@ npm start
 ```
 ### pm2 
 ```bash
-pm2 start npm --name "vintraxxBackend" -- start
+pm2 delete vintraxxBackend
+npm run build
+pm2 start npm --name "vintraxxBackend" -- run start:prod
+
+npm run build
+pm2 restart vintraxxBackend
 ``` 
 
 

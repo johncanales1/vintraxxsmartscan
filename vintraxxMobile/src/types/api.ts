@@ -61,6 +61,7 @@ export interface ScanSubmissionPayload {
   fuelSystemStatus: { system1: number; system2: number } | null;
   secondaryAirStatus: number | null;
   scanDate: string; // ISO 8601
+  stockNumber?: string;
 }
 
 export interface ScanSubmitResponse {
@@ -110,6 +111,7 @@ export interface FullReportData {
     generatedAt: string; // ISO 8601
     userEmail: string;
   };
+  stockNumber?: string;
 }
 
 export interface DtcAnalysisItem {

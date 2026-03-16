@@ -66,75 +66,57 @@ export const CodeTable: React.FC<CodeTableProps> = ({
 
   return (
     <View style={styles.container}>
-      {/* Table Header */}
-      <View style={styles.headerRow}>
-        <Text style={[styles.headerCell, styles.codeColumn]}>Code</Text>
-        <Text style={[styles.headerCell, styles.descColumn]}>Description</Text>
-        {showStatus && (
-          <Text style={[styles.headerCell, styles.statusColumn]}>Status</Text>
-        )}
-        {showCost && (
-          <Text style={[styles.headerCell, styles.costColumn]}>Est. Cost</Text>
-        )}
-      </View>
-
-      {/* Table Rows */}
+      {/* Code Cards */}
       {codes.map((code, index) => (
         <TouchableOpacity
           key={code.id}
           style={[
-            styles.row,
-            index % 2 === 1 && styles.rowAlt,
-            index === codes.length - 1 && styles.rowLast,
+            styles.codeCard,
+            index === codes.length - 1 && styles.codeCardLast,
           ]}
           onPress={() => onCodePress?.(code)}
           activeOpacity={onCodePress ? 0.7 : 1}
           disabled={!onCodePress}
         >
-          <View style={[styles.cell, styles.codeColumn]}>
+          {/* Top row: severity + code + status + cost */}
+          <View style={styles.cardTopRow}>
             <View style={styles.codeContainer}>
               <Text style={styles.severityIcon}>{getSeverityIcon(code.severity)}</Text>
               <Text style={styles.codeText}>{code.code}</Text>
             </View>
-          </View>
-          
-          <View style={[styles.cell, styles.descColumn]}>
-            <Text style={styles.descText} numberOfLines={2}>
-              {code.description}
-            </Text>
-          </View>
-          
-          {showStatus && (
-            <View style={[styles.cell, styles.statusColumn]}>
-              <View
-                style={[
-                  styles.statusBadge,
-                  { backgroundColor: getStatusColor(code.status) + '20' },
-                ]}
-              >
-                <Text
+            <View style={styles.cardTopRight}>
+              {showStatus && (
+                <View
                   style={[
-                    styles.statusText,
-                    { color: getStatusColor(code.status) },
+                    styles.statusBadge,
+                    { backgroundColor: getStatusColor(code.status) + '20' },
                   ]}
                 >
-                  {getDtcStatusLabel(code.status)}
-                </Text>
-              </View>
-            </View>
-          )}
-          
-          {showCost && (
-            <View style={[styles.cell, styles.costColumn]}>
-              {code.estimatedRepairCost ? (
-                <Text style={styles.costText}>
-                  ${code.estimatedRepairCost.min}-${code.estimatedRepairCost.max}
-                </Text>
-              ) : (
-                <Text style={styles.costTextNA}>N/A</Text>
+                  <Text
+                    style={[
+                      styles.statusText,
+                      { color: getStatusColor(code.status) },
+                    ]}
+                  >
+                    {getDtcStatusLabel(code.status)}
+                  </Text>
+                </View>
+              )}
+              {showCost && (
+                code.estimatedRepairCost ? (
+                  <Text style={styles.costText}>
+                    ${code.estimatedRepairCost.min}-${code.estimatedRepairCost.max}
+                  </Text>
+                ) : (
+                  <Text style={styles.costTextNA}>N/A</Text>
+                )
               )}
             </View>
-          )}
+          </View>
+          {/* Bottom row: full description */}
+          <Text style={styles.descText}>
+            {code.description}
+          </Text>
         </TouchableOpacity>
       ))}
     </View>
@@ -176,50 +158,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border.light,
   },
-  headerRow: {
-    flexDirection: 'row',
-    backgroundColor: colors.primary.navy,
+  codeCard: {
     paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
-  },
-  headerCell: {
-    ...typography.styles.caption,
-    color: colors.text.inverse,
-    fontWeight: typography.fontWeight.semiBold,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  row: {
-    flexDirection: 'row',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.md,
     backgroundColor: colors.background.secondary,
     borderBottomWidth: 1,
     borderBottomColor: colors.border.light,
   },
-  rowAlt: {
-    backgroundColor: colors.background.primary,
-  },
-  rowLast: {
+  codeCardLast: {
     borderBottomWidth: 0,
   },
-  cell: {
-    justifyContent: 'center',
-  },
-  codeColumn: {
-    width: 80,
-  },
-  descColumn: {
-    flex: 1,
-    paddingRight: spacing.sm,
-  },
-  statusColumn: {
-    width: 70,
+  cardTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: spacing.xs,
   },
-  costColumn: {
-    width: 80,
-    alignItems: 'flex-end',
+  cardTopRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   codeContainer: {
     flexDirection: 'row',
@@ -233,20 +191,23 @@ const styles = StyleSheet.create({
     ...typography.styles.label,
     color: colors.primary.navy,
     fontFamily: 'monospace',
+    fontSize: 15,
+    fontWeight: typography.fontWeight.bold,
   },
   descText: {
     ...typography.styles.caption,
     color: colors.text.secondary,
+    lineHeight: 18,
   },
   statusBadge: {
     paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
+    paddingVertical: 3,
     borderRadius: 10,
   },
   statusText: {
     ...typography.styles.caption,
     fontWeight: typography.fontWeight.medium,
-    fontSize: 10,
+    fontSize: 11,
   },
   costText: {
     ...typography.styles.caption,

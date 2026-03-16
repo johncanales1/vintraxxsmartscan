@@ -41,8 +41,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const [otpError, setOtpError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
-  const [apiDebugText, setApiDebugText] = useState('');
-  const [showApiDebug, setShowApiDebug] = useState(false);
+  const [showServiceStatus, setShowServiceStatus] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -79,22 +78,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   // Step 1: Check email and send OTP
   const handleEmailSubmit = useCallback(async () => {
     setErrorMessage('');
+    setShowServiceStatus(false);
     if (!email.trim()) {
       setErrorMessage('Please enter your email address.');
-      setShowApiDebug(true);
-      setApiDebugText('No API request sent: email is empty.');
       return;
     }
     if (!validateEmail(email.trim())) {
       setErrorMessage('Please enter a valid email address.');
-      setShowApiDebug(true);
-      setApiDebugText('No API request sent: email format is invalid.');
       return;
     }
-
-    authService.startApiTrace();
-    setShowApiDebug(true);
-    setApiDebugText('');
 
     setIsLoading(true);
     try {
@@ -123,8 +115,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
       logger.error(LogCategory.APP, 'Email submit error', error);
       const message = error instanceof Error ? error.message : 'Unknown error';
       setErrorMessage(message);
+      setShowServiceStatus(true);
     } finally {
-      setApiDebugText(authService.exportApiTrace());
       setIsLoading(false);
     }
   }, [email, fadeAnim, slideAnim]);
@@ -159,6 +151,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
       logger.error(LogCategory.APP, 'OTP verify error', error);
       setErrorMessage('Network error. Please check your connection.');
       setOtpError(true);
+      setShowServiceStatus(true);
     } finally {
       setIsLoading(false);
     }
@@ -204,6 +197,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
     } catch (error) {
       logger.error(LogCategory.APP, 'Password submit error', error);
       setErrorMessage('Network error. Please check your connection.');
+      setShowServiceStatus(true);
     } finally {
       setIsLoading(false);
     }
@@ -480,20 +474,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
               </View>
             )}
 
-            {showApiDebug && (
-              <View style={styles.apiDebugContainer}>
-                <View style={styles.apiDebugHeader}>
-                  <Text style={styles.apiDebugTitle}>API Status</Text>
-                  <TouchableOpacity
-                    onPress={() => setShowApiDebug(false)}
-                    disabled={isLoading}
-                  >
-                    <Text style={styles.apiDebugHide}>Hide</Text>
-                  </TouchableOpacity>
-                </View>
-                <ScrollView style={styles.apiDebugScroll} nestedScrollEnabled>
-                  <Text style={styles.apiDebugText}>{apiDebugText || 'No API trace yet.'}</Text>
-                </ScrollView>
+            {showServiceStatus && (
+              <View style={styles.serviceStatusContainer}>
+                <Text style={styles.serviceStatusText}>
+                  Service is currently updating. Please wait a moment and try again.
+                </Text>
               </View>
             )}
           </Animated.View>
@@ -699,37 +684,18 @@ const styles = StyleSheet.create({
     ...typography.styles.bodySmall,
     color: colors.status.error,
   },
-  apiDebugContainer: {
+  serviceStatusContainer: {
     marginTop: spacing.md,
     padding: spacing.md,
-    backgroundColor: colors.background.primary,
+    backgroundColor: colors.status.warningLight,
     borderRadius: spacing.inputRadius,
-    borderWidth: 1,
-    borderColor: colors.border.light,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.status.warning,
   },
-  apiDebugHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  apiDebugTitle: {
+  serviceStatusText: {
     ...typography.styles.bodySmall,
-    color: colors.text.primary,
-    fontWeight: typography.fontWeight.semiBold,
-  },
-  apiDebugHide: {
-    ...typography.styles.bodySmall,
-    color: colors.primary.navy,
-    fontWeight: typography.fontWeight.semiBold,
-  },
-  apiDebugScroll: {
-    maxHeight: 220,
-  },
-  apiDebugText: {
-    ...typography.styles.caption,
     color: colors.text.secondary,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    lineHeight: 20,
   },
   // Footer
   infoSection: {

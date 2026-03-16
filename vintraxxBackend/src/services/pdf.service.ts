@@ -149,6 +149,12 @@ export async function generatePdf(report: FullReportData): Promise<string> {
         },
       });
 
+      logger.info('Generating PDF with stock number', {
+        scanId: report.scanId,
+        stockNumber: report.stockNumber || undefined,
+        hasStockNumber: Boolean(report.stockNumber),
+      });
+
       const stream = fs.createWriteStream(filePath);
       doc.pipe(stream);
 
@@ -218,6 +224,10 @@ export async function generatePdf(report: FullReportData): Promise<string> {
         d.fontSize(9).font('Helvetica').fillColor(C.gray)
           .text(vehicleDisplay, cx, cy + 16, { width: cw })
           .text(mileageDisplay, cx, cy + 30, { width: cw });
+        if (report.stockNumber) {
+          d.fontSize(9).font('Helvetica-Bold').fillColor(C.blue)
+            .text(`Stock #: ${report.stockNumber}`, cx, cy + 44, { width: cw });
+        }
       });
 
       y += boxH + 20;

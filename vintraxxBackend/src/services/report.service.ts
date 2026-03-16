@@ -15,10 +15,11 @@ interface ReportAssemblyInput {
   distanceSinceCleared: number | null;
   userEmail: string;
   aiOutput: AiAnalysisOutput;
+  stockNumber?: string;
 }
 
 export function assembleFullReport(input: ReportAssemblyInput): FullReportData {
-  const { scanId, reportId, vin, year, make, model, mileage, milOn, distanceSinceCleared, userEmail, aiOutput } = input;
+  const { scanId, reportId, vin, year, make, model, mileage, milOn, distanceSinceCleared, userEmail, aiOutput, stockNumber } = input;
 
   const healthScore = calculateHealthScore(aiOutput, milOn);
   const overallStatus = determineOverallStatus(healthScore);
@@ -85,6 +86,7 @@ export function assembleFullReport(input: ReportAssemblyInput): FullReportData {
       generatedAt: new Date().toISOString(),
       userEmail,
     },
+    stockNumber,
   };
 
   logger.info('Report assembled', {
@@ -93,6 +95,7 @@ export function assembleFullReport(input: ReportAssemblyInput): FullReportData {
     overallStatus,
     dtcCount: dtcAnalysis.length,
     totalCost: totalEstimatedRepairCost,
+    stockNumber: stockNumber || undefined,
   });
 
   return report;

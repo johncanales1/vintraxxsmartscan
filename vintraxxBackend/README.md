@@ -57,6 +57,11 @@ pm2 start npm --name "vintraxxBackend" -- run start:prod
 
 npm run build
 pm2 restart vintraxxBackend
+
+pm2 logs - View real-time logs
+pm2 logs vintraxxBackend - View logs for specific app
+pm2 flush vintraxxBackend - Delete logs for specific app only
+pm2 delete vintraxxBackend - Delete app and its logs
 ``` 
 
 

@@ -7,6 +7,7 @@ import {
   ScrollView,
   Image,
   TouchableOpacity,
+  TextInput,
   Alert,
   Animated,
   Easing,
@@ -169,6 +170,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
   const [progressMessage, setProgressMessage] = useState('');
   const [scanError, setScanError] = useState<string | null>(null);
   const [lastScanResult, setLastScanResult] = useState<ScanResult | null>(null);
+  const savedReportRef = useRef<ConditionReport | null>(null);
   const [scanSteps, setScanSteps] = useState<ScanStep[]>([
     { id: 'connecting', label: 'Connecting', completeLabel: 'Connected', status: 'pending', progress: 0 },
     { id: 'reading_vin', label: 'Reading VIN', completeLabel: 'VIN Read', status: 'pending', progress: 0 },
@@ -182,6 +184,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
   const pulseValue2 = useRef(new Animated.Value(1)).current;
   const pulseValue3 = useRef(new Animated.Value(1)).current;
   const [cancelRequested, setCancelRequested] = useState(false);
+  const [stockNumber, setStockNumber] = useState('');
   
   // Start/stop animations based on scan status
   useEffect(() => {
@@ -258,8 +261,10 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
       setProgressMessage('');
       setScanError(null);
       setLastScanResult(null);
+      savedReportRef.current = null;
       setShowDebugModal(false);
       setCancelRequested(false);
+      setStockNumber('');
       setScanSteps([
         { id: 'connecting', label: 'Connecting', completeLabel: 'Connected', status: 'pending', progress: 0 },
         { id: 'reading_vin', label: 'Reading VIN', completeLabel: 'VIN Read', status: 'pending', progress: 0 },
@@ -352,12 +357,50 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
       setProgress(100);
       setProgressMessage('Scan complete!');
       
-      // Auto-save to history
+      // Auto-save to history only if we got meaningful data (valid VIN)
       let vehicle = selectedVehicle;
+      savedReportRef.current = null;
+      
+      const hasValidVin = result.vin.valid && result.vin.vin.length === 17;
+      const hasDtcData = result.storedDtcs.length > 0 || result.pendingDtcs.length > 0;
+      const hasMeaningfulData = hasValidVin || hasDtcData;
+      
+      if (!hasMeaningfulData) {
+        logger.warn(LogCategory.APP, 'Scan returned no meaningful data (no valid VIN, no DTCs). Skipping auto-save.', {
+          vinValid: result.vin.valid,
+          vinValue: result.vin.vin,
+          storedDtcs: result.storedDtcs.length,
+          pendingDtcs: result.pendingDtcs.length,
+        });
+      }
       
       if (!vehicle) {
         // Decode VIN to get Year/Make/Model
-        const vinInfo = result.vin.valid ? vinDecoder.decodeVIN(result.vin.vin) : null;
+        let vinInfo = result.vin.valid ? vinDecoder.decodeVIN(result.vin.vin) : null;
+        
+        // Try NHTSA remote decode for better vehicle info (model name etc.)
+        if (result.vin.valid) {
+          try {
+            const nhtsaInfo = await vinDecoder.decodeVINRemote(result.vin.vin);
+            if (nhtsaInfo.valid) {
+              vinInfo = {
+                year: nhtsaInfo.year,
+                make: nhtsaInfo.make,
+                model: nhtsaInfo.model,
+                trim: nhtsaInfo.trim,
+                valid: true,
+              };
+              logger.info(LogCategory.VIN, 'NHTSA decode successful', {
+                year: nhtsaInfo.year,
+                make: nhtsaInfo.make,
+                model: nhtsaInfo.model,
+                trim: nhtsaInfo.trim,
+              });
+            }
+          } catch (nhtsaError) {
+            logger.warn(LogCategory.VIN, 'NHTSA decode failed, using local decode', nhtsaError);
+          }
+        }
         
         vehicle = {
           id: 'vehicle-' + Date.now(),
@@ -365,6 +408,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
           year: vinInfo?.year || new Date().getFullYear(),
           make: vinInfo?.make || 'Unknown',
           model: vinInfo?.model || 'Vehicle',
+          trim: vinInfo?.trim || undefined,
           mileage: result.odometer !== null ? kmToMiles(result.odometer) : null,
           nickname: result.vin.valid ? `${vinInfo?.year || ''} ${vinInfo?.make || 'Vehicle'}`.trim() : 'Default Vehicle',
         };
@@ -374,14 +418,21 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
           year: vehicle.year,
           make: vehicle.make,
           model: vehicle.model,
+          trim: vehicle.trim,
         });
       }
       
       const report = buildReportFromScanResult(result, vehicle);
-      addSavedReport(report);
-      logger.info(LogCategory.APP, 'Report saved to history');
       
-      // Scan data will be sent to backend when user taps "View Full Report"
+      if (hasMeaningfulData) {
+        addSavedReport(report);
+        savedReportRef.current = report;
+        logger.info(LogCategory.APP, 'Report saved to history', { reportId: report.id });
+      } else {
+        // Still keep the report in memory for viewing, but don't persist
+        savedReportRef.current = report;
+        logger.info(LogCategory.APP, 'Report built but NOT saved (no meaningful data)', { reportId: report.id });
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error(LogCategory.APP, 'Scan failed', error);
@@ -458,22 +509,36 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
       Alert.alert('No Scan Data', 'Please complete a scan first.');
       return;
     }
-    const vehicle = resolveVehicle();
-    const conditionReport = buildReportFromScanResult(lastScanResult, vehicle);
-    setCurrentReport(conditionReport);
-    navigation.navigate('FullReport', { scanResult: lastScanResult, vehicle, conditionReport });
-  }, [lastScanResult, resolveVehicle, navigation, setCurrentReport]);
-
-  // Start Appraiser: navigate to trade-in appraisal screen
-  const handleStartAppraiser = useCallback(() => {
-    if (!lastScanResult) {
-      Alert.alert('No Scan Data', 'Please complete a scan first.');
+    // Validate stock number if provided (must be exactly 10 digits)
+    const trimmedStock = stockNumber.trim();
+    logger.info(LogCategory.APP, 'Full Report navigation requested', {
+      stockNumberInput: stockNumber,
+      trimmedStock,
+      isValid: trimmedStock.length === 0 || trimmedStock.length === 10,
+    });
+    if (trimmedStock.length > 0 && trimmedStock.length < 10) {
+      logger.warn(LogCategory.APP, 'Invalid stock number - not exactly 10 digits', {
+        stockNumber: trimmedStock,
+        length: trimmedStock.length,
+      });
+      Alert.alert('Invalid Stock Number', 'Stock number must be exactly 10 digits, or leave it empty.');
       return;
     }
-    const vehicle = resolveVehicle();
-    const conditionReport = buildReportFromScanResult(lastScanResult, vehicle);
-    navigation.navigate('Appraiser', { scanResult: lastScanResult, vehicle, conditionReport });
-  }, [lastScanResult, resolveVehicle, navigation]);
+    logger.info(LogCategory.APP, 'Navigating to Full Report', {
+      hasStockNumber: trimmedStock.length === 10,
+      stockNumber: trimmedStock || undefined,
+    });
+    // Reuse the saved report to avoid creating duplicate entries with different IDs
+    const conditionReport = savedReportRef.current || buildReportFromScanResult(lastScanResult, resolveVehicle());
+    const vehicle = conditionReport.vehicle;
+    setCurrentReport(conditionReport);
+    navigation.navigate('FullReport', {
+      scanResult: lastScanResult,
+      vehicle,
+      conditionReport,
+      stockNumber: trimmedStock.length === 10 ? trimmedStock : undefined,
+    });
+  }, [lastScanResult, resolveVehicle, navigation, setCurrentReport, stockNumber]);
 
   // Cancel scan
   const handleCancelScan = useCallback(() => {
@@ -557,21 +622,6 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
                   resizeMode="contain"
                 />
                 <Text style={styles.scanButtonHint}>Tap to Start OBD2 Scan</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => {
-                  logger.info(LogCategory.APP, 'Direct appraiser access from scan screen (no scan data)');
-                  navigation.push('Appraiser', {});
-                }}
-                activeOpacity={0.7}
-                style={styles.scanImageButton}
-              >
-                <Image
-                  source={require('../assets/images/scan.png')}
-                  style={styles.scanImage}
-                  resizeMode="contain"
-                />
-                <Text style={styles.scanButtonHint}>Tap to Start Appraisal</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -682,22 +732,35 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
                   fullWidth
                   style={styles.secondaryButton}
                 />
-                <Button
-                  title="Start Appraiser"
-                  onPress={handleStartAppraiser}
-                  variant="outline"
-                  size="medium"
-                  fullWidth
-                  style={styles.secondaryButton}
-                />
-                <Button
-                  title="View Debug Data"
-                  onPress={() => setShowDebugModal(true)}
-                  variant="secondary"
-                  size="medium"
-                  fullWidth
-                  style={styles.secondaryButton}
-                />
+                <View style={styles.stockNumberContainer}>
+                  <Text style={styles.stockNumberLabel}>Stock Number (Optional)</Text>
+                  <TextInput
+                    style={styles.stockNumberInput}
+                    placeholder="Enter stock number (max 10 digits)"
+                    placeholderTextColor={colors.text.muted}
+                    value={stockNumber}
+                    onChangeText={(text) => {
+                      // Allow only digits, max 10
+                      const cleaned = text.replace(/[^0-9]/g, '').slice(0, 10);
+                      logger.debug(LogCategory.APP, 'Stock number input changed', {
+                        input: text,
+                        cleaned,
+                        length: cleaned.length,
+                      });
+                      setStockNumber(cleaned);
+                    }}
+                    keyboardType="numeric"
+                    maxLength={10}
+                  />
+                  {stockNumber.length > 0 && stockNumber.length < 10 && (
+                    <Text style={styles.stockNumberHint}>
+                      {10 - stockNumber.length} more digit(s) needed
+                    </Text>
+                  )}
+                  {stockNumber.length === 10 && (
+                    <Text style={styles.stockNumberValid}>Stock number valid</Text>
+                  )}
+                </View>
               </View>
             </View>
           )}
@@ -936,5 +999,38 @@ const styles = StyleSheet.create({
   tipItem: {
     ...typography.styles.bodySmall,
     color: colors.text.secondary,
+  },
+  stockNumberContainer: {
+    width: '100%',
+    marginTop: spacing.lg,
+    backgroundColor: colors.background.secondary,
+    borderRadius: spacing.inputRadius,
+    padding: spacing.md,
+  },
+  stockNumberLabel: {
+    ...typography.styles.label,
+    color: colors.text.secondary,
+    marginBottom: spacing.sm,
+  },
+  stockNumberInput: {
+    backgroundColor: colors.background.primary,
+    borderRadius: spacing.inputRadius,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    ...typography.styles.body,
+    color: colors.text.primary,
+  },
+  stockNumberHint: {
+    ...typography.styles.caption,
+    color: colors.text.muted,
+    marginTop: spacing.xs,
+  },
+  stockNumberValid: {
+    ...typography.styles.caption,
+    color: colors.status.success,
+    marginTop: spacing.xs,
+    fontWeight: '600' as const,
   },
 });

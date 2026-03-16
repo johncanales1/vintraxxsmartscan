@@ -16,6 +16,7 @@ export interface ScanSubmissionPayload {
   fuelSystemStatus: { system1: number; system2: number } | null;
   secondaryAirStatus: number | null;
   scanDate: string;
+  stockNumber?: string;
 }
 
 export interface VinDecodeResult {
@@ -117,6 +118,7 @@ export interface FullReportData {
     generatedAt: string;
     userEmail: string;
   };
+  stockNumber?: string;
 }
 
 export interface JwtPayload {

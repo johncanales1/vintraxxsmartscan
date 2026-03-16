@@ -45,8 +45,8 @@ class ApiService {
   /**
    * Build ScanSubmissionPayload from ScanResult (matches backend exactly)
    */
-  buildScanPayload(scanResult: ScanResult): ScanSubmissionPayload {
-    return {
+  buildScanPayload(scanResult: ScanResult, stockNumber?: string): ScanSubmissionPayload {
+    const payload: ScanSubmissionPayload = {
       vin: scanResult.vin.valid ? scanResult.vin.vin : '',
       mileage: scanResult.odometer !== null ? kmToMiles(scanResult.odometer) : null,
       milStatus: {
@@ -67,6 +67,11 @@ class ApiService {
       secondaryAirStatus: scanResult.secondaryAirStatus,
       scanDate: new Date().toISOString(),
     };
+    if (stockNumber) {
+      payload.stockNumber = stockNumber;
+      logger.info(LogCategory.APP, 'Stock number included in scan payload', { stockNumber });
+    }
+    return payload;
   }
 
   /**

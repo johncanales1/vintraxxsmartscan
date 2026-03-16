@@ -107,6 +107,9 @@ export class BleManager {
   ): Promise<void> {
     logger.info(LogCategory.BLE, 'Starting BLE scan', { filterByName });
 
+    // Stop any existing scan before starting a new one
+    this.stopScan();
+
     const hasPermission = await this.requestPermissions();
     if (!hasPermission) {
       throw new Error('Bluetooth permissions not granted');
@@ -127,26 +130,35 @@ export class BleManager {
         return;
       }
 
-      if (device && device.name) {
-        const shouldInclude = !filterByName || 
-          device.name.toUpperCase().includes(filterByName.toUpperCase());
+      if (device) {
+        // Use localName (from advertisement) or name (from cache) - localName is
+        // available immediately on first discovery, while name may be null until
+        // the BLE stack caches it from a previous scan.
+        const deviceName = device.localName || device.name;
 
-        if (shouldInclude) {
-          const bleDevice: BleDevice = {
-            id: device.id,
-            name: device.name,
-            rssi: device.rssi,
-            isConnectable: device.isConnectable ?? true,
-          };
+        if (deviceName) {
+          const shouldInclude = !filterByName || 
+            deviceName.toUpperCase().includes(filterByName.toUpperCase());
 
-          this.discoveredDevices.set(device.id, bleDevice);
-          logger.debug(LogCategory.BLE, `Found device: ${device.name}`, {
-            id: device.id,
-            rssi: device.rssi,
-          });
+          if (shouldInclude) {
+            const bleDevice: BleDevice = {
+              id: device.id,
+              name: deviceName,
+              rssi: device.rssi,
+              isConnectable: device.isConnectable ?? true,
+            };
 
-          if (this.scanCallback) {
-            this.scanCallback(Array.from(this.discoveredDevices.values()));
+            this.discoveredDevices.set(device.id, bleDevice);
+            logger.debug(LogCategory.BLE, `Found device: ${deviceName}`, {
+              id: device.id,
+              rssi: device.rssi,
+              localName: device.localName,
+              name: device.name,
+            });
+
+            if (this.scanCallback) {
+              this.scanCallback(Array.from(this.discoveredDevices.values()));
+            }
           }
         }
       }

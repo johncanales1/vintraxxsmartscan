@@ -1148,18 +1148,12 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
         </View>
 
         <View style={styles.actionButtons}>
-          <TouchableOpacity style={styles.actionButtonPrimary} onPress={handleSaveAppraisal} activeOpacity={0.8}>
-            <Text style={styles.actionButtonPrimaryText}>Save Appraisal</Text>
-          </TouchableOpacity>
           <View style={styles.actionButtonRow}>
             <TouchableOpacity style={styles.actionButtonSecondary} onPress={handleEmailAppraisal} activeOpacity={0.7}>
               <Text style={styles.actionButtonSecondaryText}>Email</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionButtonSecondary} onPress={handleDashboard} activeOpacity={0.7}>
-              <Text style={styles.actionButtonSecondaryText}>Dashboard</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionButtonSecondary} onPress={handleExportPdf} activeOpacity={0.7}>
-              <Text style={styles.actionButtonSecondaryText}>PDF</Text>
+            <TouchableOpacity style={styles.actionButtonPrimary} onPress={handleSaveAppraisal} activeOpacity={0.8}>
+              <Text style={styles.actionButtonPrimaryText}>Save</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -2002,19 +1996,15 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   actionButtonPrimary: {
+    flex: 1,
     backgroundColor: colors.status.success,
-    borderRadius: 14,
-    paddingVertical: spacing.base,
+    borderRadius: 12,
+    paddingVertical: spacing.md,
     alignItems: 'center',
-    shadowColor: colors.status.success,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 4,
   },
   actionButtonPrimaryText: {
     color: colors.text.inverse,
-    fontSize: typography.fontSize.md,
+    fontSize: typography.fontSize.sm,
     fontWeight: '700',
   },
   actionButtonRow: {

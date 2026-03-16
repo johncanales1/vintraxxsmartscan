@@ -14,6 +14,7 @@ export enum LogCategory {
   STORAGE = 'STORAGE',
   APP = 'APP',
   API = 'API',
+  VIN = 'VIN',
 }
 
 interface LogEntry {

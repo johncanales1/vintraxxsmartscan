@@ -78,6 +78,7 @@ interface AppState {
   
   setSavedReports: (reports: ConditionReport[]) => void;
   addSavedReport: (report: ConditionReport) => void;
+  updateSavedReport: (reportId: string, updatedReport: ConditionReport) => void;
   removeSavedReport: (reportId: string) => void;
   
   addSavedAppraisal: (appraisal: SavedAppraisal) => void;
@@ -158,6 +159,13 @@ export const useAppStore = create<AppState>((set) => ({
   addSavedReport: (report) =>
     set((state) => ({
       savedReports: [report, ...state.savedReports],
+    })),
+
+  updateSavedReport: (reportId, updatedReport) =>
+    set((state) => ({
+      savedReports: state.savedReports.map((r) =>
+        r.id === reportId ? updatedReport : r
+      ),
     })),
 
   removeSavedReport: (reportId) =>

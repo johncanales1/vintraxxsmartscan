@@ -17,6 +17,15 @@ export async function submitScan(req: Request, res: Response, next: NextFunction
     const userId = req.user!.userId;
     const userEmail = req.user!.email;
 
+    // Validate stockNumber if provided (must be exactly 10 digits)
+    const stockNumber = payload.stockNumber?.trim();
+    if (stockNumber && (stockNumber.length !== 10 || !/^\d{10}$/.test(stockNumber))) {
+      logger.warn('Invalid stock number received', { stockNumber, length: stockNumber?.length });
+      // Don't reject the scan, just ignore invalid stock number
+    }
+    const validStockNumber = stockNumber && stockNumber.length === 10 && /^\d{10}$/.test(stockNumber)
+      ? stockNumber : undefined;
+
     const scan = await prisma.scan.create({
       data: {
         userId,
@@ -34,6 +43,7 @@ export async function submitScan(req: Request, res: Response, next: NextFunction
         fuelSystemStatus: payload.fuelSystemStatus ?? undefined,
         secondaryAirStatus: payload.secondaryAirStatus,
         milStatusByEcu: payload.milStatus.byEcu ?? undefined,
+        stockNumber: validStockNumber ?? null,
         rawPayload: payload as any,
         scanDate: new Date(payload.scanDate),
         status: 'RECEIVED',
@@ -46,6 +56,7 @@ export async function submitScan(req: Request, res: Response, next: NextFunction
       userEmail,
       vin: payload.vin,
       dtcCount: payload.milStatus?.dtcCount,
+      stockNumber: validStockNumber || undefined,
     });
 
     res.status(202).json({
@@ -174,6 +185,7 @@ async function processScanInBackground(scanId: string, userId: string, userEmail
       distanceSinceCleared: scan.distanceSinceCleared,
       userEmail,
       aiOutput,
+      stockNumber: scan.stockNumber ?? undefined,
     });
 
     // Step 4: Generate PDF
@@ -281,6 +293,7 @@ export async function getReport(req: Request, res: Response, next: NextFunction)
       distanceSinceCleared: scan.distanceSinceCleared,
       userEmail: scan.user.email,
       aiOutput,
+      stockNumber: scan.stockNumber ?? undefined,
     });
 
     res.json({ success: true, status: 'completed', data: reportData });

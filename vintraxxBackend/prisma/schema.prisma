@@ -46,6 +46,7 @@ model Scan {
   fuelSystemStatus     Json?
   secondaryAirStatus   Int?
   milStatusByEcu       Json?
+  stockNumber          String?
   rawPayload           Json
   vehicleYear          Int?
   vehicleMake          String?

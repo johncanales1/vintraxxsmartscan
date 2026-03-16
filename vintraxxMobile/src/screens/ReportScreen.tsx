@@ -736,7 +736,7 @@ const styles = StyleSheet.create({
   vehicleInfoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingVertical: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border.light,
@@ -747,11 +747,15 @@ const styles = StyleSheet.create({
   vehicleInfoLabel: {
     ...typography.styles.label,
     color: colors.text.secondary,
+    flex: 2,
+    paddingRight: spacing.sm,
   },
   vehicleInfoValue: {
     ...typography.styles.body,
     color: colors.text.primary,
     fontWeight: typography.fontWeight.medium,
+    flex: 3,
+    textAlign: 'right',
   },
   costCardsRow: {
     flexDirection: 'row',

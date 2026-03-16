@@ -4,6 +4,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ConnectScreen } from '../screens/ConnectScreen';
 import { ScanScreen } from '../screens/ScanScreen';
+import { AppraisalTabScreen } from '../screens/AppraisalTabScreen';
 import { HistoryScreen } from '../screens/HistoryScreen';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -13,6 +14,7 @@ import { TabParamList } from './types';
 // Import SVG icons
 import ConnectIcon from '../assets/icons/connect.svg';
 import ScanIcon from '../assets/icons/scan.svg';
+import WalletIcon from '../assets/icons/wallet.svg';
 import HistoryIcon from '../assets/icons/history.svg';
 
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -66,6 +68,15 @@ export const TabNavigator: React.FC = () => {
         options={{
           tabBarIcon: ({ focused }) => (
             <TabIcon focused={focused} Icon={ScanIcon} label="Scan" />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="AppraisalTab"
+        component={AppraisalTabScreen}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabIcon focused={focused} Icon={WalletIcon} label="Appraisal" />
           ),
         }}
       />

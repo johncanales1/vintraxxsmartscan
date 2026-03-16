@@ -9,6 +9,7 @@ import {
   Alert,
   Image,
   ScrollView,
+  Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
@@ -18,6 +19,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { ConditionReport } from '../models/ConditionReport';
 import { getVehicleDisplayName, formatMileage } from '../models/Vehicle';
 import { useAppStore, SavedAppraisal } from '../store/appStore';
+import { debugLogger } from '../services/debug/DebugLogger';
 
 // Import SVG icons
 import CarIcon from '../assets/icons/car.svg';
@@ -136,8 +138,13 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
         activeOpacity={0.7}
       >
         <View style={styles.cardHeader}>
-          <View style={styles.cardHeaderLeft}>
+          <View style={styles.cardHeaderTop}>
             <Text style={styles.cardDate}>{formatDate(item.date)}</Text>
+            <TouchableOpacity onPress={() => handleDeleteItem(item)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Text style={styles.deleteText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.cardBadgeRow}>
             <StatusBadge
               label={hasIssues ? 'Issues Found' : 'All Clear'}
               variant={hasIssues ? 'warning' : 'success'}
@@ -146,15 +153,11 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
                 : <CheckIcon width={12} height={12} color={colors.status.success} />
               }
               size="small"
+              style={styles.statusBadgeFixed}
             />
-          </View>
-          <View style={styles.cardHeaderRight}>
             <View style={styles.typeBadgeObd}>
               <Text style={styles.typeBadgeText}>OBD</Text>
             </View>
-            <TouchableOpacity onPress={() => handleDeleteItem(item)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Text style={styles.deleteText}>✕</Text>
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -164,7 +167,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
               <CarIcon width={24} height={24} color={colors.primary.navy} />
             </View>
             <View style={styles.vehicleInfo}>
-              <Text style={styles.vehicleName} numberOfLines={1}>
+              <Text style={styles.vehicleName} numberOfLines={2}>
                 {getVehicleDisplayName(report.vehicle)}
               </Text>
               <Text style={styles.vehicleMileage}>
@@ -208,22 +211,23 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
     return (
       <View style={styles.historyCard}>
         <View style={styles.cardHeader}>
-          <View style={styles.cardHeaderLeft}>
+          <View style={styles.cardHeaderTop}>
             <Text style={styles.cardDate}>{formatDate(item.date)}</Text>
+            <TouchableOpacity onPress={() => handleDeleteItem(item)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Text style={styles.deleteText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.cardBadgeRow}>
             <StatusBadge
               label={val.confidenceLevel.toUpperCase()}
               variant={val.confidenceLevel === 'high' ? 'success' : val.confidenceLevel === 'medium' ? 'warning' : 'error'}
               icon={<CheckIcon width={12} height={12} color={val.confidenceLevel === 'high' ? colors.status.success : colors.status.warning} />}
               size="small"
+              style={styles.statusBadgeFixed}
             />
-          </View>
-          <View style={styles.cardHeaderRight}>
             <View style={styles.typeBadgeAppraisal}>
               <Text style={styles.typeBadgeText}>Appraisal</Text>
             </View>
-            <TouchableOpacity onPress={() => handleDeleteItem(item)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Text style={styles.deleteText}>✕</Text>
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -233,7 +237,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
               <CarIcon width={24} height={24} color={colors.status.success} />
             </View>
             <View style={styles.vehicleInfo}>
-              <Text style={styles.vehicleName} numberOfLines={1}>
+              <Text style={styles.vehicleName} numberOfLines={2}>
                 {getVehicleDisplayName(appraisal.vehicle)}
               </Text>
               <Text style={styles.vehicleMileage}>
@@ -334,7 +338,19 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Scan History</Text>
+        <View style={styles.headerTitleRow}>
+          <Text style={styles.headerTitle}>Scan History</Text>
+          <TouchableOpacity
+            style={styles.logButton}
+            onPress={() => {
+              const logText = debugLogger.exportLogsAsText();
+              Share.share({ message: logText, title: 'VinTraxx Debug Log' });
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.logButtonText}>Log</Text>
+          </TouchableOpacity>
+        </View>
         <Text style={styles.headerSubtitle}>
           {totalCount} report{totalCount !== 1 ? 's' : ''} recorded
         </Text>
@@ -363,7 +379,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
           onPress={() => setFilter('appraisal')}
         >
           <Text style={[styles.filterText, filter === 'appraisal' && styles.filterTextActive]}>
-            Appraisals ({appraisalCount})
+            Appr ({appraisalCount})
           </Text>
         </TouchableOpacity>
       </View>
@@ -402,9 +418,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.screenHorizontal,
     paddingVertical: spacing.lg,
   },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   headerTitle: {
     ...typography.styles.h2,
     color: colors.primary.navy,
+  },
+  logButton: {
+    backgroundColor: colors.primary.navy,
+    borderRadius: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  logButtonText: {
+    color: colors.text.inverse,
+    fontSize: 12,
+    fontWeight: '700',
   },
   headerSubtitle: {
     ...typography.styles.body,
@@ -455,24 +487,26 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     padding: spacing.cardPadding,
     borderBottomWidth: 1,
     borderBottomColor: colors.border.light,
     backgroundColor: colors.background.primary,
   },
-  cardHeaderLeft: {
+  cardHeaderTop: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: spacing.md,
-    flex: 1,
+    marginBottom: spacing.xs,
   },
-  cardHeaderRight: {
+  cardBadgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+  },
+  statusBadgeFixed: {
+    height: 22,
+    alignSelf: 'center',
+    justifyContent: 'center',
   },
   typeBadgeObd: {
     backgroundColor: colors.primary.navy,

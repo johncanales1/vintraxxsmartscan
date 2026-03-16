@@ -33,6 +33,7 @@ interface FullReportScreenProps {
       scanResult: ScanResult;
       vehicle: Vehicle;
       conditionReport?: ConditionReport;
+      stockNumber?: string;
     };
   };
 }
@@ -40,7 +41,7 @@ interface FullReportScreenProps {
 type ProcessingStatus = 'submitting' | 'processing' | 'completed' | 'failed';
 
 export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, route }) => {
-  const { scanResult, vehicle, conditionReport } = route.params;
+  const { scanResult, vehicle, conditionReport, stockNumber } = route.params;
   const [status, setStatus] = useState<ProcessingStatus>('submitting');
   const [statusMessage, setStatusMessage] = useState('Submitting scan data...');
   const [reportData, setReportData] = useState<FullReportData | null>(null);
@@ -48,7 +49,7 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
   const [reportSaved, setReportSaved] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const isMounted = useRef(true);
-  const { addSavedReport, savedReports } = useAppStore();
+  const { updateSavedReport, savedReports } = useAppStore();
 
   useEffect(() => {
     return () => { isMounted.current = false; };
@@ -68,7 +69,7 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
     }
   }, [status, pulseAnim]);
 
-  // Auto-save report to history when AI report completes
+  // Update existing report in history when AI report completes (enriches with cost data)
   useEffect(() => {
     if (status === 'completed' && reportData && conditionReport && !reportSaved) {
       const enrichedReport: ConditionReport = {
@@ -81,14 +82,17 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
           ? reportData.repairRecommendations.slice(1).reduce((sum, r) => sum + r.estimatedCost.total, 0)
           : 0,
       };
-      const alreadySaved = savedReports.some(r => r.id === enrichedReport.id);
-      if (!alreadySaved) {
-        addSavedReport(enrichedReport);
-        logger.info(LogCategory.APP, 'Full report auto-saved to history');
+      // Update the existing report instead of adding a duplicate
+      const existingReport = savedReports.find(r => r.id === enrichedReport.id);
+      if (existingReport) {
+        updateSavedReport(enrichedReport.id, enrichedReport);
+        logger.info(LogCategory.APP, 'Existing report updated with AI data', { reportId: enrichedReport.id });
+      } else {
+        logger.info(LogCategory.APP, 'Report not found in history for update (may not have been saved)', { reportId: enrichedReport.id });
       }
       setReportSaved(true);
     }
-  }, [status, reportData, conditionReport, reportSaved, addSavedReport, savedReports]);
+  }, [status, reportData, conditionReport, reportSaved, updateSavedReport, savedReports]);
 
   // Submit and poll pipeline
   useEffect(() => {
@@ -97,8 +101,10 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
     const processReport = async () => {
       try {
         // Step 1: Build payload and submit
-        const payload = apiService.buildScanPayload(scanResult);
-        logger.info(LogCategory.APP, 'Submitting scan for full report');
+        const payload = apiService.buildScanPayload(scanResult, stockNumber);
+        logger.info(LogCategory.APP, 'Submitting scan for full report', {
+          stockNumber: stockNumber || undefined,
+        });
 
         const submitResult = await apiService.submitScan(payload);
         if (cancelled || !isMounted.current) return;
@@ -279,7 +285,7 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
 
         {/* Cost Summary */}
         <Section title="Cost Summary">
-          <View style={styles.costSummaryGrid}>
+          <View style={styles.costSummaryRow}>
             <View style={styles.costItem}>
               <Text style={styles.costItemValue}>${totalRepairCost.toLocaleString()}</Text>
               <Text style={styles.costItemLabel}>Total Cost</Text>
@@ -289,7 +295,8 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
               <Text style={styles.costItemValue}>${topRepairCost.toLocaleString()}</Text>
               <Text style={styles.costItemLabel}>Top Repair</Text>
             </View>
-            <View style={styles.costDivider} />
+          </View>
+          <View style={styles.costSummaryRow}>
             <View style={styles.costItem}>
               <Text style={styles.costItemValue}>${otherRepairsCost.toLocaleString()}</Text>
               <Text style={styles.costItemLabel}>Other Costs</Text>
@@ -540,7 +547,7 @@ const Section: React.FC<{ title: string; subtitle?: string; children: React.Reac
 const DataRow: React.FC<{ label: string; value: string; isLast?: boolean }> = ({ label, value, isLast }) => (
   <View style={[styles.dataRow, !isLast && styles.dataRowBorder]}>
     <Text style={styles.dataLabel}>{label}</Text>
-    <Text style={styles.dataValue} numberOfLines={2}>{value}</Text>
+    <Text style={styles.dataValue}>{value}</Text>
   </View>
 );
 
@@ -733,9 +740,9 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   healthScoreCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: spacing.lg,
@@ -744,14 +751,14 @@ const styles = StyleSheet.create({
   healthWarning: { backgroundColor: colors.status.warningLight, borderWidth: 3, borderColor: colors.status.warning },
   healthCritical: { backgroundColor: colors.status.errorLight, borderWidth: 3, borderColor: colors.status.error },
   healthScoreValue: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: typography.fontWeight.bold,
     color: colors.text.primary,
   },
   healthScoreLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: colors.text.muted,
-    marginTop: -4,
+    marginTop: -2,
   },
   healthScoreInfo: { flex: 1 },
   healthStatusText: {
@@ -765,7 +772,7 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.semiBold,
   },
   // Cost Summary
-  costSummaryGrid: {
+  costSummaryRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
@@ -774,13 +781,14 @@ const styles = StyleSheet.create({
   costItem: {
     flex: 1,
     alignItems: 'center',
-    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
   },
   costItemValue: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: typography.fontWeight.bold,
     color: colors.primary.navy,
-    marginBottom: 2,
+    marginBottom: 4,
   },
   costItemLabel: {
     ...typography.styles.caption,
@@ -788,7 +796,7 @@ const styles = StyleSheet.create({
   },
   costDivider: {
     width: 1,
-    height: 36,
+    height: 40,
     backgroundColor: colors.border.light,
   },
   // Summary
@@ -801,7 +809,7 @@ const styles = StyleSheet.create({
   dataRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingVertical: spacing.sm,
   },
   dataRowBorder: {
@@ -811,14 +819,16 @@ const styles = StyleSheet.create({
   dataLabel: {
     ...typography.styles.caption,
     color: colors.text.secondary,
-    flex: 1,
+    flex: 2,
+    paddingRight: spacing.sm,
   },
   dataValue: {
     fontSize: 14,
     fontWeight: typography.fontWeight.medium,
     color: colors.text.primary,
-    flex: 1,
+    flex: 3,
     textAlign: 'right',
+    flexWrap: 'wrap',
   },
   // Code rows (DTC codes from scan)
   codeRow: {

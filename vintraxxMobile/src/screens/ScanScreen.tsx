@@ -509,23 +509,23 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
       Alert.alert('No Scan Data', 'Please complete a scan first.');
       return;
     }
-    // Validate stock number if provided (must be exactly 10 digits)
+    // Validate stock number if provided (up to 20 digits, or empty)
     const trimmedStock = stockNumber.trim();
     logger.info(LogCategory.APP, 'Full Report navigation requested', {
       stockNumberInput: stockNumber,
       trimmedStock,
-      isValid: trimmedStock.length === 0 || trimmedStock.length === 10,
+      isValid: trimmedStock.length === 0 || trimmedStock.length <= 20,
     });
-    if (trimmedStock.length > 0 && trimmedStock.length < 10) {
-      logger.warn(LogCategory.APP, 'Invalid stock number - not exactly 10 digits', {
+    if (trimmedStock.length > 20) {
+      logger.warn(LogCategory.APP, 'Invalid stock number - exceeds 20 digits', {
         stockNumber: trimmedStock,
         length: trimmedStock.length,
       });
-      Alert.alert('Invalid Stock Number', 'Stock number must be exactly 10 digits, or leave it empty.');
+      Alert.alert('Invalid Stock Number', 'Stock number must be 20 digits or fewer.');
       return;
     }
     logger.info(LogCategory.APP, 'Navigating to Full Report', {
-      hasStockNumber: trimmedStock.length === 10,
+      hasStockNumber: trimmedStock.length > 0,
       stockNumber: trimmedStock || undefined,
     });
     // Reuse the saved report to avoid creating duplicate entries with different IDs
@@ -536,7 +536,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
       scanResult: lastScanResult,
       vehicle,
       conditionReport,
-      stockNumber: trimmedStock.length === 10 ? trimmedStock : undefined,
+      stockNumber: trimmedStock.length > 0 ? trimmedStock : undefined,
     });
   }, [lastScanResult, resolveVehicle, navigation, setCurrentReport, stockNumber]);
 
@@ -736,12 +736,12 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
                   <Text style={styles.stockNumberLabel}>Stock Number (Optional)</Text>
                   <TextInput
                     style={styles.stockNumberInput}
-                    placeholder="Enter stock number (max 10 digits)"
+                    placeholder="Enter stock number (up to 20 digits)"
                     placeholderTextColor={colors.text.muted}
                     value={stockNumber}
                     onChangeText={(text) => {
-                      // Allow only digits, max 10
-                      const cleaned = text.replace(/[^0-9]/g, '').slice(0, 10);
+                      // Allow only digits, max 20
+                      const cleaned = text.replace(/[^0-9]/g, '').slice(0, 20);
                       logger.debug(LogCategory.APP, 'Stock number input changed', {
                         input: text,
                         cleaned,
@@ -750,15 +750,12 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
                       setStockNumber(cleaned);
                     }}
                     keyboardType="numeric"
-                    maxLength={10}
+                    maxLength={20}
                   />
-                  {stockNumber.length > 0 && stockNumber.length < 10 && (
-                    <Text style={styles.stockNumberHint}>
-                      {10 - stockNumber.length} more digit(s) needed
+                  {stockNumber.length > 0 && (
+                    <Text style={styles.stockNumberValid}>
+                      {stockNumber.length}/20 digit{stockNumber.length !== 1 ? 's' : ''}
                     </Text>
-                  )}
-                  {stockNumber.length === 10 && (
-                    <Text style={styles.stockNumberValid}>Stock number valid</Text>
                   )}
                 </View>
               </View>

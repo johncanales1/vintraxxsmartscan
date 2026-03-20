@@ -327,8 +327,60 @@ export function parseDTCs(rawResponse: string, mode: '03' | '07' | '0A' = '03'):
       }
     }
 
+    // Group all frames by ECU and reassemble ISO-TP multi-frame responses
+    const ecuGrouped: Record<string, string[][]> = {};
+    for (const resp of ecuResponses) {
+      if (!ecuGrouped[resp.ecu]) ecuGrouped[resp.ecu] = [];
+      ecuGrouped[resp.ecu].push(resp.bytes);
+    }
+
+    // Reassemble: merge first-frame + continuation-frame data for each ECU
+    const reassembled: Array<{ ecu: string; bytes: string[] }> = [];
+    for (const [ecu, frames] of Object.entries(ecuGrouped)) {
+      if (frames.length === 1) {
+        // Single-frame response
+        const fb = frames[0];
+        const firstByteVal = parseInt(fb[0], 16);
+        if ((firstByteVal & 0xF0) === 0x00 && fb.length > 1) {
+          // Single frame: first nibble 0, low nibble = payload length
+          reassembled.push({ ecu, bytes: fb.slice(1) });
+        } else {
+          reassembled.push({ ecu, bytes: fb });
+        }
+      } else {
+        // Multi-frame ISO-TP: first byte of first frame starts with 1x
+        const firstFrame = frames[0];
+        const firstByteVal = parseInt(firstFrame[0], 16);
+        if ((firstByteVal & 0xF0) === 0x10) {
+          // First Frame: bytes [10 LL] [data...]
+          // Skip first 2 bytes (PCI: type + length)
+          const payload: string[] = firstFrame.slice(2);
+          // Continuation frames: first byte is 2x (sequence), skip it
+          for (let fi = 1; fi < frames.length; fi++) {
+            const cf = frames[fi];
+            const cfFirstByte = parseInt(cf[0], 16);
+            if ((cfFirstByte & 0xF0) === 0x20) {
+              // Strip sequence byte, add remaining data (skip padding AA bytes)
+              for (let bi = 1; bi < cf.length; bi++) {
+                if (cf[bi] !== 'AA') {
+                  payload.push(cf[bi]);
+                }
+              }
+            } else {
+              payload.push(...cf);
+            }
+          }
+          reassembled.push({ ecu, bytes: payload });
+          logger.info(LogCategory.OBD, `Reassembled multi-frame for ECU ${ecu}`, { bytes: payload.join(' ') });
+        } else {
+          // Not ISO-TP multi-frame, just use first frame
+          reassembled.push({ ecu, bytes: firstFrame });
+        }
+      }
+    }
+
     // Prefer 7E8 (primary ECU) if available
-    const preferredEcu = ecuResponses.find(r => r.ecu === '7E8') || ecuResponses[0];
+    const preferredEcu = reassembled.find(r => r.ecu === '7E8') || reassembled[0];
     
     if (!preferredEcu) {
       logger.warn(LogCategory.OBD, 'No valid ECU responses found');
@@ -500,6 +552,12 @@ function getDTCDescription(code: string): string {
     'P0725': 'Engine Speed Input Circuit Malfunction',
     'P0730': 'Incorrect Gear Ratio',
     'P0740': 'Torque Converter Clutch Circuit Malfunction',
+    'P0351': 'Ignition Coil A Primary/Secondary Circuit',
+    'P0352': 'Ignition Coil B Primary/Secondary Circuit',
+    'P0353': 'Ignition Coil C Primary/Secondary Circuit',
+    'P0354': 'Ignition Coil D Primary/Secondary Circuit',
+    'P0355': 'Ignition Coil E Primary/Secondary Circuit',
+    'P0356': 'Ignition Coil F Primary/Secondary Circuit',
     
     // Common Chassis codes
     'C0035': 'Left Front Wheel Speed Circuit Malfunction',

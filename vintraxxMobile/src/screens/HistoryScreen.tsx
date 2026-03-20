@@ -289,35 +289,34 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
         </View>
 
         <View style={styles.cardFooter}>
-          <View style={styles.statItem}>
-            <Text style={styles.statLabel}>Wholesale</Text>
-            <Text style={[styles.statValue]}>
-              {formatCurrency(val.estimatedWholesaleLow)}
-            </Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statLabel}>Trade-In</Text>
-            <Text style={[styles.statValue, styles.statValueSuccess]}>
-              {formatCurrency(val.estimatedTradeInLow)}
-            </Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statLabel}>Retail</Text>
-            <Text style={[styles.statValue]}>
-              {formatCurrency(val.estimatedRetailLow)}
-            </Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statLabel}>Trend</Text>
-            <Text style={[styles.statValue, {
-              color: val.marketTrend === 'appreciating' ? colors.status.success :
-                val.marketTrend === 'stable' ? colors.status.info : colors.status.warning,
-            }]}>
-              {val.marketTrend.charAt(0).toUpperCase() + val.marketTrend.slice(1)}
-            </Text>
+          <View style={styles.footerGrid}>
+            <View style={styles.footerGridItem}>
+              <Text style={styles.footerLabel}>Wholesale</Text>
+              <Text style={styles.footerValue} numberOfLines={1} adjustsFontSizeToFit>
+                {formatCurrency(val.estimatedWholesaleLow)} – {formatCurrency(val.estimatedWholesaleHigh)}
+              </Text>
+            </View>
+            <View style={styles.footerGridItem}>
+              <Text style={styles.footerLabel}>Trade-In</Text>
+              <Text style={[styles.footerValue, styles.footerValueSuccess]} numberOfLines={1} adjustsFontSizeToFit>
+                {formatCurrency(val.estimatedTradeInLow)} – {formatCurrency(val.estimatedTradeInHigh)}
+              </Text>
+            </View>
+            <View style={styles.footerGridItem}>
+              <Text style={styles.footerLabel}>Retail</Text>
+              <Text style={styles.footerValue} numberOfLines={1} adjustsFontSizeToFit>
+                {formatCurrency(val.estimatedRetailLow)} – {formatCurrency(val.estimatedRetailHigh)}
+              </Text>
+            </View>
+            <View style={styles.footerGridItem}>
+              <Text style={styles.footerLabel}>Trend</Text>
+              <Text style={[styles.footerValue, {
+                color: val.marketTrend === 'appreciating' ? colors.status.success :
+                  val.marketTrend === 'stable' ? colors.status.info : colors.status.warning,
+              }]} numberOfLines={1}>
+                {val.marketTrend.charAt(0).toUpperCase() + val.marketTrend.slice(1)}
+              </Text>
+            </View>
           </View>
         </View>
       </View>
@@ -574,14 +573,14 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
   },
   appraisalValueAmount: {
-    ...typography.styles.label,
-    color: colors.status.success,
+    fontSize: 14,
     fontWeight: typography.fontWeight.bold,
+    color: colors.status.success,
   },
   appraisalValueAmountSecondary: {
-    ...typography.styles.caption,
-    color: colors.text.primary,
+    fontSize: 13,
     fontWeight: typography.fontWeight.semiBold,
+    color: colors.text.primary,
   },
   photoRow: {
     marginTop: spacing.md,
@@ -599,12 +598,34 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   cardFooter: {
-    flexDirection: 'row',
     backgroundColor: colors.background.primary,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.cardPadding,
     borderTopWidth: 1,
     borderTopColor: colors.border.light,
+  },
+  footerGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  footerGridItem: {
+    width: '50%',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.xs,
+  },
+  footerLabel: {
+    ...typography.styles.caption,
+    color: colors.text.muted,
+    marginBottom: 2,
+  },
+  footerValue: {
+    fontSize: 13,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.text.primary,
+  },
+  footerValueSuccess: {
+    color: colors.status.success,
+    fontWeight: typography.fontWeight.bold,
   },
   statItem: {
     flex: 1,
@@ -616,7 +637,8 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   statValue: {
-    ...typography.styles.label,
+    ...typography.styles.caption,
+    fontWeight: typography.fontWeight.semiBold,
     color: colors.text.primary,
   },
   statValueCost: {

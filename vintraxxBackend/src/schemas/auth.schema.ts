@@ -23,6 +23,8 @@ export const registerSchema = z.object({
   body: z.object({
     email: z.string().email('Invalid email address'),
     password: z.string().min(8, 'Password must be at least 8 characters'),
+    isDealer: z.boolean().optional(),
+    pricePerLaborHour: z.number().positive().optional(),
   }),
 });
 
@@ -30,5 +32,7 @@ export const loginSchema = z.object({
   body: z.object({
     email: z.string().email('Invalid email address'),
     password: z.string().min(1, 'Password is required'),
+    isDealer: z.boolean().optional(),
+    pricePerLaborHour: z.number().positive().optional(),
   }),
 });

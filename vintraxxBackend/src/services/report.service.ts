@@ -1,4 +1,4 @@
-import { AiAnalysisOutput, FullReportData } from '../types';
+import { AiAnalysisOutput, FullReportData, AdditionalRepairItem } from '../types';
 import { truncateString } from '../utils/helpers';
 import { env } from '../config/env';
 import logger from '../utils/logger';
@@ -16,10 +16,12 @@ interface ReportAssemblyInput {
   userEmail: string;
   aiOutput: AiAnalysisOutput;
   stockNumber?: string;
+  additionalRepairs?: AdditionalRepairItem[];
+  additionalRepairsTotalCost?: number;
 }
 
 export function assembleFullReport(input: ReportAssemblyInput): FullReportData {
-  const { scanId, reportId, vin, year, make, model, mileage, milOn, distanceSinceCleared, userEmail, aiOutput, stockNumber } = input;
+  const { scanId, reportId, vin, year, make, model, mileage, milOn, distanceSinceCleared, userEmail, aiOutput, stockNumber, additionalRepairs, additionalRepairsTotalCost } = input;
 
   const healthScore = calculateHealthScore(aiOutput, milOn);
   const overallStatus = determineOverallStatus(healthScore);
@@ -87,6 +89,9 @@ export function assembleFullReport(input: ReportAssemblyInput): FullReportData {
       userEmail,
     },
     stockNumber,
+    additionalRepairs: additionalRepairs || undefined,
+    additionalRepairsTotalCost: additionalRepairsTotalCost || 0,
+    grandTotalCost: totalEstimatedRepairCost + (additionalRepairsTotalCost || 0),
   };
 
   logger.info('Report assembled', {

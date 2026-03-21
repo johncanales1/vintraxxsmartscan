@@ -92,9 +92,25 @@ export async function sendReportEmail(
       <div style="text-align: center; margin: 20px 0;">
         <div class="stat" style="width: 92%;">
           <div class="stat-value">${formatCurrency(totalEstimatedRepairCost)}</div>
-          <div class="stat-label">Total Estimated Repair Cost</div>
+          <div class="stat-label">DTC Repair Cost</div>
         </div>
       </div>
+      ${report.additionalRepairs && report.additionalRepairs.length > 0 ? `
+      <div style="text-align: center; margin: 20px 0;">
+        <div class="stat" style="width: 92%;">
+          <div class="stat-value">${formatCurrency(report.additionalRepairsTotalCost || 0)}</div>
+          <div class="stat-label">Additional Repairs Cost</div>
+        </div>
+      </div>
+      ${report.grandTotalCost !== undefined ? `
+      <div style="text-align: center; margin: 20px 0;">
+        <div class="stat" style="width: 92%; background: #1a1a2e; color: #fff;">
+          <div class="stat-value" style="color: #fff;">${formatCurrency(report.grandTotalCost)}</div>
+          <div class="stat-label" style="color: #ccc;">Grand Total</div>
+        </div>
+      </div>
+      ` : ''}
+      ` : ''}
       <p style="text-align: center; margin-top: 20px;">${pdfNote}</p>
     </div>
     <div class="footer">

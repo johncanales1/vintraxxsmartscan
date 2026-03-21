@@ -23,11 +23,11 @@ export const spacing = {
 
   // Button
   buttonPadding: 16,
-  buttonRadius: 6,
+  buttonRadius: 12,
 
   // Input
   inputPadding: 14,
-  inputRadius: 8,
+  inputRadius: 12,
 };
 
 export type Spacing = typeof spacing;

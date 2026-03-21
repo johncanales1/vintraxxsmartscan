@@ -21,7 +21,7 @@ export type RootStackParamList = {
     params?: TabParamList[keyof TabParamList];
   } | undefined;
   Report: { report?: ConditionReport };
-  FullReport: { scanResult: ScanResult; vehicle: Vehicle; conditionReport?: ConditionReport; stockNumber?: string };
+  FullReport: { scanResult: ScanResult; vehicle: Vehicle; conditionReport?: ConditionReport; stockNumber?: string; additionalRepairs?: string[] };
   FullReportView: { reportData: FullReportData };
   Appraiser: { scanResult?: ScanResult; vehicle?: Vehicle; conditionReport?: ConditionReport } | undefined;
   VinScanner: { onVinScanned: (vin: string) => void };

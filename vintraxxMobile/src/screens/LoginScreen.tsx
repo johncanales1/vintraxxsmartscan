@@ -42,6 +42,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const [errorMessage, setErrorMessage] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
   const [showServiceStatus, setShowServiceStatus] = useState(false);
+  const [wantDealer, setWantDealer] = useState(false);
+  const [pricePerLaborHour, setPricePerLaborHour] = useState('');
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -176,17 +178,26 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
       return;
     }
 
+    // Validate dealer price if dealer mode is selected
+    const dealerPrice = wantDealer && pricePerLaborHour.trim()
+      ? parseFloat(pricePerLaborHour.trim())
+      : undefined;
+    if (wantDealer && (!dealerPrice || isNaN(dealerPrice) || dealerPrice <= 0)) {
+      setErrorMessage('Please enter a valid price per labor hour.');
+      return;
+    }
+
     setIsLoading(true);
     try {
       let response;
       if (isRegistered) {
-        response = await authService.login(email.trim(), password);
+        response = await authService.login(email.trim(), password, wantDealer || undefined, dealerPrice);
       } else {
-        response = await authService.register(email.trim(), password);
+        response = await authService.register(email.trim(), password, wantDealer || undefined, dealerPrice);
       }
 
       if (response.success && response.user) {
-        logger.info(LogCategory.APP, `${isRegistered ? 'Login' : 'Registration'} successful`);
+        logger.info(LogCategory.APP, `${isRegistered ? 'Login' : 'Registration'} successful, isDealer: ${response.user.isDealer}`);
         // Update Zustand store - RootNavigator will reactively show the correct screen
         setUser(response.user);
         setIsAuthenticated(true);
@@ -201,7 +212,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [password, confirmPassword, isRegistered, email, navigation, setUser, setIsAuthenticated]);
+  }, [password, confirmPassword, isRegistered, email, navigation, setUser, setIsAuthenticated, wantDealer, pricePerLaborHour]);
 
   // Resend OTP
   const handleResendOtp = useCallback(async () => {
@@ -454,6 +465,34 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
                   </Text>
                 )}
 
+                {/* Dealer price per labor hour input - shown when dealer mode is active */}
+                {wantDealer && (
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.inputLabel}>Price Per Labor Hour ($)</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="e.g. 195"
+                      placeholderTextColor={colors.text.light}
+                      value={pricePerLaborHour}
+                      onChangeText={(text) => { setPricePerLaborHour(text.replace(/[^0-9.]/g, '')); setErrorMessage(''); }}
+                      keyboardType="decimal-pad"
+                      editable={!isLoading}
+                      returnKeyType="done"
+                    />
+                  </View>
+                )}
+
+                {/* Dealer toggle link */}
+                <TouchableOpacity
+                  onPress={() => setWantDealer(!wantDealer)}
+                  style={styles.dealerLinkContainer}
+                  disabled={isLoading}
+                >
+                  <Text style={styles.dealerLinkText}>
+                    {wantDealer ? 'Sign in as Regular User' : 'Do you want to sign in as Dealer?'}
+                  </Text>
+                </TouchableOpacity>
+
                 <Button
                   title={isRegistered ? 'Sign In' : 'Create Account'}
                   onPress={handlePasswordSubmit}
@@ -663,6 +702,18 @@ const styles = StyleSheet.create({
   },
   resendLinkDisabled: {
     color: colors.text.muted,
+  },
+  // Dealer link
+  dealerLinkContainer: {
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  dealerLinkText: {
+    ...typography.styles.bodySmall,
+    color: colors.primary.navy,
+    fontWeight: typography.fontWeight.semiBold,
+    textDecorationLine: 'underline' as const,
   },
   // Password hints
   passwordHint: {

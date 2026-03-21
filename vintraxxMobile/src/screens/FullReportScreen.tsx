@@ -34,6 +34,7 @@ interface FullReportScreenProps {
       vehicle: Vehicle;
       conditionReport?: ConditionReport;
       stockNumber?: string;
+      additionalRepairs?: string[];
     };
   };
 }
@@ -41,7 +42,7 @@ interface FullReportScreenProps {
 type ProcessingStatus = 'submitting' | 'processing' | 'completed' | 'failed';
 
 export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, route }) => {
-  const { scanResult, vehicle, conditionReport, stockNumber } = route.params;
+  const { scanResult, vehicle, conditionReport, stockNumber, additionalRepairs } = route.params;
   const [status, setStatus] = useState<ProcessingStatus>('submitting');
   const [statusMessage, setStatusMessage] = useState('Submitting scan data...');
   const [reportData, setReportData] = useState<FullReportData | null>(null);
@@ -49,7 +50,7 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
   const [reportSaved, setReportSaved] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const isMounted = useRef(true);
-  const { updateSavedReport, savedReports } = useAppStore();
+  const { updateSavedReport, savedReports, selectedBleDevice } = useAppStore();
 
   useEffect(() => {
     return () => { isMounted.current = false; };
@@ -101,9 +102,12 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
     const processReport = async () => {
       try {
         // Step 1: Build payload and submit
-        const payload = apiService.buildScanPayload(scanResult, stockNumber);
+        const scannerDeviceId = selectedBleDevice?.id || undefined;
+        const payload = apiService.buildScanPayload(scanResult, stockNumber, additionalRepairs, scannerDeviceId);
         logger.info(LogCategory.APP, 'Submitting scan for full report', {
           stockNumber: stockNumber || undefined,
+          additionalRepairs: additionalRepairs || [],
+          scannerDeviceId: scannerDeviceId || undefined,
         });
 
         const submitResult = await apiService.submitScan(payload);
@@ -408,6 +412,38 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
                 </View>
               </View>
             ))}
+          </Section>
+        )}
+
+        {/* Additional Repairs (from AI) */}
+        {reportData.additionalRepairs && reportData.additionalRepairs.length > 0 && (
+          <Section title="Additional Repairs" subtitle={`${reportData.additionalRepairs.length} item(s)`}>
+            {reportData.additionalRepairs.map((repair, i) => (
+              <View key={i} style={[styles.repairCard, i < (reportData.additionalRepairs?.length || 0) - 1 && styles.repairCardSpaced]}>
+                <Text style={styles.repairTitle}>{repair.name}</Text>
+                <Text style={styles.repairDesc}>{repair.description}</Text>
+                <View style={styles.repairCosts}>
+                  <Text style={styles.repairCostItem}>Labor ({repair.laborHours}h): ${repair.laborCost.toLocaleString()}</Text>
+                  <Text style={styles.repairCostItem}>Parts: ${repair.partsCost.toLocaleString()}</Text>
+                  <Text style={styles.repairCostTotal}>Total: ${repair.totalCost.toLocaleString()}</Text>
+                </View>
+              </View>
+            ))}
+            <View style={[styles.costSummaryRow, { marginTop: 8, borderTopWidth: 1, borderTopColor: colors.border.light, paddingTop: 8 }]}>
+              <View style={styles.costItem}>
+                <Text style={styles.costItemValue}>${(reportData.additionalRepairsTotalCost || 0).toLocaleString()}</Text>
+                <Text style={styles.costItemLabel}>Additional Total</Text>
+              </View>
+              {reportData.grandTotalCost !== undefined && (
+                <>
+                  <View style={styles.costDivider} />
+                  <View style={styles.costItem}>
+                    <Text style={styles.costItemValue}>${reportData.grandTotalCost.toLocaleString()}</Text>
+                    <Text style={styles.costItemLabel}>Grand Total</Text>
+                  </View>
+                </>
+              )}
+            </View>
           </Section>
         )}
 

@@ -1,56 +1,56 @@
 // VinTraxx SmartScan Theme Colors
-// Based on brand logo: Dark Navy Blue + Deep Red
+// Clean modern palette: White, Red, Blue / Light Blue
 
 export const colors = {
   // Primary Brand Colors
   primary: {
-    navy: '#1A3A5C',      // Main dark blue from "Traxx" / "SMARTSCAN"
-    navyDark: '#122940',  // Darker variant
-    navyLight: '#2A4A6C', // Lighter variant
-    red: '#C41E3A',       // Deep red from "Vin"
-    redDark: '#A01830',   // Darker red
-    redLight: '#D43850',  // Lighter red
+    navy: '#1E3A5F',      // Rich blue
+    navyDark: '#152D4A',  // Darker variant
+    navyLight: '#2B5A8C', // Lighter variant
+    red: '#DC2626',       // Clean red accent
+    redDark: '#B91C1C',   // Darker red
+    redLight: '#EF4444',  // Lighter red
   },
 
   // UI Colors
   background: {
-    primary: '#BADBFF',   // Light blue background
+    primary: '#F0F6FF',   // Very light blue-white tint
     secondary: '#FFFFFF', // White cards
-    dark: '#1A3A5C',      // Dark header/footer
-    tab: '#D5E9FF',       // Tab bar background
+    dark: '#1E3A5F',      // Dark header/footer
+    tab: '#FFFFFF',       // Clean white tab bar
   },
 
   // Text Colors
   text: {
-    primary: '#1A202C',   // Dark text
-    secondary: '#4A5568', // Gray text
-    muted: '#4b6996ff',     // Muted text
-    light: '#A0AEC0',     // Light gray text
+    primary: '#111827',   // Near-black text
+    secondary: '#4B5563', // Gray text
+    muted: '#9CA3AF',     // Muted text
+    light: '#D1D5DB',     // Light gray text
     inverse: '#FFFFFF',   // White text on dark backgrounds
   },
 
   // Status Colors
   status: {
-    success: '#38A169',   // Green - passed/connected
-    successLight: '#C6F6D5',
-    warning: '#D69E2E',   // Yellow/Orange - warning
-    warningLight: '#FEFCBF',
-    error: '#E53E3E',     // Red - error/failed
-    errorLight: '#FED7D7',
-    info: '#3182CE',      // Blue - info
-    infoLight: '#BEE3F8',
+    success: '#16A34A',   // Green - passed/connected
+    successLight: '#DCFCE7',
+    warning: '#D97706',   // Amber - warning
+    warningLight: '#FEF3C7',
+    error: '#DC2626',     // Red - error/failed
+    errorLight: '#FEE2E2',
+    info: '#2563EB',      // Blue - info
+    infoLight: '#DBEAFE',
   },
 
   // Border Colors
   border: {
-    light: '#E2E8F0',
-    medium: '#CBD5E0',
-    dark: '#A0AEC0',
+    light: '#E5E7EB',
+    medium: '#D1D5DB',
+    dark: '#9CA3AF',
   },
 
   // Shadow (for elevation effects)
-  shadow: 'rgba(0, 0, 0, 0.1)',
-  shadowDark: 'rgba(0, 0, 0, 0.2)',
+  shadow: 'rgba(0, 0, 0, 0.08)',
+  shadowDark: 'rgba(0, 0, 0, 0.15)',
 };
 
 export type Colors = typeof colors;

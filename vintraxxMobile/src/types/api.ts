@@ -23,6 +23,8 @@ export interface VerifyOtpResponse {
 export interface AuthUser {
   id: string;
   email: string;
+  isDealer?: boolean;
+  pricePerLaborHour?: number | null;
 }
 
 export interface RegisterResponse {
@@ -30,6 +32,15 @@ export interface RegisterResponse {
   user: AuthUser;
   token: string;
   message?: string;
+}
+
+export interface AdditionalRepairItem {
+  name: string;
+  description: string;
+  laborHours: number;
+  laborCost: number;
+  partsCost: number;
+  totalCost: number;
 }
 
 export interface LoginResponse {
@@ -62,6 +73,8 @@ export interface ScanSubmissionPayload {
   secondaryAirStatus: number | null;
   scanDate: string; // ISO 8601
   stockNumber?: string;
+  additionalRepairs?: string[];
+  scannerDeviceId?: string;
 }
 
 export interface ScanSubmitResponse {
@@ -92,6 +105,9 @@ export interface FullReportData {
     summary: string;
   };
   totalEstimatedRepairCost: number;
+  additionalRepairs?: AdditionalRepairItem[];
+  additionalRepairsTotalCost?: number;
+  grandTotalCost?: number;
   aiSummary: string;
   codesLastReset: {
     distanceMiles: number | null;

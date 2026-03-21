@@ -185,6 +185,8 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
   const pulseValue3 = useRef(new Animated.Value(1)).current;
   const [cancelRequested, setCancelRequested] = useState(false);
   const [stockNumber, setStockNumber] = useState('');
+  const [showAdditionalRepairs, setShowAdditionalRepairs] = useState(false);
+  const [selectedAdditionalRepairs, setSelectedAdditionalRepairs] = useState<string[]>([]);
   
   // Start/stop animations based on scan status
   useEffect(() => {
@@ -265,6 +267,8 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
       setShowDebugModal(false);
       setCancelRequested(false);
       setStockNumber('');
+      setShowAdditionalRepairs(false);
+      setSelectedAdditionalRepairs([]);
       setScanSteps([
         { id: 'connecting', label: 'Connecting', completeLabel: 'Connected', status: 'pending', progress: 0 },
         { id: 'reading_vin', label: 'Reading VIN', completeLabel: 'VIN Read', status: 'pending', progress: 0 },
@@ -537,8 +541,9 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
       vehicle,
       conditionReport,
       stockNumber: trimmedStock.length > 0 ? trimmedStock : undefined,
+      additionalRepairs: selectedAdditionalRepairs.length > 0 ? selectedAdditionalRepairs : undefined,
     });
-  }, [lastScanResult, resolveVehicle, navigation, setCurrentReport, stockNumber]);
+  }, [lastScanResult, resolveVehicle, navigation, setCurrentReport, stockNumber, selectedAdditionalRepairs]);
 
   // Cancel scan
   const handleCancelScan = useCallback(() => {
@@ -732,6 +737,55 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
                   fullWidth
                   style={styles.secondaryButton}
                 />
+
+                {/* Additional Repairs Toggle */}
+                <View style={styles.additionalRepairsContainer}>
+                  <TouchableOpacity
+                    style={styles.additionalRepairsToggle}
+                    onPress={() => setShowAdditionalRepairs(!showAdditionalRepairs)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.additionalRepairsToggleText}>Additional Repairs</Text>
+                    <View style={[styles.toggleSwitch, showAdditionalRepairs && styles.toggleSwitchOn]}>
+                      <View style={[styles.toggleKnob, showAdditionalRepairs && styles.toggleKnobOn]} />
+                    </View>
+                  </TouchableOpacity>
+                  {showAdditionalRepairs && (
+                    <View style={styles.additionalRepairsList}>
+                      {[
+                        'Tire Inspection & Replacement',
+                        'Battery Diagnostics & Replacement',
+                        'Windshield Replacement Services',
+                        'Windshield Chip & Crack Repair',
+                        'Interior & Exterior Detailing',
+                        'Auto Body & Collision Repair',
+                        'Interior Odor Elimination',
+                        'Seat & Upholstery Restoration',
+                        'Missing Spare Key',
+                      ].map((item) => {
+                        const isSelected = selectedAdditionalRepairs.includes(item);
+                        return (
+                          <TouchableOpacity
+                            key={item}
+                            style={styles.repairCheckboxRow}
+                            onPress={() => {
+                              setSelectedAdditionalRepairs((prev) =>
+                                isSelected ? prev.filter((r) => r !== item) : [...prev, item]
+                              );
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <View style={[styles.checkbox, isSelected && styles.checkboxChecked]}>
+                              {isSelected && <Text style={styles.checkboxCheck}>✓</Text>}
+                            </View>
+                            <Text style={styles.repairCheckboxLabel}>{item}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+
                 <View style={styles.stockNumberContainer}>
                   <Text style={styles.stockNumberLabel}>Stock Number (Optional)</Text>
                   <TextInput
@@ -996,6 +1050,79 @@ const styles = StyleSheet.create({
   tipItem: {
     ...typography.styles.bodySmall,
     color: colors.text.secondary,
+  },
+  // Additional Repairs
+  additionalRepairsContainer: {
+    width: '100%',
+    marginTop: spacing.lg,
+    backgroundColor: colors.background.secondary,
+    borderRadius: spacing.inputRadius,
+    padding: spacing.md,
+  },
+  additionalRepairsToggle: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  additionalRepairsToggleText: {
+    ...typography.styles.body,
+    color: colors.primary.navy,
+    fontWeight: typography.fontWeight.semiBold,
+  },
+  toggleSwitch: {
+    width: 48,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.border.medium,
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  toggleSwitchOn: {
+    backgroundColor: colors.primary.navy,
+  },
+  toggleKnob: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#FFFFFF',
+  },
+  toggleKnobOn: {
+    alignSelf: 'flex-end',
+  },
+  additionalRepairsList: {
+    marginTop: spacing.md,
+    gap: spacing.sm,
+  },
+  repairCheckboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+    gap: spacing.sm,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: colors.border.medium,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background.primary,
+  },
+  checkboxChecked: {
+    backgroundColor: colors.primary.navy,
+    borderColor: colors.primary.navy,
+  },
+  checkboxCheck: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 16,
+  },
+  repairCheckboxLabel: {
+    ...typography.styles.bodySmall,
+    color: colors.text.primary,
+    flex: 1,
   },
   stockNumberContainer: {
     width: '100%',

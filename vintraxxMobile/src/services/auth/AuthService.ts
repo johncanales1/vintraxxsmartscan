@@ -34,6 +34,10 @@ export interface User {
 
   token: string;
 
+  isDealer: boolean;
+
+  pricePerLaborHour: number | null;
+
   deviceSetupCompleted: boolean;
 
   deviceName?: string;
@@ -622,13 +626,17 @@ class AuthService {
 
    */
 
-  async register(email: string, password: string): Promise<AuthResponse> {
+  async register(email: string, password: string, isDealer?: boolean, pricePerLaborHour?: number): Promise<AuthResponse> {
 
     try {
 
-      logger.info(LogCategory.APP, `Registering user: ${email}`);
+      logger.info(LogCategory.APP, `Registering user: ${email}, isDealer: ${isDealer || false}`);
 
-      const data = await this.apiCall<ApiRegisterResponse>(AUTH_ENDPOINTS.REGISTER, { email, password });
+      const body: Record<string, unknown> = { email, password };
+      if (isDealer) body.isDealer = true;
+      if (pricePerLaborHour) body.pricePerLaborHour = pricePerLaborHour;
+
+      const data = await this.apiCall<ApiRegisterResponse>(AUTH_ENDPOINTS.REGISTER, body);
 
 
 
@@ -641,6 +649,10 @@ class AuthService {
           email: data.user.email,
 
           token: data.token,
+
+          isDealer: data.user.isDealer || false,
+
+          pricePerLaborHour: data.user.pricePerLaborHour || null,
 
           deviceSetupCompleted: false,
 
@@ -660,7 +672,7 @@ class AuthService {
 
 
 
-        logger.info(LogCategory.APP, 'Registration successful');
+        logger.info(LogCategory.APP, `Registration successful, isDealer: ${user.isDealer}`);
 
         return { success: true, user, token: data.token };
 
@@ -694,13 +706,17 @@ class AuthService {
 
    */
 
-  async login(email: string, password: string): Promise<AuthResponse> {
+  async login(email: string, password: string, isDealer?: boolean, pricePerLaborHour?: number): Promise<AuthResponse> {
 
     try {
 
-      logger.info(LogCategory.APP, `Logging in: ${email}`);
+      logger.info(LogCategory.APP, `Logging in: ${email}, isDealer: ${isDealer || false}`);
 
-      const data = await this.apiCall<ApiLoginResponse>(AUTH_ENDPOINTS.LOGIN, { email, password });
+      const body: Record<string, unknown> = { email, password };
+      if (isDealer) body.isDealer = true;
+      if (pricePerLaborHour) body.pricePerLaborHour = pricePerLaborHour;
+
+      const data = await this.apiCall<ApiLoginResponse>(AUTH_ENDPOINTS.LOGIN, body);
 
 
 
@@ -727,6 +743,10 @@ class AuthService {
           email: data.user.email,
 
           token: data.token,
+
+          isDealer: data.user.isDealer || false,
+
+          pricePerLaborHour: data.user.pricePerLaborHour || null,
 
           deviceSetupCompleted: wasDeviceSetup,
 

@@ -17,6 +17,8 @@ export interface ScanSubmissionPayload {
   secondaryAirStatus: number | null;
   scanDate: string;
   stockNumber?: string;
+  additionalRepairs?: string[];
+  scannerDeviceId?: string;
 }
 
 export interface VinDecodeResult {
@@ -63,6 +65,15 @@ export interface AiAnalysisOutput {
   aiSummary: string;
 }
 
+export interface AdditionalRepairItem {
+  name: string;
+  description: string;
+  laborHours: number;
+  laborCost: number;
+  partsCost: number;
+  totalCost: number;
+}
+
 export interface FullReportData {
   scanId: string;
   vehicle: {
@@ -94,6 +105,9 @@ export interface FullReportData {
     summary: string;
   };
   totalEstimatedRepairCost: number;
+  additionalRepairs?: AdditionalRepairItem[];
+  additionalRepairsTotalCost?: number;
+  grandTotalCost?: number;
   aiSummary: string;
   codesLastReset: {
     distanceMiles: number | null;

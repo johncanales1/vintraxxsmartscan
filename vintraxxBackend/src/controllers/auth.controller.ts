@@ -34,9 +34,9 @@ export async function verifyOtp(req: Request, res: Response, next: NextFunction)
 
 export async function register(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { email, password } = req.body;
-    const result = await authService.register(email, password);
-    logger.info(`User registered: ${email}`);
+    const { email, password, isDealer, pricePerLaborHour } = req.body;
+    const result = await authService.register(email, password, isDealer, pricePerLaborHour);
+    logger.info(`User registered: ${email}, isDealer: ${isDealer || false}`);
     res.status(201).json({ success: true, user: result.user, token: result.token });
   } catch (error) {
     next(error);
@@ -45,8 +45,8 @@ export async function register(req: Request, res: Response, next: NextFunction):
 
 export async function login(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { email, password } = req.body;
-    const result = await authService.login(email, password);
+    const { email, password, isDealer, pricePerLaborHour } = req.body;
+    const result = await authService.login(email, password, isDealer, pricePerLaborHour);
     res.json({ success: true, user: result.user, token: result.token });
   } catch (error) {
     next(error);

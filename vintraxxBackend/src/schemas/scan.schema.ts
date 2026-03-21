@@ -25,6 +25,9 @@ export const scanSubmissionSchema = z.object({
     }).nullable(),
     secondaryAirStatus: z.number().int().nullable(),
     scanDate: z.string().datetime(),
+    stockNumber: z.string().optional(),
+    additionalRepairs: z.array(z.string()).optional(),
+    scannerDeviceId: z.string().optional(),
   }),
 });
 

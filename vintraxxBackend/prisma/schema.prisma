@@ -9,12 +9,17 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  passwordHash String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  scans        Scan[]
+  id               String   @id @default(uuid())
+  email            String   @unique
+  passwordHash     String
+  isDealer         Boolean  @default(false)
+  pricePerLaborHour Float?
+  logoUrl          String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  scans            Scan[]
+  usedScannerDevices UserScannerDevice[]
+  usedVins           UserVinUsage[]
 }
 
 model Otp {
@@ -47,6 +52,8 @@ model Scan {
   secondaryAirStatus   Int?
   milStatusByEcu       Json?
   stockNumber          String?
+  additionalRepairs    String[]
+  scannerDeviceId      String?
   rawPayload           Json
   vehicleYear          Int?
   vehicleMake          String?
@@ -75,6 +82,8 @@ model FullReport {
   modulesScanned          String[]
   datapointsScanned       Int
   totalReconditioningCost Float
+  additionalRepairsCost   Float     @default(0)
+  additionalRepairsData   Json?
   reportVersion           String
   pdfUrl                  String?
   pdfGeneratedAt          DateTime?
@@ -82,6 +91,32 @@ model FullReport {
   createdAt               DateTime  @default(now())
 
   @@index([scanId])
+}
+
+model UserScannerDevice {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  deviceId   String
+  deviceName String?
+  firstUsedAt DateTime @default(now())
+  lastUsedAt  DateTime @default(now())
+
+  @@unique([userId, deviceId])
+  @@index([userId])
+}
+
+model UserVinUsage {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  vin        String
+  firstUsedAt DateTime @default(now())
+  lastUsedAt  DateTime @default(now())
+  scanCount   Int      @default(1)
+
+  @@unique([userId, vin])
+  @@index([userId])
 }
 
 enum ScanStatus {

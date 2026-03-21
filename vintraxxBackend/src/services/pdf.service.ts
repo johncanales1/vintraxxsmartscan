@@ -307,7 +307,44 @@ export async function generatePdf(report: FullReportData): Promise<string> {
         fmtMileage(r.mileageEstimate),
       ]);
       y = drawTable(doc, leftMargin, y, pageWidth, riskHeaders, riskRows, 'No mileage-based risks identified');
-      y += 30;
+      y += 20;
+
+      // ============ ADDITIONAL REPAIRS (if any) ============
+      if (report.additionalRepairs && report.additionalRepairs.length > 0) {
+        if (y + 60 > doc.page.height - 60) { doc.addPage(); y = 50; }
+        doc.fontSize(13).font('Helvetica-Bold').fillColor(C.darkGray).text('Additional Repairs', leftMargin, y);
+        y += 16;
+        doc.strokeColor(C.darkGray).lineWidth(2).moveTo(leftMargin, y).lineTo(leftMargin + pageWidth, y).stroke();
+        y += 8;
+
+        const addRepairHeaders = [
+          { label: 'Repair', width: pageWidth - 210 },
+          { label: 'Parts', width: 70, align: 'right' },
+          { label: 'Labor', width: 70, align: 'right' },
+          { label: 'Total', width: 70, align: 'right' },
+        ];
+        const addRepairRows = report.additionalRepairs.map(r => [
+          r.name.length > 50 ? r.name.substring(0, 47) + '...' : r.name,
+          fmtCurrency(r.partsCost),
+          fmtCurrency(r.laborCost),
+          fmtCurrency(r.totalCost),
+        ]);
+        y = drawTable(doc, leftMargin, y, pageWidth, addRepairHeaders, addRepairRows);
+        y += 8;
+
+        // Additional repairs total
+        doc.fontSize(11).font('Helvetica-Bold').fillColor(C.darkGray)
+          .text(`Additional Repairs Total: ${fmtCurrency(report.additionalRepairsTotalCost || 0)}`, leftMargin, y, { width: pageWidth, align: 'right' });
+        y += 20;
+
+        // Grand total
+        if (report.grandTotalCost !== undefined) {
+          doc.fontSize(13).font('Helvetica-Bold').fillColor(C.black)
+            .text(`Grand Total (DTC Repairs + Additional): ${fmtCurrency(report.grandTotalCost)}`, leftMargin, y, { width: pageWidth, align: 'right' });
+          y += 20;
+        }
+      }
+      y += 10;
 
       // ============ FOOTER ============
       if (y + 30 > doc.page.height - 36) { doc.addPage(); y = doc.page.height - 70; }

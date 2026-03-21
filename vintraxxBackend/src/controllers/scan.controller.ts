@@ -3,6 +3,7 @@ import { ScanSubmissionPayload, FullReportData } from '../types';
 import { decodeVin } from '../services/vin.service';
 import { fetchBlackBookByVin } from '../services/blackbook.service';
 import { analyzeWithAI } from '../services/ai.service';
+import { analyzeAdditionalRepairs } from '../services/additional-repairs.service';
 import { assembleFullReport } from '../services/report.service';
 import { generatePdf } from '../services/pdf.service';
 import { sendReportEmail } from '../services/email.service';
@@ -11,17 +12,94 @@ import logger from '../utils/logger';
 import prisma from '../config/db';
 import fs from 'fs';
 
+const REGULAR_USER_MAX_SCANNER_DEVICES = 2;
+const REGULAR_USER_MAX_VINS = 5;
+const DEFAULT_LABOR_RATE = 199;
+
 export async function submitScan(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const payload = req.body as ScanSubmissionPayload;
     const userId = req.user!.userId;
     const userEmail = req.user!.email;
 
+    // Fetch user to check dealer status
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      res.status(401).json({ success: false, error: 'User not found' });
+      return;
+    }
+
+    // Regular user limits: check scanner device and VIN usage
+    if (!user.isDealer) {
+      // Check scanner device limit
+      if (payload.scannerDeviceId) {
+        const existingDevice = await prisma.userScannerDevice.findUnique({
+          where: { userId_deviceId: { userId, deviceId: payload.scannerDeviceId } },
+        });
+        if (!existingDevice) {
+          const deviceCount = await prisma.userScannerDevice.count({ where: { userId } });
+          if (deviceCount >= REGULAR_USER_MAX_SCANNER_DEVICES) {
+            logger.warn('Regular user exceeded scanner device limit', { userId, deviceCount });
+            res.status(403).json({
+              success: false,
+              error: `Regular users are limited to ${REGULAR_USER_MAX_SCANNER_DEVICES} scanner devices. Upgrade to Dealer for unlimited access.`,
+            });
+            return;
+          }
+          await prisma.userScannerDevice.create({
+            data: { userId, deviceId: payload.scannerDeviceId },
+          });
+        } else {
+          await prisma.userScannerDevice.update({
+            where: { id: existingDevice.id },
+            data: { lastUsedAt: new Date() },
+          });
+        }
+      }
+
+      // Check VIN usage limit
+      const existingVin = await prisma.userVinUsage.findUnique({
+        where: { userId_vin: { userId, vin: payload.vin } },
+      });
+      if (!existingVin) {
+        const vinCount = await prisma.userVinUsage.count({ where: { userId } });
+        if (vinCount >= REGULAR_USER_MAX_VINS) {
+          logger.warn('Regular user exceeded VIN limit', { userId, vinCount });
+          res.status(403).json({
+            success: false,
+            error: `Regular users are limited to ${REGULAR_USER_MAX_VINS} different vehicles. Upgrade to Dealer for unlimited access.`,
+          });
+          return;
+        }
+        await prisma.userVinUsage.create({
+          data: { userId, vin: payload.vin },
+        });
+      } else {
+        await prisma.userVinUsage.update({
+          where: { id: existingVin.id },
+          data: { lastUsedAt: new Date(), scanCount: { increment: 1 } },
+        });
+      }
+    } else {
+      // Dealer: track scanner devices and VINs without limits
+      if (payload.scannerDeviceId) {
+        await prisma.userScannerDevice.upsert({
+          where: { userId_deviceId: { userId, deviceId: payload.scannerDeviceId } },
+          create: { userId, deviceId: payload.scannerDeviceId },
+          update: { lastUsedAt: new Date() },
+        });
+      }
+      await prisma.userVinUsage.upsert({
+        where: { userId_vin: { userId, vin: payload.vin } },
+        create: { userId, vin: payload.vin },
+        update: { lastUsedAt: new Date(), scanCount: { increment: 1 } },
+      });
+    }
+
     // Validate stockNumber if provided (must be exactly 10 digits)
     const stockNumber = payload.stockNumber?.trim();
     if (stockNumber && (stockNumber.length !== 10 || !/^\d{10}$/.test(stockNumber))) {
       logger.warn('Invalid stock number received', { stockNumber, length: stockNumber?.length });
-      // Don't reject the scan, just ignore invalid stock number
     }
     const validStockNumber = stockNumber && stockNumber.length === 10 && /^\d{10}$/.test(stockNumber)
       ? stockNumber : undefined;
@@ -44,6 +122,8 @@ export async function submitScan(req: Request, res: Response, next: NextFunction
         secondaryAirStatus: payload.secondaryAirStatus,
         milStatusByEcu: payload.milStatus.byEcu ?? undefined,
         stockNumber: validStockNumber ?? null,
+        additionalRepairs: payload.additionalRepairs ?? [],
+        scannerDeviceId: payload.scannerDeviceId ?? null,
         rawPayload: payload as any,
         scanDate: new Date(payload.scanDate),
         status: 'RECEIVED',
@@ -57,6 +137,8 @@ export async function submitScan(req: Request, res: Response, next: NextFunction
       vin: payload.vin,
       dtcCount: payload.milStatus?.dtcCount,
       stockNumber: validStockNumber || undefined,
+      additionalRepairs: payload.additionalRepairs || [],
+      isDealer: user.isDealer,
     });
 
     res.status(202).json({
@@ -79,6 +161,7 @@ async function processScanInBackground(scanId: string, userId: string, userEmail
   const startedAtMs = Date.now();
   try {
     const scan = await prisma.scan.findUniqueOrThrow({ where: { id: scanId } });
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
 
     logger.info('Background scan processing started', {
       scanId,
@@ -140,6 +223,37 @@ async function processScanInBackground(scanId: string, userId: string, userEmail
       permanentDtcCodes: scan.permanentDtcCodes,
     });
 
+    // Step 2b: Analyze additional repairs if any were selected
+    const pricePerLaborHour = user.isDealer && user.pricePerLaborHour
+      ? user.pricePerLaborHour
+      : DEFAULT_LABOR_RATE;
+
+    let additionalRepairItems: import('../types').AdditionalRepairItem[] = [];
+    let additionalRepairsTotalCost = 0;
+
+    if (scan.additionalRepairs && scan.additionalRepairs.length > 0) {
+      logger.info(`[${scanId}] Analyzing ${scan.additionalRepairs.length} additional repairs`);
+      try {
+        additionalRepairItems = await analyzeAdditionalRepairs({
+          selectedRepairs: scan.additionalRepairs,
+          year: bbYear,
+          make: bbMake,
+          model: bbModel,
+          pricePerLaborHour,
+        });
+        additionalRepairsTotalCost = additionalRepairItems.reduce((sum, r) => sum + r.totalCost, 0);
+        logger.info(`[${scanId}] Additional repairs analyzed`, {
+          count: additionalRepairItems.length,
+          totalCost: additionalRepairsTotalCost,
+          pricePerLaborHour,
+        });
+      } catch (addRepairErr) {
+        logger.error(`[${scanId}] Additional repairs analysis failed, continuing`, {
+          error: (addRepairErr as Error).message,
+        });
+      }
+    }
+
     // Create FullReport record
     const totalCost = aiOutput.dtcAnalysis.reduce(
       (sum, dtc) => sum + dtc.repair.partsCost + dtc.repair.laborCost,
@@ -168,6 +282,8 @@ async function processScanInBackground(scanId: string, userId: string, userEmail
         modulesScanned: aiOutput.modulesScanned,
         datapointsScanned: aiOutput.datapointsScanned,
         totalReconditioningCost: totalCost,
+        additionalRepairsCost: additionalRepairsTotalCost,
+        additionalRepairsData: additionalRepairItems.length > 0 ? (additionalRepairItems as any) : undefined,
         reportVersion: env.REPORT_VERSION,
       },
     });
@@ -186,6 +302,8 @@ async function processScanInBackground(scanId: string, userId: string, userEmail
       userEmail,
       aiOutput,
       stockNumber: scan.stockNumber ?? undefined,
+      additionalRepairs: additionalRepairItems,
+      additionalRepairsTotalCost,
     });
 
     // Step 4: Generate PDF
@@ -234,6 +352,12 @@ async function processScanInBackground(scanId: string, userId: string, userEmail
     logger.info('Background scan processing completed', {
       scanId,
       durationMs: Date.now() - startedAtMs,
+      isDealer: user.isDealer,
+      additionalRepairsCount: additionalRepairItems.length,
+      additionalRepairsTotalCost,
+      pricePerLaborHour,
+      totalDtcCost: totalCost,
+      grandTotal: totalCost + additionalRepairsTotalCost,
     });
   } catch (error) {
     logger.error(`[${scanId}] Processing failed`, { error: (error as Error).message });
@@ -281,6 +405,7 @@ export async function getReport(req: Request, res: Response, next: NextFunction)
     const fr = scan.fullReport;
     const aiOutput = fr.aiRawResponse as any;
 
+    const additionalRepairsData = fr.additionalRepairsData as any[] | null;
     const reportData = assembleFullReport({
       scanId: scan.id,
       reportId: fr.id,
@@ -294,6 +419,8 @@ export async function getReport(req: Request, res: Response, next: NextFunction)
       userEmail: scan.user.email,
       aiOutput,
       stockNumber: scan.stockNumber ?? undefined,
+      additionalRepairs: additionalRepairsData ?? undefined,
+      additionalRepairsTotalCost: fr.additionalRepairsCost ?? 0,
     });
 
     res.json({ success: true, status: 'completed', data: reportData });

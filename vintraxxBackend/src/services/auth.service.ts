@@ -61,7 +61,7 @@ export async function verifyOtp(email: string, otp: string): Promise<boolean> {
   return true;
 }
 
-export async function register(email: string, password: string): Promise<{ user: { id: string; email: string }; token: string }> {
+export async function register(email: string, password: string, isDealer?: boolean, pricePerLaborHour?: number): Promise<{ user: { id: string; email: string; isDealer: boolean; pricePerLaborHour: number | null }; token: string }> {
   const verifiedOtp = await prisma.otp.findFirst({
     where: {
       email,
@@ -82,23 +82,26 @@ export async function register(email: string, password: string): Promise<{ user:
 
   const passwordHash = await bcrypt.hash(password, APP_CONSTANTS.BCRYPT_SALT_ROUNDS);
 
+  const dealer = isDealer === true;
+  const laborHourPrice = dealer && pricePerLaborHour ? pricePerLaborHour : null;
+
   const user = await prisma.user.create({
-    data: { email, passwordHash },
+    data: { email, passwordHash, isDealer: dealer, pricePerLaborHour: laborHourPrice },
   });
 
   await prisma.otp.deleteMany({ where: { email } });
 
   const token = generateToken({ userId: user.id, email: user.email });
 
-  logger.info(`User registered: ${user.email}`);
+  logger.info(`User registered: ${user.email}, isDealer: ${dealer}`);
 
   return {
-    user: { id: user.id, email: user.email },
+    user: { id: user.id, email: user.email, isDealer: user.isDealer, pricePerLaborHour: user.pricePerLaborHour },
     token,
   };
 }
 
-export async function login(email: string, password: string): Promise<{ user: { id: string; email: string }; token: string }> {
+export async function login(email: string, password: string, isDealer?: boolean, pricePerLaborHour?: number): Promise<{ user: { id: string; email: string; isDealer: boolean; pricePerLaborHour: number | null }; token: string }> {
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
     throw new AppError('Invalid email or password', 401);
@@ -109,12 +112,28 @@ export async function login(email: string, password: string): Promise<{ user: { 
     throw new AppError('Invalid email or password', 401);
   }
 
+  // If user is signing in as dealer and providing pricePerLaborHour, update their profile
+  if (isDealer === true) {
+    const updateData: { isDealer: boolean; pricePerLaborHour?: number } = { isDealer: true };
+    if (pricePerLaborHour) {
+      updateData.pricePerLaborHour = pricePerLaborHour;
+    }
+    await prisma.user.update({
+      where: { id: user.id },
+      data: updateData,
+    });
+    user.isDealer = true;
+    if (pricePerLaborHour) {
+      user.pricePerLaborHour = pricePerLaborHour;
+    }
+  }
+
   const token = generateToken({ userId: user.id, email: user.email });
 
-  logger.info(`User logged in: ${user.email}`);
+  logger.info(`User logged in: ${user.email}, isDealer: ${user.isDealer}`);
 
   return {
-    user: { id: user.id, email: user.email },
+    user: { id: user.id, email: user.email, isDealer: user.isDealer, pricePerLaborHour: user.pricePerLaborHour },
     token,
   };
 }

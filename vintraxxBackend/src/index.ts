@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import path from 'path';
 import { env } from './config/env';
 import { errorHandler } from './middleware/errorHandler';
 import authRoutes from './routes/auth.routes';
@@ -25,6 +26,17 @@ app.use(express.json({ limit: '50mb' }));
 
 app.get('/api/v1/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
+});
+
+// Root endpoint - serve API documentation HTML
+app.get('/', (_req, res) => {
+  const docsPath = path.join(__dirname, '../../api-docs.html');
+  res.sendFile(docsPath, (err) => {
+    if (err) {
+      logger.error('Error serving api-docs.html:', err);
+      res.status(404).json({ error: 'API documentation not found' });
+    }
+  });
 });
 
 app.use('/api/v1/auth', authRoutes);

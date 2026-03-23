@@ -37,8 +37,6 @@ const TabIcon: React.FC<TabIconProps> = ({ focused, Icon, label }) => (
     <Text 
       style={[styles.tabLabel, focused && styles.tabLabelFocused]}
       numberOfLines={1}
-      adjustsFontSizeToFit
-      minimumFontScale={0.8}
     >
       {label}
     </Text>
@@ -177,10 +175,10 @@ const styles = StyleSheet.create({
   tabIconContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 64,
+    minWidth: 70,
     minHeight: 50,
     paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.xs,
     borderRadius: 24,
   },
   tabIconContainerFocused: {
@@ -188,12 +186,13 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     color: colors.text.muted,
-    fontSize: 11,
-    marginTop: 6,
+    fontSize: 10,
+    marginTop: 5,
     textAlign: 'center',
   },
   tabLabelFocused: {
     color: colors.primary.navy,
-    fontWeight: '600',
+    fontWeight: '700',
+    fontSize: 12,
   },
 });

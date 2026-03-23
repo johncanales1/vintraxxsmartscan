@@ -180,68 +180,107 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
   
   // Animation values
   const spinValue = useRef(new Animated.Value(0)).current;
-  const pulseValue1 = useRef(new Animated.Value(1)).current;
-  const pulseValue2 = useRef(new Animated.Value(1)).current;
-  const pulseValue3 = useRef(new Animated.Value(1)).current;
+  const wave1Scale = useRef(new Animated.Value(0)).current;
+  const wave1Opacity = useRef(new Animated.Value(0.7)).current;
+  const wave2Scale = useRef(new Animated.Value(0)).current;
+  const wave2Opacity = useRef(new Animated.Value(0.7)).current;
+  const wave3Scale = useRef(new Animated.Value(0)).current;
+  const wave3Opacity = useRef(new Animated.Value(0.7)).current;
+  const wave4Scale = useRef(new Animated.Value(0)).current;
+  const wave4Opacity = useRef(new Animated.Value(0.7)).current;
+  const glowAnim = useRef(new Animated.Value(0.3)).current;
+  const colorCycleAnim = useRef(new Animated.Value(0)).current;
   const [cancelRequested, setCancelRequested] = useState(false);
   const [stockNumber, setStockNumber] = useState('');
+  const [showStockNumber, setShowStockNumber] = useState(false);
   const [showAdditionalRepairs, setShowAdditionalRepairs] = useState(false);
   const [selectedAdditionalRepairs, setSelectedAdditionalRepairs] = useState<string[]>([]);
   
   // Start/stop animations based on scan status
   useEffect(() => {
     if (scanStatus === 'scanning') {
-      // Spin animation
+      // Smooth spin animation
       const spinAnimation = Animated.loop(
         Animated.timing(spinValue, {
           toValue: 1,
-          duration: 3000,
+          duration: 4000,
           easing: Easing.linear,
           useNativeDriver: true,
         })
       );
-      
-      // Triple pulse animation - staggered for continuous smooth effect
-      const createPulseAnimation = (pulseVal: Animated.Value, delay: number) => {
+
+      // Water wave ripple: each wave starts from center (scale 0) and expands out
+      const createWaveAnimation = (scaleVal: Animated.Value, opacityVal: Animated.Value, delay: number) => {
         return Animated.loop(
           Animated.sequence([
             Animated.delay(delay),
-            Animated.timing(pulseVal, {
-              toValue: 1.5,
-              duration: 1500,
-              easing: Easing.out(Easing.ease),
-              useNativeDriver: true,
-            }),
-            Animated.timing(pulseVal, {
-              toValue: 1,
-              duration: 0,
-              useNativeDriver: true,
-            }),
+            Animated.parallel([
+              Animated.timing(scaleVal, {
+                toValue: 2.2,
+                duration: 2400,
+                easing: Easing.out(Easing.cubic),
+                useNativeDriver: true,
+              }),
+              Animated.timing(opacityVal, {
+                toValue: 0,
+                duration: 2400,
+                easing: Easing.out(Easing.cubic),
+                useNativeDriver: true,
+              }),
+            ]),
+            Animated.parallel([
+              Animated.timing(scaleVal, { toValue: 0, duration: 0, useNativeDriver: true }),
+              Animated.timing(opacityVal, { toValue: 0.6, duration: 0, useNativeDriver: true }),
+            ]),
           ])
         );
       };
-      
-      const pulse1 = createPulseAnimation(pulseValue1, 0);
-      const pulse2 = createPulseAnimation(pulseValue2, 500);
-      const pulse3 = createPulseAnimation(pulseValue3, 1000);
-      
+
+      const w1 = createWaveAnimation(wave1Scale, wave1Opacity, 0);
+      const w2 = createWaveAnimation(wave2Scale, wave2Opacity, 600);
+      const w3 = createWaveAnimation(wave3Scale, wave3Opacity, 1200);
+      const w4 = createWaveAnimation(wave4Scale, wave4Opacity, 1800);
+
+      // Glow pulsation
+      const glowAnimation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(glowAnim, { toValue: 1, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          Animated.timing(glowAnim, { toValue: 0.3, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        ])
+      );
+
+      // Color cycle: 0→1 = red flow, 1→2 = blue flow, loops
+      const colorCycle = Animated.loop(
+        Animated.sequence([
+          Animated.timing(colorCycleAnim, { toValue: 1, duration: 3000, easing: Easing.linear, useNativeDriver: false }),
+          Animated.timing(colorCycleAnim, { toValue: 2, duration: 3000, easing: Easing.linear, useNativeDriver: false }),
+          Animated.timing(colorCycleAnim, { toValue: 0, duration: 0, useNativeDriver: false }),
+        ])
+      );
+
       spinAnimation.start();
-      pulse1.start();
-      pulse2.start();
-      pulse3.start();
-      
+      w1.start();
+      w2.start();
+      w3.start();
+      w4.start();
+      glowAnimation.start();
+      colorCycle.start();
+
       return () => {
         spinAnimation.stop();
-        pulse1.stop();
-        pulse2.stop();
-        pulse3.stop();
+        w1.stop(); w2.stop(); w3.stop(); w4.stop();
+        glowAnimation.stop();
+        colorCycle.stop();
         spinValue.setValue(0);
-        pulseValue1.setValue(1);
-        pulseValue2.setValue(1);
-        pulseValue3.setValue(1);
+        wave1Scale.setValue(0); wave1Opacity.setValue(0.7);
+        wave2Scale.setValue(0); wave2Opacity.setValue(0.7);
+        wave3Scale.setValue(0); wave3Opacity.setValue(0.7);
+        wave4Scale.setValue(0); wave4Opacity.setValue(0.7);
+        glowAnim.setValue(0.3);
+        colorCycleAnim.setValue(0);
       };
     }
-  }, [scanStatus, spinValue, pulseValue1, pulseValue2, pulseValue3]);
+  }, [scanStatus, spinValue, wave1Scale, wave1Opacity, wave2Scale, wave2Opacity, wave3Scale, wave3Opacity, wave4Scale, wave4Opacity, glowAnim, colorCycleAnim]);
   const [showDebugModal, setShowDebugModal] = useState(false);
   
     
@@ -267,6 +306,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
       setShowDebugModal(false);
       setCancelRequested(false);
       setStockNumber('');
+      setShowStockNumber(false);
       setShowAdditionalRepairs(false);
       setSelectedAdditionalRepairs([]);
       setScanSteps([
@@ -633,25 +673,69 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
 
           {scanStatus === 'scanning' && (
             <View style={styles.progressContainer}>
-              {/* Spinning Star with Triple Pulse */}
+              {/* Spinning Star with Water Wave Ripples + Glow */}
               <View style={styles.scanAnimationContainer}>
-                <Animated.View style={[
-                  styles.pulseCircle,
-                  { transform: [{ scale: pulseValue1 }], opacity: pulseValue1.interpolate({ inputRange: [1, 1.5], outputRange: [0.5, 0] }) }
-                ]} />
-                <Animated.View style={[
-                  styles.pulseCircle,
-                  { transform: [{ scale: pulseValue2 }], opacity: pulseValue2.interpolate({ inputRange: [1, 1.5], outputRange: [0.5, 0] }) }
-                ]} />
-                <Animated.View style={[
-                  styles.pulseCircle,
-                  { transform: [{ scale: pulseValue3 }], opacity: pulseValue3.interpolate({ inputRange: [1, 1.5], outputRange: [0.5, 0] }) }
-                ]} />
+                {/* Water wave ripple rings with color cycling */}
+                {[
+                  { scale: wave1Scale, opacity: wave1Opacity },
+                  { scale: wave2Scale, opacity: wave2Opacity },
+                  { scale: wave3Scale, opacity: wave3Opacity },
+                  { scale: wave4Scale, opacity: wave4Opacity },
+                ].map((wave, idx) => (
+                  <Animated.View
+                    key={`wave-${idx}`}
+                    style={[
+                      styles.waveRing,
+                      {
+                        transform: [{ scale: wave.scale }],
+                        opacity: wave.opacity,
+                        borderColor: colorCycleAnim.interpolate({
+                          inputRange: [0, 0.5, 1, 1.5, 2],
+                          outputRange: [
+                            '#DC2626',  // red
+                            '#EF4444',  // light red
+                            '#FFFFFF',  // white (transition)
+                            '#60A5FA',  // light blue
+                            '#2563EB',  // blue
+                          ],
+                        }),
+                      },
+                    ]}
+                  />
+                ))}
+                {/* Glow behind star */}
+                <Animated.View
+                  style={[
+                    styles.starGlow,
+                    {
+                      opacity: glowAnim,
+                      shadowColor: colorCycleAnim.interpolate({
+                        inputRange: [0, 1, 2],
+                        outputRange: ['#DC2626', '#2563EB', '#DC2626'],
+                      }),
+                      backgroundColor: colorCycleAnim.interpolate({
+                        inputRange: [0, 0.5, 1, 1.5, 2],
+                        outputRange: [
+                          'rgba(220,38,38,0.15)',
+                          'rgba(239,68,68,0.10)',
+                          'rgba(255,255,255,0.08)',
+                          'rgba(96,165,250,0.10)',
+                          'rgba(37,99,235,0.15)',
+                        ],
+                      }),
+                    },
+                  ]}
+                />
+                {/* Spinning star image - centered */}
                 <Animated.Image
                   source={require('../assets/images/scan.png')}
                   style={[
                     styles.scanningStar,
-                    { transform: [{ rotate: spinValue.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }] }
+                    {
+                      transform: [
+                        { rotate: spinValue.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) },
+                      ],
+                    },
                   ]}
                   resizeMode="contain"
                 />
@@ -787,29 +871,42 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
                 </View>
 
                 <View style={styles.stockNumberContainer}>
-                  <Text style={styles.stockNumberLabel}>Stock Number (Optional)</Text>
-                  <TextInput
-                    style={styles.stockNumberInput}
-                    placeholder="Enter stock number (up to 20 digits)"
-                    placeholderTextColor={colors.text.muted}
-                    value={stockNumber}
-                    onChangeText={(text) => {
-                      // Allow only digits, max 20
-                      const cleaned = text.replace(/[^0-9]/g, '').slice(0, 20);
-                      logger.debug(LogCategory.APP, 'Stock number input changed', {
-                        input: text,
-                        cleaned,
-                        length: cleaned.length,
-                      });
-                      setStockNumber(cleaned);
-                    }}
-                    keyboardType="numeric"
-                    maxLength={20}
-                  />
-                  {stockNumber.length > 0 && (
-                    <Text style={styles.stockNumberValid}>
-                      {stockNumber.length}/20 digit{stockNumber.length !== 1 ? 's' : ''}
-                    </Text>
+                  <TouchableOpacity
+                    style={styles.stockNumberToggle}
+                    onPress={() => setShowStockNumber(!showStockNumber)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.stockNumberToggleText}>Stock Number</Text>
+                    <View style={[styles.toggleSwitch, showStockNumber && styles.toggleSwitchOn]}>
+                      <View style={[styles.toggleKnob, showStockNumber && styles.toggleKnobOn]} />
+                    </View>
+                  </TouchableOpacity>
+                  {showStockNumber && (
+                    <View style={styles.stockNumberInputWrap}>
+                      <TextInput
+                        style={styles.stockNumberInput}
+                        placeholder="Enter stock number (up to 20 digits)"
+                        placeholderTextColor={colors.text.muted}
+                        value={stockNumber}
+                        onChangeText={(text) => {
+                          // Allow only digits, max 20
+                          const cleaned = text.replace(/[^0-9]/g, '').slice(0, 20);
+                          logger.debug(LogCategory.APP, 'Stock number input changed', {
+                            input: text,
+                            cleaned,
+                            length: cleaned.length,
+                          });
+                          setStockNumber(cleaned);
+                        }}
+                        keyboardType="numeric"
+                        maxLength={20}
+                      />
+                      {stockNumber.length > 0 && (
+                        <Text style={styles.stockNumberValid}>
+                          {stockNumber.length}/20 digit{stockNumber.length !== 1 ? 's' : ''}
+                        </Text>
+                      )}
+                    </View>
                   )}
                 </View>
               </View>
@@ -909,22 +1006,34 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   scanAnimationContainer: {
-    width: 190,
-    height: 190,
+    width: 220,
+    height: 220,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: spacing.lg,
   },
-  pulseCircle: {
+  waveRing: {
     position: 'absolute',
-    width: 170,
-    height: 170,
-    borderRadius: 85,
-    backgroundColor: colors.primary.navy,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 2.5,
+    borderColor: '#DC2626',
+    backgroundColor: 'transparent',
+  },
+  starGlow: {
+    position: 'absolute',
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 30,
+    elevation: 10,
   },
   scanningStar: {
-    width: 180,
-    height: 180,
+    width: 120,
+    height: 120,
   },
   scanningTitle: {
     ...typography.styles.h3,
@@ -1131,10 +1240,18 @@ const styles = StyleSheet.create({
     borderRadius: spacing.inputRadius,
     padding: spacing.md,
   },
-  stockNumberLabel: {
-    ...typography.styles.label,
-    color: colors.text.secondary,
-    marginBottom: spacing.sm,
+  stockNumberToggle: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  stockNumberToggleText: {
+    ...typography.styles.body,
+    color: colors.primary.navy,
+    fontWeight: typography.fontWeight.semiBold,
+  },
+  stockNumberInputWrap: {
+    marginTop: spacing.md,
   },
   stockNumberInput: {
     backgroundColor: colors.background.primary,

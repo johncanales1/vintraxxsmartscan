@@ -899,21 +899,21 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
         <View style={styles.valuationTiersRow}>
           <View style={styles.valuationTierBox}>
             <Text style={styles.valuationTierLabel}>Wholesale</Text>
-            <Text style={styles.valuationTierValue}>
-              {formatCurrency(valuationData.estimatedWholesaleLow)} – {formatCurrency(valuationData.estimatedWholesaleHigh)}
-            </Text>
+            <Text style={styles.valuationTierValue}>{formatCurrency(valuationData.estimatedWholesaleLow)}</Text>
+            <Text style={styles.valuationTierDash}>–</Text>
+            <Text style={styles.valuationTierValue}>{formatCurrency(valuationData.estimatedWholesaleHigh)}</Text>
           </View>
-          <View style={styles.valuationTierBox}>
+          <View style={[styles.valuationTierBox, styles.valuationTierBoxCenter]}>
             <Text style={styles.valuationTierLabel}>Retail</Text>
-            <Text style={styles.valuationTierValue}>
-              {formatCurrency(valuationData.estimatedRetailLow)} – {formatCurrency(valuationData.estimatedRetailHigh)}
-            </Text>
+            <Text style={styles.valuationTierValue}>{formatCurrency(valuationData.estimatedRetailLow)}</Text>
+            <Text style={styles.valuationTierDash}>–</Text>
+            <Text style={styles.valuationTierValue}>{formatCurrency(valuationData.estimatedRetailHigh)}</Text>
           </View>
           <View style={styles.valuationTierBox}>
             <Text style={styles.valuationTierLabel}>Private Party</Text>
-            <Text style={styles.valuationTierValue}>
-              {formatCurrency(valuationData.estimatedPrivatePartyLow)} – {formatCurrency(valuationData.estimatedPrivatePartyHigh)}
-            </Text>
+            <Text style={styles.valuationTierValue}>{formatCurrency(valuationData.estimatedPrivatePartyLow)}</Text>
+            <Text style={styles.valuationTierDash}>–</Text>
+            <Text style={styles.valuationTierValue}>{formatCurrency(valuationData.estimatedPrivatePartyHigh)}</Text>
           </View>
         </View>
 
@@ -1173,7 +1173,7 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton} activeOpacity={0.7}>
             <Text style={styles.backText}>← Back</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Trade-In Appraisal</Text>
+          <Text style={styles.headerTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>Trade-In Appraisal</Text>
           <TouchableOpacity
             onPress={() => navigation.popToTop()}
             style={styles.homeButton}
@@ -1292,6 +1292,9 @@ const styles = StyleSheet.create({
     color: colors.text.inverse,
     fontSize: typography.fontSize.lg,
     fontWeight: typography.fontWeight.bold,
+    flex: 1,
+    textAlign: 'center',
+    marginHorizontal: spacing.xs,
   },
   homeButton: {
     paddingVertical: spacing.xs,
@@ -1727,29 +1730,40 @@ const styles = StyleSheet.create({
   },
   valuationTiersRow: {
     flexDirection: 'row',
-    gap: spacing.sm,
     marginBottom: spacing.md,
   },
   valuationTierBox: {
     flex: 1,
     backgroundColor: colors.background.primary,
     borderRadius: 10,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xs,
     alignItems: 'center',
+    marginHorizontal: 3,
+  },
+  valuationTierBoxCenter: {
+    borderLeftWidth: 0,
+    borderRightWidth: 0,
   },
   valuationTierLabel: {
-    fontSize: 10,
+    fontSize: 11,
     color: colors.text.secondary,
     fontWeight: '600',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 2,
+    letterSpacing: 0.3,
+    marginBottom: spacing.xs,
+    textAlign: 'center',
   },
   valuationTierValue: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: colors.text.primary,
+    textAlign: 'center',
+  },
+  valuationTierDash: {
+    fontSize: 12,
+    color: colors.text.muted,
+    lineHeight: 16,
   },
   valuationMetaRow: {
     flexDirection: 'row',

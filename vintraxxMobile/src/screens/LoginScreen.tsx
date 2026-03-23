@@ -683,12 +683,15 @@ const styles = StyleSheet.create({
   // OTP specific
   otpContainer: {
     marginVertical: spacing.lg,
+    paddingHorizontal: spacing.sm,
   },
   resendSection: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
+    flexWrap: 'wrap',
     marginTop: spacing.lg,
+    paddingHorizontal: spacing.sm,
     gap: spacing.xs,
   },
   resendText: {

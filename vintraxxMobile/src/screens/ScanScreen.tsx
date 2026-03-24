@@ -885,7 +885,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
                     <View style={styles.stockNumberInputWrap}>
                       <TextInput
                         style={styles.stockNumberInput}
-                        placeholder="Enter stock number (up to 20 digits)"
+                        placeholder="Enter stock number"
                         placeholderTextColor={colors.text.muted}
                         value={stockNumber}
                         onChangeText={(text) => {

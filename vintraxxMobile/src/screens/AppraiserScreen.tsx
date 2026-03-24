@@ -600,7 +600,7 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
         <View style={styles.vinInputContainer}>
           <TextInput
             style={styles.vinInput}
-            placeholder="Enter VIN manually"
+            placeholder="Enter VIN"
             placeholderTextColor={colors.text.light}
             value={vinInput}
             onChangeText={setVinInput}

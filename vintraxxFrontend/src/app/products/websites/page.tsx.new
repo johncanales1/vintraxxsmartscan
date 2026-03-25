@@ -1,0 +1,385 @@
+"use client";
+
+import { type ComponentProps, type FC, type ReactNode, useState } from "react";
+import { BarChartSquare02, CursorClick01, Globe02, MessageChatCircle, Palette, PlayCircle, SearchLg, Zap } from "@untitledui/icons";
+import { Button } from "@/components/base/buttons/button";
+import { Checkbox } from "@/components/base/checkbox/checkbox";
+import { Form } from "@/components/base/form/form";
+import { Input, InputBase } from "@/components/base/input/input";
+import { InputGroup } from "@/components/base/input/input-group";
+import { NativeSelect } from "@/components/base/select/select-native";
+import { TextArea } from "@/components/base/textarea/textarea";
+import { FeaturedIcon } from "@/components/foundations/featured-icon/featured-icon";
+import { UntitledLogo } from "@/components/foundations/logo/untitledui-logo";
+import { StarIcon } from "@/components/foundations/rating-stars";
+import { Header } from "@/components/marketing/header-navigation/header";
+import { SectionDivider } from "@/components/shared-assets/section-divider";
+import countries, { phoneCodeOptions } from "@/utils/countries";
+import { cx } from "@/utils/cx";
+import Link from "next/link";
+import websiteLogo from "@/assets/logo/brands/website.png";
+import dashboardImage from "@/assets/images/dashboard.png";
+
+const HeaderPrimaryDark = (props: ComponentProps<typeof Header>) => {
+    return (
+        <Header
+            {...props}
+            className={cx(
+                "bg-brand-section [&_nav>ul>li>a]:text-secondary_on-brand [&_nav>ul>li>a]:hover:text-secondary_on-brand [&_nav>ul>li>button]:text-secondary_on-brand [&_nav>ul>li>button]:hover:text-secondary_on-brand [&_nav>ul>li>button>svg]:text-fg-brand-secondary_alt [&_svg_path.fill-fg-primary]:fill-fg-white",
+                props.className,
+            )}
+        />
+    );
+};
+
+interface TextCentered {
+    title: string;
+    subtitle: string;
+    footer?: ReactNode;
+}
+
+interface FeatureTextIcon extends TextCentered {
+    icon: FC<{ className?: string }>;
+}
+
+const FeatureTextFeaturedIconLeft = ({ icon, title, subtitle, footer }: FeatureTextIcon) => (
+    <div className="flex max-w-140 gap-4">
+        <FeaturedIcon icon={icon} size="lg" color="gray" theme="modern" className="hidden md:inline-flex" />
+        <FeaturedIcon icon={icon} size="md" color="gray" theme="modern" className="inline-flex md:hidden" />
+
+        <div className="flex flex-col items-start gap-4">
+            <div>
+                <h3 className="mt-1.5 text-lg font-semibold text-primary md:mt-2.5">{title}</h3>
+                <p className="mt-1 text-md text-tertiary">{subtitle}</p>
+            </div>
+            {footer}
+        </div>
+    </div>
+);
+
+const HeroSection = () => {
+    return (
+        <div className="relative overflow-hidden bg-brand-section">
+            <img
+                alt="Grid of dots"
+                aria-hidden="true"
+                loading="lazy"
+                src="https://www.untitledui.com/patterns/light/grid-dot-sm-desktop.svg"
+                className="pointer-events-none absolute top-0 left-1/2 z-0 hidden max-w-none -translate-x-1/2 opacity-20 md:block"
+            />
+            <img
+                alt="Grid of dots"
+                aria-hidden="true"
+                loading="lazy"
+                src="https://www.untitledui.com/patterns/light/grid-dot-sm-mobile.svg"
+                className="pointer-events-none absolute top-0 left-1/2 z-0 max-w-none -translate-x-1/2 opacity-20 md:hidden"
+            />
+
+            <HeaderPrimaryDark />
+
+            <section className="relative py-16 md:py-24">
+                <div className="mx-auto w-full max-w-container px-4 md:px-8">
+                    <div className="flex max-w-5xl flex-col">
+                        <img src={websiteLogo.src} alt="VinTraxx Websites" className="mb-6 h-16 w-max object-contain" />
+                        <h1 className="text-display-md font-medium text-primary_on-brand md:text-display-lg lg:text-display-xl">
+                            Build Your{" "}
+                            <span className="relative underline decoration-[3px] underline-offset-[0.218em] md:decoration-4">Perfect Website</span> in Minutes
+                        </h1>
+                        <p className="mt-4 max-w-(--breakpoint-sm) text-lg text-tertiary_on-brand md:mt-6 md:text-xl">
+                            — Professional dealership websites with inventory integration, lead capture, SEO optimization, and real-time analytics. Launch your site in minutes, not months.
+                        </p>
+                        <div className="mt-8 flex w-full flex-col-reverse items-stretch gap-3 sm:w-auto sm:flex-row sm:items-start md:mt-12">
+                            <Button iconLeading={PlayCircle} color="secondary" size="xl" className="shadow-xs! ring-0">
+                                Watch Demo
+                            </Button>
+                            <Button size="xl">Get Started</Button>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="mx-auto mt-16 w-full max-w-container px-4 md:px-8">
+                    <img
+                        alt="VinTraxx Websites Dashboard"
+                        src={dashboardImage.src}
+                        className="md:[360px] h-60 w-full rounded-lg object-cover lg:h-129"
+                    />
+                </div>
+            </section>
+        </div>
+    );
+};
+
+const SocialProofSection = () => {
+    return (
+        <section className="bg-brand-section pb-16 md:pb-24">
+            <div className="mx-auto max-w-container px-4 md:px-8">
+                <div className="flex flex-col gap-8">
+                    <p className="text-center text-md font-medium text-tertiary_on-brand">Trusted by dealerships nationwide</p>
+                    <div className="flex flex-wrap justify-center gap-x-8 gap-y-4 xl:gap-x-6">
+                        <div className="flex h-9 items-center gap-2 text-lg font-semibold text-primary_on-brand opacity-85 md:h-12 md:text-xl">
+                            <span>🚗</span> ABC Motors
+                        </div>
+                        <div className="flex h-9 items-center gap-2 text-lg font-semibold text-primary_on-brand opacity-85 md:h-12 md:text-xl">
+                            <span>🏎️</span> Elite Auto
+                        </div>
+                        <div className="flex h-9 items-center gap-2 text-lg font-semibold text-primary_on-brand opacity-85 md:h-12 md:text-xl">
+                            <span>🚙</span> Premier Cars
+                        </div>
+                        <div className="flex h-9 items-center gap-2 text-lg font-semibold text-primary_on-brand opacity-85 md:h-12 md:text-xl">
+                            <span>🛻</span> Valley Auto Group
+                        </div>
+                        <div className="flex h-9 items-center gap-2 text-lg font-semibold text-primary_on-brand opacity-85 md:h-12 md:text-xl">
+                            <span>🚘</span> City Wheels
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    );
+};
+
+const FeaturesSection = () => {
+    return (
+        <section className="bg-primary">
+            <div className="bg-secondary pt-16 pb-[112px] md:pt-24 md:pb-40">
+                <div className="mx-auto grid w-full max-w-container grid-cols-1 gap-12 px-4 md:gap-16 md:px-8 lg:grid-cols-2 lg:gap-24">
+                    <div className="flex w-full flex-col">
+                        <span className="text-sm font-semibold text-brand-secondary md:text-md">Website Builder</span>
+                        <h2 className="mt-3 text-display-sm font-semibold text-primary md:text-display-md">Professional Dealer Websites</h2>
+                        <p className="mt-4 text-lg text-tertiary md:mt-5 md:text-xl">
+                            Beautiful, conversion-optimized templates designed specifically for automotive dealers. Launch your professional website with integrated inventory, lead capture, and analytics.
+                        </p>
+                    </div>
+
+                    <ul className="grid grid-cols-1 gap-10 md:grid-cols-2 md:gap-12 lg:grid-cols-1">
+                        {[
+                            {
+                                title: "Professional Templates",
+                                subtitle: "Beautiful, mobile-responsive templates designed for automotive dealers. Customize colors, fonts, and layouts to match your brand.",
+                                icon: Palette,
+                            },
+                            {
+                                title: "Inventory Integration",
+                                subtitle: "Real-time sync with VinLane IMS. Your inventory automatically updates across your website with photos, pricing, and details.",
+                                icon: Zap,
+                            },
+                        ].map((item) => (
+                            <li key={item.title}>
+                                <FeatureTextFeaturedIconLeft icon={item.icon} title={item.title} subtitle={item.subtitle} />
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            </div>
+
+            <div className="mx-auto -mt-16 flex w-full max-w-container justify-center px-4 pb-16 md:-mt-24 md:px-8 md:pb-24">
+                <img src={dashboardImage.src} alt="Website Builder" className="h-60 w-full rounded-lg object-cover md:h-100 lg:h-129" />
+            </div>
+        </section>
+    );
+};
+
+const TestimonialSection = () => {
+    return (
+        <section className="bg-secondary py-16 md:py-24">
+            <div className="mx-auto max-w-container px-4 md:px-8">
+                <figure className="flex flex-col gap-10 lg:flex-row lg:gap-32">
+                    <div className="flex size-[200px] items-center justify-center rounded-2xl bg-brand-solid text-6xl text-white md:size-[328px]">
+                        SG
+                    </div>
+                    <div className="flex flex-col gap-8 md:-ml-2">
+                        <div className="flex flex-col gap-4 md:gap-6">
+                            <div aria-hidden="true" className="flex gap-1">
+                                <StarIcon />
+                                <StarIcon />
+                                <StarIcon />
+                                <StarIcon />
+                                <StarIcon />
+                            </div>
+                            <blockquote className="text-display-xs font-medium text-primary md:text-display-md">
+                                VinTraxx Websites transformed our online presence. We went from an outdated site to a modern, professional website in just one day. Our leads increased 40% in the first month.
+                            </blockquote>
+                        </div>
+                        <figcaption className="flex flex-col gap-1">
+                            <p className="text-lg font-semibold text-primary">— Salvador Guerra</p>
+                            <cite className="text-md text-tertiary not-italic">Owner, South Houston Auto Group</cite>
+                        </figcaption>
+                    </div>
+                </figure>
+            </div>
+        </section>
+    );
+};
+
+const MetricsSection = () => {
+    return (
+        <section className="bg-primary py-16 md:py-24">
+            <div className="mx-auto max-w-container px-4 md:px-8">
+                <dl className="grid gap-x-4 gap-y-8 border-secondary md:grid-cols-2 md:border-y md:py-16 lg:grid-cols-4">
+                    {[
+                        { title: "18%", subtitle: "More Page Views" },
+                        { title: "22%", subtitle: "More VDP Views" },
+                        { title: "12%", subtitle: "More Visitors" },
+                        { title: "8%", subtitle: "More Leads" },
+                    ].map((item) => (
+                        <div key={item.title} className="flex flex-1 flex-col-reverse gap-3 text-center">
+                            <dt className="text-lg font-semibold text-primary">{item.subtitle}</dt>
+                            <dd className="text-display-lg font-semibold text-brand-primary md:text-display-xl">{item.title}</dd>
+                        </div>
+                    ))}
+                </dl>
+            </div>
+        </section>
+    );
+};
+
+const ContactSection = () => {
+    const [selectedCountryPhone, setSelectedCountryPhone] = useState("US");
+
+    return (
+        <section className="bg-primary pb-16 md:pb-24">
+            <div className="mx-auto max-w-container px-4 md:px-8">
+                <div className="grid grid-cols-1 gap-16 lg:grid-cols-2">
+                    <div className="flex flex-col justify-center max-lg:hidden lg:h-192">
+                        <div className="space-y-8">
+                            <FeaturedIcon icon={Globe02} size="xl" color="brand" theme="modern" />
+                            <h3 className="text-display-sm font-semibold text-primary">Everything You Need</h3>
+                            <ul className="space-y-4">
+                                {[
+                                    { icon: Palette, text: "Professional Templates" },
+                                    { icon: SearchLg, text: "SEO Optimized" },
+                                    { icon: CursorClick01, text: "Lead Capture Tools" },
+                                    { icon: BarChartSquare02, text: "Analytics Dashboard" },
+                                ].map((item) => (
+                                    <li key={item.text} className="flex items-center gap-3">
+                                        <FeaturedIcon icon={item.icon} size="sm" color="brand" theme="light" />
+                                        <span className="text-lg text-tertiary">{item.text}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    </div>
+                    <div className="flex items-center justify-center">
+                        <div className="w-full md:max-w-120">
+                            <h2 className="text-display-sm font-semibold text-primary md:text-display-md">Get Started Today</h2>
+                            <p className="mt-4 text-lg text-tertiary md:mt-5 md:text-xl">Ready to launch your professional dealership website?</p>
+                            <Form
+                                onSubmit={(e) => {
+                                    e.preventDefault();
+                                    const data = Object.fromEntries(new FormData(e.currentTarget));
+                                    console.log("Form data:", data);
+                                }}
+                                className="mt-12 flex flex-col gap-8"
+                            >
+                                <div className="flex flex-col gap-6">
+                                    <div className="flex flex-col gap-x-8 gap-y-6 sm:flex-row">
+                                        <Input isRequired size="md" name="firstName" label="First name" placeholder="First name" wrapperClassName="flex-1" />
+                                        <Input isRequired size="md" name="lastName" label="Last name" placeholder="Last name" wrapperClassName="flex-1" />
+                                    </div>
+                                    <Input isRequired size="md" name="dealership" label="Dealership name" placeholder="Your dealership" />
+                                    <Input isRequired size="md" name="email" label="Email" type="email" placeholder="you@dealership.com" />
+                                    <InputGroup
+                                        size="md"
+                                        name="phone"
+                                        label="Phone number"
+                                        leadingAddon={
+                                            <NativeSelect
+                                                aria-label="Country code"
+                                                value={selectedCountryPhone}
+                                                onChange={(value) => setSelectedCountryPhone(value.currentTarget.value)}
+                                                options={phoneCodeOptions.map((item) => ({
+                                                    label: item.label as string,
+                                                    value: item.id as string,
+                                                }))}
+                                            />
+                                        }
+                                    >
+                                        <InputBase
+                                            type="tel"
+                                            placeholder={countries.find((country) => country.code === selectedCountryPhone)?.phoneMask?.replaceAll("#", "0")}
+                                        />
+                                    </InputGroup>
+                                    <TextArea name="message" label="Tell us about your needs" placeholder="What features are most important to you?" rows={4} />
+                                    <Checkbox
+                                        name="privacy"
+                                        size="md"
+                                        hint={
+                                            <>
+                                                You agree to our friendly{" "}
+                                                <a href="#" className="rounded-xs underline underline-offset-3 outline-focus-ring focus-visible:outline-2 focus-visible:outline-offset-2">
+                                                    privacy policy.
+                                                </a>
+                                            </>
+                                        }
+                                    />
+                                </div>
+                                <Button type="submit" size="xl">
+                                    Request Demo
+                                </Button>
+                            </Form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    );
+};
+
+const footerNavList = [
+    { label: "Products", items: [{ label: "VinLane IMS", href: "/products/vinlane" }, { label: "VinTraxx Recon", href: "/products/recon" }, { label: "SmartScan", href: "/products/smartscan" }, { label: "VinClips", href: "/products/vinclips" }, { label: "Auto Mall", href: "/products/automall" }, { label: "Acquisition.io", href: "/products/acquisition" }] },
+    { label: "Company", items: [{ label: "About us", href: "/about" }, { label: "Careers", href: "/careers" }, { label: "Press", href: "/press" }, { label: "News", href: "/news" }, { label: "Contact", href: "/contact" }] },
+    { label: "Resources", items: [{ label: "Blog", href: "/blog" }, { label: "Help Center", href: "/help" }, { label: "Documentation", href: "/docs" }, { label: "Training", href: "/training" }, { label: "Support", href: "/support" }] },
+    { label: "For Dealers", items: [{ label: "Independent Dealers", href: "/dealers/independent" }, { label: "Franchise Dealers", href: "/dealers/franchise" }, { label: "Dealer Groups", href: "/dealers/groups" }, { label: "Success Stories", href: "/success-stories" }] },
+    { label: "Social", items: [{ label: "Twitter", href: "#" }, { label: "LinkedIn", href: "#" }, { label: "Facebook", href: "#" }, { label: "TikTok", href: "#" }, { label: "YouTube", href: "#" }] },
+    { label: "Legal", items: [{ label: "Terms", href: "/terms" }, { label: "Privacy", href: "/privacy" }, { label: "Cookies", href: "/cookies" }, { label: "Settings", href: "/settings" }] },
+];
+
+const FooterLarge = () => {
+    return (
+        <footer className="dark-mode bg-primary py-12 md:pt-16">
+            <div className="mx-auto max-w-container px-4 md:px-8">
+                <div className="flex flex-col justify-center text-center">
+                    <h2 className="text-display-xs font-semibold text-primary md:text-display-sm">Let's Revolutionize Your Dealership Together</h2>
+                    <p className="mt-2 text-md text-tertiary md:mt-4 md:text-xl">Get in touch to see how VinTraxx can boost your operations and profits.</p>
+                    <div className="mt-8 flex flex-col-reverse gap-3 self-stretch md:mt-12 md:flex-row md:self-center">
+                        <Button color="secondary" size="xl">Contact Us</Button>
+                        <Button size="xl">Request a Demo</Button>
+                    </div>
+                </div>
+                <nav className="mt-12 md:mt-16">
+                    <ul className="grid grid-cols-2 gap-8 md:grid-cols-3 lg:grid-cols-6">
+                        {footerNavList.map((category) => (
+                            <li key={category.label}>
+                                <h4 className="text-sm font-semibold text-quaternary">{category.label}</h4>
+                                <ul className="mt-4 flex flex-col gap-3">
+                                    {category.items.map((item) => (
+                                        <li key={item.label}><Button color="link-gray" size="lg" href={item.href}>{item.label}</Button></li>
+                                    ))}
+                                </ul>
+                            </li>
+                        ))}
+                    </ul>
+                </nav>
+                <div className="mt-12 flex flex-col justify-between gap-6 border-t border-secondary pt-8 md:mt-16 md:flex-row md:items-center">
+                    <Link href="/"><UntitledLogo className="h-10" /></Link>
+                    <p className="text-md text-quaternary">© 2025 Vintraxx. All rights reserved.</p>
+                </div>
+            </div>
+        </footer>
+    );
+};
+
+export default function WebsitesPage() {
+    return (
+        <div className="bg-primary">
+            <HeroSection />
+            <SocialProofSection />
+            <FeaturesSection />
+            <TestimonialSection />
+            <MetricsSection />
+            <ContactSection />
+            <SectionDivider />
+            <FooterLarge />
+        </div>
+    );
+}

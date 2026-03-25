@@ -3,6 +3,7 @@ const nextConfig = {
     experimental: {
         optimizePackageImports: ["@untitledui/icons"],
     },
+    output: 'standalone',
 };
 
 export default nextConfig;

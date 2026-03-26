@@ -62,7 +62,7 @@ const HeroSection = () => (
                     Buy Smarter.<br />Profit More.
                 </h1>
                 <p className="text-lg text-white/85 mb-8 leading-relaxed">
-                    SmartScan gives your team the power to appraise any vehicle in minutes — using <strong className="text-white">AI-driven valuations and live market data</strong> so you always pay the right price and maximize your margins.
+                    SmartScan gives your team the power to appraise any vehicle in minutes - using <strong className="text-white">AI-driven valuations and live market data</strong> so you always pay the right price and maximize your margins.
                 </p>
                 <a href="#form">
                     <button className="bg-[#8B2F3E] hover:bg-[#7A2837] text-white text-lg px-8 py-2.5 font-semibold rounded-md shadow transition-colors inline-flex items-center gap-2">
@@ -79,22 +79,22 @@ const StatsSection = () => (
         <div className="max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8">
             <div className="text-center">
                 <div className="text-3xl md:text-4xl font-black text-white mb-1">98%</div>
-                <div className="text-[#8B2F3E] font-bold text-sm uppercase tracking-wide mb-1">appraisal accuracy</div>
+                <div className="text-[#FFFFFF] font-bold text-sm uppercase tracking-wide mb-1">appraisal accuracy</div>
                 <div className="text-white/50 text-xs">powered by AI &amp; live market data</div>
             </div>
             <div className="text-center">
                 <div className="text-3xl md:text-4xl font-black text-white mb-1">$850</div>
-                <div className="text-[#8B2F3E] font-bold text-sm uppercase tracking-wide mb-1">avg. recon cost savings</div>
+                <div className="text-[#FFFFFF] font-bold text-sm uppercase tracking-wide mb-1">avg. recon cost savings</div>
                 <div className="text-white/50 text-xs">per vehicle with OBD-II diagnostics</div>
             </div>
             <div className="text-center">
                 <div className="text-3xl md:text-4xl font-black text-white mb-1">+92%</div>
-                <div className="text-[#8B2F3E] font-bold text-sm uppercase tracking-wide mb-1">more profit per VIN</div>
+                <div className="text-[#FFFFFF] font-bold text-sm uppercase tracking-wide mb-1">more profit per VIN</div>
                 <div className="text-white/50 text-xs">acquired through service drive</div>
             </div>
             <div className="text-center">
                 <div className="text-3xl md:text-4xl font-black text-white mb-1">Up to $3,100</div>
-                <div className="text-[#8B2F3E] font-bold text-sm uppercase tracking-wide mb-1">more profit per VIN</div>
+                <div className="text-[#FFFFFF] font-bold text-sm uppercase tracking-wide mb-1">more profit per VIN</div>
                 <div className="text-white/50 text-xs">with real-time market pricing</div>
             </div>
         </div>
@@ -106,7 +106,7 @@ const FeaturesSection = () => (
         <div className="max-w-6xl mx-auto">
             <div className="text-center mb-14">
                 <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-3">Everything you need in one appraisal</h2>
-                <p className="text-lg text-gray-500">From instant offer to profitable exit — SmartScan covers the full lifecycle.</p>
+                <p className="text-lg text-gray-500">From instant offer to profitable exit - SmartScan covers the full lifecycle.</p>
             </div>
             <div className="grid md:grid-cols-2 gap-8">
                 {/* Feature Card 1 - Transparent Offers */}
@@ -136,7 +136,7 @@ const FeaturesSection = () => (
                     </div>
                     <div className="p-6">
                         <h3 className="text-xl font-bold text-gray-900 mb-2">Transparent, defensible offers</h3>
-                        <p className="text-gray-500 text-sm leading-relaxed">Generate precise appraisals in minutes with OBD-II diagnostics automatically factored in — giving you offers you can <strong className="text-gray-700">stand behind every time.</strong></p>
+                        <p className="text-gray-500 text-sm leading-relaxed">Generate precise appraisals in minutes with OBD-II diagnostics automatically factored in - giving you offers you can <strong className="text-gray-700">stand behind every time.</strong></p>
                     </div>
                 </div>
 
@@ -241,7 +241,7 @@ const FeaturesSection = () => (
                     </div>
                     <div className="p-6">
                         <h3 className="text-xl font-bold text-gray-900 mb-2">Three offers, one scan</h3>
-                        <p className="text-gray-500 text-sm leading-relaxed">SmartScan instantly generates a <strong className="text-gray-700">Cash Offer, Wholesale value, and Trade-In estimate</strong> — all sourced from live market data so every number is defensible.</p>
+                        <p className="text-gray-500 text-sm leading-relaxed">SmartScan instantly generates a <strong className="text-gray-700">Cash Offer, Wholesale value, and Trade-In estimate</strong> - all sourced from live market data so every number is defensible.</p>
                     </div>
                 </div>
             </div>
@@ -391,7 +391,7 @@ const ConditionReportSection = () => (
                     A full condition report,<br />generated instantly
                 </h2>
                 <p className="text-gray-500 text-base leading-relaxed mb-8">
-                    SmartScan automatically builds a detailed, shareable vehicle inspection report for every vehicle — complete with photos, diagnostic findings, body damage mapping, and itemized adjustments your team and customers can trust.
+                    SmartScan automatically builds a detailed, shareable vehicle inspection report for every vehicle - complete with photos, diagnostic findings, body damage mapping, and itemized adjustments your team and customers can trust.
                 </p>
                 <div className="space-y-4">
                     <div className="flex items-start gap-3">
@@ -599,7 +599,7 @@ const DiagnosticScanReportSection = () => (
                     Maximize every turn<br />with real-time market data
                 </h2>
                 <p className="text-gray-500 text-base leading-relaxed mb-8">
-                    Powered by the most valuable data sources in automotive — including local supply and demand signals — SmartScan updates the value of each VIN every day so you can make the most profitable exit decisions in a volatile market.
+                    Powered by the most valuable data sources in automotive - including local supply and demand signals - SmartScan updates the value of each VIN every day so you can make the most profitable exit decisions in a volatile market.
                 </p>
                 <div className="bg-[#FFFFFF]/[0.08] border border-[#8B2F3E]/20 rounded-xl px-6 py-4 inline-flex items-baseline gap-2">
                     <span className="text-sm text-gray-600 font-medium">Up to</span>
@@ -691,7 +691,7 @@ const DiagnosticScanReportSection = () => (
                             <div className="grid grid-cols-3 px-3 py-1.5 border-b border-gray-100 last:border-0">
                                 <div className="text-[9px] text-red-600 font-bold">C1234-00</div>
                                 <div className="text-[9px] text-gray-600">TPMS</div>
-                                <div className="text-[9px] text-gray-500">Tire Pressure Sensor — Right Front</div>
+                                <div className="text-[9px] text-gray-500">Tire Pressure Sensor - Right Front</div>
                             </div>
                         </div>
                     </div>
@@ -760,7 +760,7 @@ const OnlineAppraisalsSection = () => (
                     Turn website visitors<br />into walk-in sellers
                 </h2>
                 <p className="text-gray-500 text-base leading-relaxed mb-8">
-                    SmartScan bridges the gap between online and in-store — giving shoppers a real, AI-powered offer before they ever set foot on your lot. No inconsistent estimates, no lost leads. Just one unified appraisal experience that closes deals faster.
+                    SmartScan bridges the gap between online and in-store - giving shoppers a real, AI-powered offer before they ever set foot on your lot. No inconsistent estimates, no lost leads. Just one unified appraisal experience that closes deals faster.
                 </p>
                 <div className="bg-[#FFFFFF]/[0.08] border border-[#8B2F3E]/20 rounded-xl px-6 py-4 inline-flex items-baseline gap-2">
                     <span className="text-sm text-gray-600 font-medium">3x</span>
@@ -819,7 +819,7 @@ const ServiceDriveSection = () => (
                 <span className="inline-block bg-[#8B2F3E]/10 text-[#8B2F3E] text-sm font-semibold px-3 py-1 rounded-full mb-4">Service Drive</span>
                 <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4 leading-tight">Turn your service drive into your best buying lane</h2>
                 <p className="text-lg text-gray-600 mb-8 leading-relaxed">
-                    Every day, high-quality vehicles roll through your service drive — and most dealers let them leave. SmartScan gives your team the tools to make instant, data-backed offers right at the point of service, turning routine appointments into acquisition opportunities.
+                    Every day, high-quality vehicles roll through your service drive - and most dealers let them leave. SmartScan gives your team the tools to make instant, data-backed offers right at the point of service, turning routine appointments into acquisition opportunities.
                 </p>
                 <div className="border-l-4 border-[#8B2F3E] pl-5">
                     <div className="text-4xl font-bold text-gray-900">3x</div>
@@ -841,7 +841,7 @@ const MarketIntelligenceSection = () => (
                 <span className="inline-block bg-[#8B2F3E]/10 text-[#8B2F3E] text-sm font-semibold px-3 py-1 rounded-full mb-4">Market Intelligence</span>
                 <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4 leading-tight">Maximize every turn with real-time market data</h2>
                 <p className="text-lg text-gray-600 mb-8 leading-relaxed">
-                    Powered by the most valuable data sources in automotive, SmartScan updates the value of each VIN every day so you can make the most profitable exit decisions — even in a volatile market.
+                    Powered by the most valuable data sources in automotive, SmartScan updates the value of each VIN every day so you can make the most profitable exit decisions - even in a volatile market.
                 </p>
                 <div className="border-l-4 border-[#8B2F3E] pl-5">
                     <div className="text-4xl font-bold text-gray-900">Up to $3,100</div>
@@ -861,7 +861,7 @@ const TestimonialsSection = () => {
     
     const testimonials = [
         {
-            quote: "SmartScan is going to help your dealership — significantly. The accuracy is unlike anything we've used before.",
+            quote: "SmartScan is going to help your dealership - significantly. The accuracy is unlike anything we've used before.",
             name: "Marcus Rivera",
             title: "General Sales Manager",
             company: "Summit Honda"

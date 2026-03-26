@@ -113,3 +113,14 @@ export const TwitterLogo = (props: SVGProps<SVGSVGElement>) => {
         </svg>
     );
 };
+
+export const MicrosoftLogo = ({ colorful, ...props }: SVGProps<SVGSVGElement> & { colorful?: boolean }) => {
+    return (
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" {...props}>
+            <path d="M3 3H11.5V11.5H3V3Z" fill={colorful ? "#F25022" : "currentColor"} />
+            <path d="M12.5 3H21V11.5H12.5V3Z" fill={colorful ? "#7FBA00" : "currentColor"} />
+            <path d="M3 12.5H11.5V21H3V12.5Z" fill={colorful ? "#00A4EF" : "currentColor"} />
+            <path d="M12.5 12.5H21V21H12.5V12.5Z" fill={colorful ? "#FFB900" : "currentColor"} />
+        </svg>
+    );
+};

@@ -49,7 +49,7 @@ export const DealerNav = ({ dealerLogo, dealerName, userEmail }: DealerNavProps)
                             </div>
                         )}
                         <span className="hidden lg:block text-lg font-bold text-[#1B3A5F]">
-                            {dealerName || "VinTraxx AutoMall"}
+                            {dealerName}
                         </span>
                     </Link>
 

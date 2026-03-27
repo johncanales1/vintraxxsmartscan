@@ -40,7 +40,7 @@ export default function VinLaneIMSLayout({
         <div className="min-h-screen bg-white">
             <DealerNav 
                 dealerLogo={dealer?.logoUrl}
-                dealerName={dealer?.companyName || "VinTraxx AutoMall"}
+                dealerName={dealer?.companyName}
                 userEmail={dealer?.email}
             />
             <main className="pt-16">

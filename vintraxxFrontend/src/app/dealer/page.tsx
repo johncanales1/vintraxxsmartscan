@@ -247,7 +247,7 @@ export default function DealerPortalPage() {
 
             <DealerNav 
                 dealerLogo={dealer?.logoUrl}
-                dealerName={dealer?.companyName || "VinTraxx AutoMall"}
+                dealerName={dealer?.companyName}
                 userEmail={dealer?.email}
             />
 

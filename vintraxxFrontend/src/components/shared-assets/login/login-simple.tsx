@@ -28,7 +28,9 @@ export const LoginSimple = () => {
     const [regEmail, setRegEmail] = useState("");
     const [otp, setOtp] = useState("");
     const [regPassword, setRegPassword] = useState("");
+    const [regPasswordConfirm, setRegPasswordConfirm] = useState("");
     const [pricePerLaborHour, setPricePerLaborHour] = useState("");
+
 
     // UI state
     const [error, setError] = useState("");
@@ -143,6 +145,10 @@ export const LoginSimple = () => {
             setError("Password must be at least 8 characters.");
             return;
         }
+        if (regPassword !== regPasswordConfirm) {
+            setError("Passwords do not match.");
+            return;
+        }
         const price = parseFloat(pricePerLaborHour);
         if (!pricePerLaborHour.trim() || isNaN(price) || price <= 0) {
             setError("Please enter a valid price per labor hour (e.g. 150).");
@@ -175,6 +181,9 @@ export const LoginSimple = () => {
             setLoading(false);
         }
     };
+
+
+
 
     const switchToRegister = () => {
         setMode("register");
@@ -290,8 +299,20 @@ export const LoginSimple = () => {
                                 disabled={loading}
                                 className="mt-2 w-full rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 hover:bg-gray-800 hover:shadow-[0_6px_20px_rgba(0,0,0,0.25)] disabled:opacity-60 disabled:cursor-not-allowed"
                             >
-                                {loading ? "Signing in…" : "Login"}
+                                {loading ? "Signing in…" : "Sign in"}
                             </button>
+
+                            {/* Sign Up Link */}
+                            <div className="flex items-center justify-center text-xs sm:text-sm">
+                                <span className="text-gray-500">New dealer?</span>
+                                <button
+                                    type="button"
+                                    onClick={switchToRegister}
+                                    className="ml-1 text-blue-600 hover:text-blue-800 underline"
+                                >
+                                    Register here
+                                </button>
+                            </div>
                         </form>
                     )}
 
@@ -363,7 +384,7 @@ export const LoginSimple = () => {
                                 </form>
                             )}
 
-                            {/* Step 3: Password + price per labor hour */}
+                            {/* Step 3: Password + password confirm + price per labor hour */}
                             {registerStep === 3 && (
                                 <form onSubmit={handleRegister} className="flex flex-col gap-3" noValidate>
                                     <div className="flex flex-col gap-1.5">
@@ -383,6 +404,22 @@ export const LoginSimple = () => {
                                         />
                                     </div>
                                     <div className="flex flex-col gap-1.5">
+                                        <span className="text-xs sm:text-sm font-medium text-gray-700">Confirm Password</span>
+                                        <Input
+                                            hideRequiredIndicator
+                                            label=""
+                                            type="password"
+                                            name="passwordConfirm"
+                                            placeholder="Re-enter your password"
+                                            size="sm"
+                                            icon={Lock01}
+                                            className="w-full"
+                                            inputClassName="bg-blue-50 text-xs sm:text-sm md:text-base"
+                                            value={regPasswordConfirm}
+                                            onChange={(val: string) => setRegPasswordConfirm(val)}
+                                        />
+                                    </div>
+                                    <div className="flex flex-col gap-1.5">
                                         <span className="text-xs sm:text-sm font-medium text-gray-700">Price Per Labor Hour ($)</span>
                                         <Input
                                             hideRequiredIndicator
@@ -397,6 +434,7 @@ export const LoginSimple = () => {
                                             onChange={(val: string) => setPricePerLaborHour(val)}
                                         />
                                     </div>
+
                                     <button
                                         type="submit"
                                         disabled={loading}
@@ -409,32 +447,19 @@ export const LoginSimple = () => {
                         </div>
                     )}
 
-                    {/* Mode toggle */}
-                    <div className="mt-4 flex items-center justify-center gap-1 text-xs sm:text-sm">
-                        {mode === "login" ? (
-                            <>
-                                <span className="text-gray-500">New dealer?</span>
-                                <button
-                                    type="button"
-                                    onClick={switchToRegister}
-                                    className="font-medium text-blue-600 hover:text-blue-800 underline"
-                                >
-                                    Register here
-                                </button>
-                            </>
-                        ) : (
-                            <>
-                                <span className="text-gray-500">Already registered?</span>
-                                <button
-                                    type="button"
-                                    onClick={switchToLogin}
-                                    className="font-medium text-blue-600 hover:text-blue-800 underline"
-                                >
-                                    Login
-                                </button>
-                            </>
-                        )}
-                    </div>
+                    {/* Mode toggle - only show for register mode */}
+                    {mode === "register" && (
+                        <div className="mt-4 flex items-center justify-center gap-1 text-xs sm:text-sm">
+                            <span className="text-gray-500">Already registered?</span>
+                            <button
+                                type="button"
+                                onClick={switchToLogin}
+                                className="font-medium text-blue-600 hover:text-blue-800 underline"
+                            >
+                                Sign in
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
         </section>

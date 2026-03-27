@@ -49,7 +49,25 @@ pm2 startup
 
 echo "✅ PM2 configuration saved!"
 
-# 8. Test the application locally
+# 8. Configure nginx automatically
+echo "🌐 Configuring nginx reverse proxy..."
+sudo mkdir -p /etc/nginx/sites-available
+sudo mkdir -p /etc/nginx/sites-enabled
+sudo cp /home/ec2-user/vintraxxsmartscan/vintraxxFrontend/nginx-dev.vintraxx.com.conf /etc/nginx/sites-available/dev.vintraxx.com
+sudo ln -sf /etc/nginx/sites-available/dev.vintraxx.com /etc/nginx/sites-enabled/
+
+# 9. Test and reload nginx configuration
+echo "🔧 Testing nginx configuration..."
+if sudo nginx -t; then
+    echo "✅ Nginx configuration is valid!"
+    sudo systemctl reload nginx
+    echo "✅ Nginx reloaded successfully!"
+else
+    echo "❌ Nginx configuration error!"
+    exit 1
+fi
+
+# 10. Test the application locally
 echo "🧪 Testing the application locally..."
 sleep 3
 if curl -f -s http://127.0.0.1:3002/ > /dev/null; then
@@ -59,17 +77,22 @@ else
     exit 1
 fi
 
+# 11. Test external access
+echo "🌍 Testing external access..."
+sleep 2
+if curl -f -s https://dev.vintraxx.com/ > /dev/null; then
+    echo "✅ External access working correctly!"
+else
+    echo "⚠️  External access test failed - check SSL certificates"
+fi
+
 echo ""
-echo "🎉 Frontend deployment completed!"
+echo "🎉 Frontend deployment completed successfully!"
 echo ""
-echo "📋 Next steps:"
-echo "1. Configure nginx reverse proxy (requires sudo):"
-echo "   sudo cp /home/ec2-user/vintraxxsmartscan/vintraxxFrontend/nginx-dev.vintraxx.com.conf /etc/nginx/sites-available/dev.vintraxx.com"
-echo "   sudo ln -s /etc/nginx/sites-available/dev.vintraxx.com /etc/nginx/sites-enabled/"
-echo "   sudo nginx -t && sudo systemctl reload nginx"
-echo ""
-echo "2. Update SSL certificate paths in nginx config"
-echo "3. Test the deployment: https://dev.vintraxx.com/"
+echo "📍 Your application is now available at:"
+echo "   - Local: http://127.0.0.1:3002/"
+echo "   - Public: https://dev.vintraxx.com/"
+echo "   - Login: https://dev.vintraxx.com/login"
 echo ""
 echo "📊 PM2 Status:"
 pm2 status

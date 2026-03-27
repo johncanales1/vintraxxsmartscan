@@ -7,7 +7,9 @@ import { UntitledLogoMinimal } from "@/components/foundations/logo/untitledui-lo
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-const API_BASE = "https://api.vintraxx.com/api/v1";
+const API_BASE = process.env.NODE_ENV === 'production' 
+  ? "https://api.vintraxx.com/api/v1" 
+  : "http://localhost:3000/api/v1";
 
 type Mode = "login" | "register";
 type RegisterStep = 1 | 2 | 3;

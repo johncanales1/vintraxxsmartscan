@@ -19,7 +19,7 @@ app.use(helmet());
 app.use(cors({ 
   origin: env.NODE_ENV === 'production' 
     ? ['https://app.vintraxx.com', 'https://vintraxx.com', 'https://dev.vintraxx.com']
-    : ['https://app.vintraxx.com', 'https://vintraxx.com', 'https://dev.vintraxx.com', 'http://localhost:3000', 'capacitor://localhost', 'http://localhost'], 
+    : ['https://app.vintraxx.com', 'https://vintraxx.com', 'https://dev.vintraxx.com', 'http://localhost:3000', 'http://localhost:3001', 'capacitor://localhost', 'http://localhost'], 
   credentials: true 
 }));
 app.use(express.json({ limit: '50mb' }));

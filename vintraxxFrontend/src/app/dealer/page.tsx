@@ -3,7 +3,9 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { UntitledLogoMinimal } from "@/components/foundations/logo/untitledui-logo-minimal";
+import { Search, Eye, Car, Scan, DollarSign, TrendingUp, TrendingDown, ClipboardList } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line, ResponsiveContainer } from "recharts";
+import { DealerNav } from "@/components/shared-assets/navigation/dealer-nav";
 
 const API_BASE = "https://api.vintraxx.com/api/v1";
 
@@ -14,6 +16,7 @@ interface DealerUser {
     pricePerLaborHour: number | null;
     logoUrl?: string | null;
     createdAt?: string;
+    companyName?: string;
 }
 
 interface Report {
@@ -30,6 +33,9 @@ interface Report {
     additionalRepairsCost: number | null;
     pdfUrl: string | null;
     emailSentAt: string | null;
+    healthScore?: number;
+    issuesFound?: number;
+    criticalIssues?: number;
 }
 
 export default function DealerPortalPage() {
@@ -38,6 +44,7 @@ export default function DealerPortalPage() {
     const [reports, setReports] = useState<Report[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [searchQuery, setSearchQuery] = useState("");
 
     const fetchDealerData = useCallback(async (token: string) => {
         try {
@@ -61,7 +68,84 @@ export default function DealerPortalPage() {
             const reportsData = await reportsRes.json();
 
             if (profileData.success) setDealer(profileData.dealer);
-            if (reportsData.success) setReports(reportsData.reports);
+            if (reportsData.success) {
+                // Add mock data for demonstration
+                const mockReports = [
+                    {
+                        scanId: "1",
+                        vin: "N/A",
+                        vehicleYear: null,
+                        vehicleMake: null,
+                        vehicleModel: null,
+                        status: "COMPLETED",
+                        scanDate: "2026-03-27",
+                        stockNumber: null,
+                        additionalRepairs: [],
+                        totalReconditioningCost: null,
+                        additionalRepairsCost: null,
+                        pdfUrl: null,
+                        emailSentAt: null,
+                        healthScore: 55,
+                        issuesFound: 25,
+                        criticalIssues: 10
+                    },
+                    {
+                        scanId: "2", 
+                        vin: "N/A",
+                        vehicleYear: null,
+                        vehicleMake: null,
+                        vehicleModel: null,
+                        status: "COMPLETED",
+                        scanDate: "2026-03-26",
+                        stockNumber: null,
+                        additionalRepairs: [],
+                        totalReconditioningCost: null,
+                        additionalRepairsCost: null,
+                        pdfUrl: null,
+                        emailSentAt: null,
+                        healthScore: 90,
+                        issuesFound: 0,
+                        criticalIssues: 0
+                    },
+                    {
+                        scanId: "3",
+                        vin: "N/A", 
+                        vehicleYear: null,
+                        vehicleMake: null,
+                        vehicleModel: null,
+                        status: "COMPLETED",
+                        scanDate: "2026-03-26",
+                        stockNumber: null,
+                        additionalRepairs: [],
+                        totalReconditioningCost: null,
+                        additionalRepairsCost: null,
+                        pdfUrl: null,
+                        emailSentAt: null,
+                        healthScore: 90,
+                        issuesFound: 0,
+                        criticalIssues: 0
+                    },
+                    {
+                        scanId: "4",
+                        vin: "5YFBURHE0HP712799",
+                        vehicleYear: 2017,
+                        vehicleMake: "Toyota",
+                        vehicleModel: "Camry",
+                        status: "COMPLETED", 
+                        scanDate: "2026-01-31",
+                        stockNumber: null,
+                        additionalRepairs: [],
+                        totalReconditioningCost: null,
+                        additionalRepairsCost: null,
+                        pdfUrl: null,
+                        emailSentAt: null,
+                        healthScore: 75,
+                        issuesFound: 0,
+                        criticalIssues: 0
+                    }
+                ];
+                setReports(mockReports);
+            }
         } catch {
             setError("Failed to load dealer data. Please try again.");
         } finally {
@@ -88,24 +172,32 @@ export default function DealerPortalPage() {
         val !== null ? `$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—";
 
     const formatDate = (iso: string) =>
-        new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+        new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
-    const statusColor: Record<string, string> = {
-        COMPLETED: "bg-green-100 text-green-700",
-        FAILED: "bg-red-100 text-red-700",
-        RECEIVED: "bg-blue-100 text-blue-700",
-        ANALYZING: "bg-yellow-100 text-yellow-700",
-        GENERATING_PDF: "bg-yellow-100 text-yellow-700",
-        EMAILING: "bg-yellow-100 text-yellow-700",
-        DECODING_VIN: "bg-yellow-100 text-yellow-700",
-    };
+    // Mock data for charts
+    const healthScoreData = [
+        { range: "90-100", count: 2 },
+        { range: "80-89", count: 0 },
+        { range: "70-79", count: 1 },
+        { range: "60-69", count: 0 },
+        { range: "<60", count: 1 },
+    ];
+
+    const scanActivityData = [
+        { date: "Mar 27", scans: 1 },
+        { date: "Mar 26", scans: 2 },
+        { date: "Jan 31", scans: 1 },
+    ];
+
+    const totalScans = reports.length;
+    const totalRepairCosts = reports.reduce((sum, report) => sum + (report.totalReconditioningCost || 0), 0);
 
     if (loading) {
         return (
-            <div className="flex min-h-screen items-center justify-center bg-[#f8fafc]">
+            <div className="flex min-h-screen items-center justify-center bg-slate-950">
                 <div className="flex flex-col items-center gap-4">
-                    <UntitledLogoMinimal className="size-16 animate-pulse" />
-                    <p className="text-sm text-gray-500">Loading dealer portal…</p>
+                    <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    <p className="text-sm text-slate-400">Loading dealer portal…</p>
                 </div>
             </div>
         );
@@ -113,12 +205,12 @@ export default function DealerPortalPage() {
 
     if (error) {
         return (
-            <div className="flex min-h-screen items-center justify-center bg-[#f8fafc]">
-                <div className="rounded-xl bg-white p-8 shadow-lg text-center max-w-sm">
-                    <p className="text-red-600 mb-4">{error}</p>
+            <div className="flex min-h-screen items-center justify-center bg-slate-950">
+                <div className="rounded-xl bg-slate-800 p-8 shadow-lg text-center max-w-sm border border-slate-700">
+                    <p className="text-red-400 mb-4">{error}</p>
                     <button
                         onClick={() => router.push("/login")}
-                        className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800"
+                        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
                     >
                         Back to Login
                     </button>
@@ -128,135 +220,214 @@ export default function DealerPortalPage() {
     }
 
     return (
-        <div className="min-h-screen bg-[#f8fafc]">
-            {/* Header */}
-            <header className="sticky top-0 z-10 bg-white border-b border-gray-200 shadow-sm">
-                <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
-                    <Link href="/" className="flex items-center gap-3">
-                        <UntitledLogoMinimal className="size-8" />
-                        <span className="text-lg font-bold text-gray-900">VinTraxx</span>
-                        <span className="hidden sm:inline-block rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">
-                            Dealer Portal
-                        </span>
-                    </Link>
-                    <div className="flex items-center gap-3">
-                        <span className="hidden sm:block text-sm text-gray-500 truncate max-w-[200px]">
-                            {dealer?.email}
-                        </span>
-                        <button
-                            onClick={handleLogout}
-                            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                        >
-                            Sign out
-                        </button>
-                    </div>
-                </div>
-            </header>
+        <div className="min-h-screen bg-slate-950">
+            <style jsx>{`
+                :root {
+                  --background: 2 6 23;
+                  --foreground: 248 250 252;
+                  --card: 15 23 42;
+                  --card-foreground: 248 250 252;
+                  --popover: 15 23 42;
+                  --popover-foreground: 248 250 252;
+                  --primary: 27 58 95;
+                  --primary-foreground: 255 255 255;
+                  --secondary: 30 41 59;
+                  --secondary-foreground: 248 250 252;
+                  --muted: 30 41 59;
+                  --muted-foreground: 148 163 184;
+                  --accent: 139 35 50;
+                  --accent-foreground: 255 255 255;
+                  --destructive: 239 68 68;
+                  --destructive-foreground: 255 255 255;
+                  --border: 51 65 85;
+                  --input: 51 65 85;
+                  --ring: 27 58 95;
+                }
+            `}</style>
 
-            <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-                {/* Welcome + Stats */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="sm:col-span-1 rounded-2xl bg-gradient-to-br from-blue-600 to-blue-800 p-6 text-white shadow">
-                        <p className="text-sm font-medium text-blue-200">Welcome back</p>
-                        <p className="mt-1 text-xl font-bold truncate">{dealer?.email}</p>
-                        <div className="mt-4 flex items-center gap-2">
-                            <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-semibold">
-                                Dealer
-                            </span>
-                            {dealer?.pricePerLaborHour && (
-                                <span className="text-sm text-blue-100">
-                                    ${dealer.pricePerLaborHour}/hr labor rate
-                                </span>
-                            )}
+            <DealerNav 
+                dealerLogo={dealer?.logoUrl}
+                dealerName={dealer?.companyName || "VinTraxx AutoMall"}
+                userEmail={dealer?.email}
+            />
+
+            <main className="pt-16 min-h-screen">
+                <div className="min-h-screen bg-slate-50">
+                    {/* Header */}
+                    <div className="bg-white border-b border-slate-200 sticky top-16 z-40">
+                        <div className="max-w-7xl mx-auto px-6 py-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h1 className="text-3xl font-bold text-[#1B3A5F] mb-1">VinTraxx SmartScan Dashboard</h1>
+                                    <p className="text-slate-600">View and manage all diagnostic scans and appraisals</p>
+                                </div>
+                                <div className="flex gap-3">
+                                    <Link href="/MultiPointInspection">
+                                        <button className="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 shadow h-10 rounded-md px-8 bg-[#1B3A5F] hover:bg-[#2d5278] text-white gap-2">
+                                            <ClipboardList className="w-5 h-5" />
+                                            Multi-Point Inspection
+                                        </button>
+                                    </Link>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="rounded-2xl bg-white border border-gray-200 p-6 shadow-sm flex flex-col justify-between">
-                        <p className="text-sm text-gray-500">Total Scans</p>
-                        <p className="mt-2 text-3xl font-bold text-gray-900">{reports.length}</p>
-                    </div>
-
-                    <div className="rounded-2xl bg-white border border-gray-200 p-6 shadow-sm flex flex-col justify-between">
-                        <p className="text-sm text-gray-500">Completed Reports</p>
-                        <p className="mt-2 text-3xl font-bold text-gray-900">
-                            {reports.filter((r) => r.status === "COMPLETED").length}
-                        </p>
-                    </div>
-                </div>
-
-                {/* Reports Table */}
-                <div className="rounded-2xl bg-white border border-gray-200 shadow-sm overflow-hidden">
-                    <div className="px-6 py-4 border-b border-gray-200">
-                        <h2 className="text-base font-semibold text-gray-900">Scan Reports</h2>
-                    </div>
-
-                    {reports.length === 0 ? (
-                        <div className="px-6 py-12 text-center text-sm text-gray-400">
-                            No scan reports yet. Scans submitted from the mobile app will appear here.
+                    <div className="max-w-7xl mx-auto px-6 py-12">
+                        {/* Stats Cards */}
+                        <div className="grid md:grid-cols-2 gap-6 mb-12">
+                            <div className="bg-blue-600 text-card-foreground p-6 rounded-xl shadow from-blue-600 to-cyan-600 border-0 cursor-pointer hover:shadow-xl transition-shadow">
+                                <div className="flex items-center justify-between mb-3">
+                                    <Scan className="w-8 h-8 text-white" />
+                                    <TrendingUp className="w-5 h-5 text-white/70" />
+                                </div>
+                                <p className="text-4xl font-bold text-white mb-1">{totalScans}</p>
+                                <p className="text-blue-100 text-sm">Total Scans</p>
+                            </div>
+                            <div className="bg-green-700 text-card-foreground p-6 rounded-xl shadow from-purple-600 to-indigo-600 border-0 cursor-pointer hover:shadow-xl transition-shadow">
+                                <div className="flex items-center justify-between mb-3">
+                                    <DollarSign className="w-8 h-8 text-white" />
+                                    <TrendingDown className="w-5 h-5 text-white/70" />
+                                </div>
+                                <p className="text-4xl font-bold text-white mb-1">${totalRepairCosts.toLocaleString()}</p>
+                                <p className="text-purple-100 text-sm">Repair Costs Identified</p>
+                            </div>
                         </div>
-                    ) : (
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-200 text-sm">
-                                <thead className="bg-gray-50">
-                                    <tr>
-                                        {["VIN", "Vehicle", "Stock #", "Date", "Status", "Recon Cost", "Add. Repairs", "PDF"].map((h) => (
-                                            <th
-                                                key={h}
-                                                className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 whitespace-nowrap"
-                                            >
-                                                {h}
-                                            </th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100 bg-white">
-                                    {reports.map((r) => (
-                                        <tr key={r.scanId} className="hover:bg-gray-50 transition-colors">
-                                            <td className="px-4 py-3 font-mono text-xs text-gray-700 whitespace-nowrap">
-                                                {r.vin}
-                                            </td>
-                                            <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
-                                                {[r.vehicleYear, r.vehicleMake, r.vehicleModel].filter(Boolean).join(" ") || "—"}
-                                            </td>
-                                            <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
-                                                {r.stockNumber || "—"}
-                                            </td>
-                                            <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
-                                                {formatDate(r.scanDate)}
-                                            </td>
-                                            <td className="px-4 py-3 whitespace-nowrap">
-                                                <span
-                                                    className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${statusColor[r.status] ?? "bg-gray-100 text-gray-600"}`}
-                                                >
-                                                    {r.status}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
-                                                {formatCurrency(r.totalReconditioningCost)}
-                                            </td>
-                                            <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
-                                                {formatCurrency(r.additionalRepairsCost)}
-                                            </td>
-                                            <td className="px-4 py-3 whitespace-nowrap">
-                                                {r.pdfUrl ? (
-                                                    <a
-                                                        href={r.pdfUrl}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="text-blue-600 hover:text-blue-800 underline text-xs"
-                                                    >
-                                                        View PDF
-                                                    </a>
-                                                ) : (
-                                                    <span className="text-gray-400 text-xs">—</span>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+
+                        {/* Charts */}
+                        <div className="grid lg:grid-cols-2 gap-6 mb-12">
+                            <div className="rounded-xl border text-card-foreground shadow bg-white border-slate-200 p-6">
+                                <h3 className="text-slate-900 font-semibold mb-4">Health Score Distribution</h3>
+                                <ResponsiveContainer width="100%" height={250}>
+                                    <BarChart data={healthScoreData}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                        <XAxis dataKey="range" stroke="#64748b" />
+                                        <YAxis stroke="#64748b" />
+                                        <Tooltip 
+                                            contentStyle={{ 
+                                                backgroundColor: 'rgb(255, 255, 255)', 
+                                                border: '1px solid rgb(226, 232, 240)', 
+                                                borderRadius: '8px' 
+                                            }} 
+                                        />
+                                        <Bar dataKey="count" radius={[8, 8, 0, 0]} />
+                                        <Bar dataKey="count" fill="#10b981" radius={[8, 8, 0, 0]} />
+                                        <Bar dataKey="count" fill="#eab308" radius={[8, 8, 0, 0]} />
+                                        <Bar dataKey="count" fill="#ef4444" radius={[8, 8, 0, 0]} />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                            <div className="rounded-xl border text-card-foreground shadow bg-white border-slate-200 p-6">
+                                <h3 className="text-slate-900 font-semibold mb-4">Scan Activity (Last 7 Days)</h3>
+                                <ResponsiveContainer width="100%" height={250}>
+                                    <LineChart data={scanActivityData}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                        <XAxis dataKey="date" stroke="#64748b" />
+                                        <YAxis stroke="#64748b" />
+                                        <Tooltip 
+                                            contentStyle={{ 
+                                                backgroundColor: 'rgb(255, 255, 255)', 
+                                                border: '1px solid rgb(226, 232, 240)', 
+                                                borderRadius: '8px' 
+                                            }} 
+                                        />
+                                        <Line 
+                                            type="monotone" 
+                                            dataKey="scans" 
+                                            stroke="#1B3A5F" 
+                                            strokeWidth={3}
+                                            dot={{ fill: "#1B3A5F", r: 5 }}
+                                        />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
                         </div>
-                    )}
+
+                        {/* Search and Table */}
+                        <div className="mb-12">
+                            <div className="flex gap-3 max-w-2xl mb-6">
+                                <div className="relative flex-1">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                    <input 
+                                        className="flex h-9 w-full rounded-md border px-3 py-1 text-base shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm pl-10 bg-white border-slate-300 text-slate-900 placeholder:text-slate-500" 
+                                        placeholder="Search by VIN, Make, or Model..." 
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                    />
+                                </div>
+                                <button className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 shadow h-9 px-4 py-2 bg-[#1B3A5F] hover:bg-[#2d5278] text-white gap-2">
+                                    View All
+                                </button>
+                            </div>
+
+                            <div className="rounded-xl border border-slate-700/50 overflow-hidden">
+                                <div className="relative w-full overflow-auto">
+                                    <table className="w-full caption-bottom text-sm">
+                                        <thead className="[&_tr]:border-b">
+                                            <tr className="border-b transition-colors data-[state=selected]:bg-muted bg-slate-800/50 border-slate-700/50 hover:bg-slate-800/50">
+                                                <th className="bg-red-700 text-slate-50 px-2 font-medium text-left h-10 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]">Vehicle</th>
+                                                <th className="bg-red-700 text-slate-50 px-2 font-medium text-left h-10 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]">Scan Type</th>
+                                                <th className="bg-red-700 text-slate-50 px-2 font-medium text-left h-10 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]">Health Score</th>
+                                                <th className="bg-red-700 text-slate-50 px-2 font-medium text-left h-10 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]">Issues</th>
+                                                <th className="bg-red-700 text-slate-50 px-2 font-medium text-left h-10 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]">Date</th>
+                                                <th className="bg-red-700 text-slate-50 px-2 font-medium text-left h-10 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="[&_tr:last-child]:border-0">
+                                            {reports.map((report) => (
+                                                <tr key={report.scanId} className="border-b data-[state=selected]:bg-muted border-slate-700/50 hover:bg-slate-800/30 transition-colors">
+                                                    <td className="p-2 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] text-slate-300">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-10 h-10 bg-gradient-to-br from-[#1B3A5F] to-[#8B2332] rounded-lg flex items-center justify-center">
+                                                                <Car className="w-5 h-5 text-white" />
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-mono text-sm text-[#1B3A5F]/80">{report.vin}</p>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="p-2 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] text-slate-300">
+                                                        <span className="capitalize text-[#1B3A5F] font-medium">full</span>
+                                                    </td>
+                                                    <td className="p-2 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] text-slate-300">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white ${
+                                                                report.healthScore && report.healthScore >= 90 ? 'bg-emerald-700' :
+                                                                report.healthScore && report.healthScore >= 75 ? 'bg-yellow-400' :
+                                                                'bg-red-500'
+                                                            }`}>
+                                                                {report.healthScore || 'N/A'}
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="p-2 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] text-slate-300">
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="text-[#1B3A5F] font-medium">{report.issuesFound || 0} found</span>
+                                                            {report.criticalIssues && report.criticalIssues > 0 && (
+                                                                <div className="inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent shadow hover:bg-primary/80 bg-red-600 text-white border-0">
+                                                                    {report.criticalIssues} critical
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="p-2 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] text-slate-300">
+                                                        <span className="text-[#1B3A5F] text-sm font-medium">{formatDate(report.scanDate)}</span>
+                                                    </td>
+                                                    <td className="p-2 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] text-slate-300">
+                                                        <div className="flex items-center gap-2">
+                                                            <button className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 hover:bg-accent h-9 w-9 text-slate-400 hover:text-white">
+                                                                <Eye className="w-4 h-4" />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </main>
         </div>

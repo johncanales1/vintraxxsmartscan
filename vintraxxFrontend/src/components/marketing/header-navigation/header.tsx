@@ -12,6 +12,7 @@ import { cx } from "@/utils/cx";
 import { DropdownMenuFeatureCard } from "./dropdown-menu-feature-card";
 import { DropdownMenuSimpleWithFooter } from "./dropdown-menu-simple-with-footer";
 import { DropdownMenuWithTwoColsAndLinksAndFooter } from "./dropdown-menu-with-two-cols-and-links-and-footer";
+import { ProductsDropdownMenu } from "./products-dropdown-menu";
 
 type HeaderNavItem = {
     label: string;
@@ -20,7 +21,7 @@ type HeaderNavItem = {
 };
 
 const headerNavItems: HeaderNavItem[] = [
-    { label: "Products", href: "/products", menu: <DropdownMenuSimpleWithFooter /> },
+    { label: "Products", href: "/products", menu: <ProductsDropdownMenu /> },
     { label: "About", href: "/about" },
 ];
 

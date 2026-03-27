@@ -216,7 +216,7 @@ export const LoginSimple = () => {
                     </h2>
                     <p className="text-base text-gray-600 text-center max-w-xs">
                         {mode === "login"
-                            ? "Sing in to access your VinTraxx dealer account and manage your smart scanning solutions."
+                            ? "Login to access your VinTraxx dealer account and manage your smart scanning solutions."
                             : "Create your dealer account to get started with VinTraxx smart scanning."}
                     </p>
                 </div>
@@ -233,7 +233,7 @@ export const LoginSimple = () => {
                             </h1>
                             <p className="text-xs sm:text-sm text-gray-500">
                                 {mode === "login"
-                                    ? "Sign in with your dealer credentials"
+                                    ? "Login with your dealer credentials"
                                     : registerStep === 1
                                     ? "Step 1 of 3 — Verify your email"
                                     : registerStep === 2

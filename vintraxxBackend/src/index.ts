@@ -18,8 +18,8 @@ app.set('trust proxy', 1);
 app.use(helmet());
 app.use(cors({ 
   origin: env.NODE_ENV === 'production' 
-    ? ['https://app.vintraxx.com', 'https://vintraxx.com']
-    : ['https://app.vintraxx.com', 'https://vintraxx.com', 'http://localhost:3000', 'capacitor://localhost', 'http://localhost'], 
+    ? ['https://app.vintraxx.com', 'https://vintraxx.com', 'https://dev.vintraxx.com']
+    : ['https://app.vintraxx.com', 'https://vintraxx.com', 'https://dev.vintraxx.com', 'http://localhost:3000', 'capacitor://localhost', 'http://localhost'], 
   credentials: true 
 }));
 app.use(express.json({ limit: '50mb' }));
@@ -30,7 +30,7 @@ app.get('/api/v1/health', (_req, res) => {
 
 // Root endpoint - serve API documentation HTML
 app.get('/', (_req, res) => {
-  const docsPath = path.join(__dirname, '../../api-docs.html');
+  const docsPath = path.join(__dirname, '../api-docs.html');
   res.sendFile(docsPath, (err) => {
     if (err) {
       logger.error('Error serving api-docs.html:', err);

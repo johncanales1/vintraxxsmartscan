@@ -435,7 +435,7 @@ export const LoginSimple = ({ resetToken }: { resetToken: string | null }) => {
                         </h2>
                         <p className="text-base text-gray-600 text-center max-w-xs">
                             {mode === "login"
-                                ? "Login to access your VinTraxx dealer account and manage your smart scanning solutions."
+                                ? "Sign in to access your VinTraxx dealer account and manage your smart scanning solutions."
                                 : mode === "forgot" || mode === "reset"
                                 ? "Reset your password to regain access to your dealer account."
                                 : "Create your dealer account to get started with VinTraxx smart scanning."}
@@ -457,7 +457,7 @@ export const LoginSimple = ({ resetToken }: { resetToken: string | null }) => {
                                 </h1>
                                 <p className="text-xs sm:text-sm text-gray-500">
                                     {mode === "login"
-                                        ? "Login with your dealer credentials"
+                                        ? "Sign in with your dealer credentials"
                                         : mode === "forgot"
                                         ? "Enter your email to receive a reset link"
                                         : mode === "reset"

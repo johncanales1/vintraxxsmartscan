@@ -7,6 +7,18 @@
   resolved "https://registry.npmjs.org/@alloc/quick-lru/-/quick-lru-5.2.0.tgz"
   integrity sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==
 
+"@azure/msal-browser@^5.6.2":
+  version "5.6.2"
+  resolved "https://registry.npmjs.org/@azure/msal-browser/-/msal-browser-5.6.2.tgz"
+  integrity sha512-ZgcN9ToRJ80f+wNPBBKYJ+DG0jlW7ktEjYtSNkNsTrlHVMhKB8tKMdI1yIG1I9BJtykkXtqnuOjlJaEMC7J6aw==
+  dependencies:
+    "@azure/msal-common" "16.4.0"
+
+"@azure/msal-common@16.4.0":
+  version "16.4.0"
+  resolved "https://registry.npmjs.org/@azure/msal-common/-/msal-common-16.4.0.tgz"
+  integrity sha512-twXt09PYtj1PffNNIAzQlrBd0DS91cdA6i1gAfzJ6BnPM4xNk5k9q/5xna7jLIjU3Jnp0slKYtucshGM8OGNAw==
+
 "@babel/code-frame@^7.0.0", "@babel/code-frame@^7.27.1":
   version "7.27.1"
   resolved "https://registry.npmjs.org/@babel/code-frame/-/code-frame-7.27.1.tgz"
@@ -1065,6 +1077,11 @@
   version "0.1.5"
   resolved "https://registry.npmjs.org/@react-email/text/-/text-0.1.5.tgz"
   integrity sha512-o5PNHFSE085VMXayxH+SJ1LSOtGsTv+RpNKnTiJDrJUwoBu77G3PlKOsZZQHCNyD28WsQpl9v2WcJLbQudqwPg==
+
+"@react-oauth/google@^0.13.4":
+  version "0.13.4"
+  resolved "https://registry.npmjs.org/@react-oauth/google/-/google-0.13.4.tgz"
+  integrity sha512-hGKyNEH+/PK8M0sFEuo3MAEk0txtHpgs94tDQit+s2LXg7b6z53NtzHfqDvoB2X8O6lGB+FRg80hY//X6hfD+w==
 
 "@react-stately/autocomplete@3.0.0-beta.4":
   version "3.0.0-beta.4"

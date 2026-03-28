@@ -165,6 +165,58 @@ export async function sendReportEmail(
   }
 }
 
+export async function sendPasswordResetEmail(toEmail: string, resetLink: string): Promise<void> {
+  const htmlBody = `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; color: #333; line-height: 1.6; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: #1a1a2e; color: #fff; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+    .btn { display: inline-block; background: #1a1a2e; color: #fff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>VinTraxx SmartScan</h1>
+    </div>
+    <div style="padding: 20px; background: #f9f9f9; border: 1px solid #ddd;">
+      <h2 style="margin-top: 0;">Reset your password</h2>
+      <p>We received a request to reset your password. Click the button below to set a new password:</p>
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${resetLink}" class="btn" style="color: #fff;">Reset Password</a>
+      </div>
+      <p>This link will expire in 1 hour.</p>
+      <p style="color: #999; font-size: 12px;">If you did not request a password reset, please ignore this email. Your password will remain unchanged.</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  try {
+    await ensureTransporterVerified();
+    const info = await transporter.sendMail({
+      from: `"${env.EMAIL_FROM_NAME}" <${env.EMAIL_FROM}>`,
+      to: toEmail,
+      subject: 'VinTraxx SmartScan - Reset Your Password',
+      html: htmlBody,
+    });
+
+    logger.info('Password reset email sent', {
+      to: toEmail,
+      messageId: info.messageId,
+    });
+  } catch (error) {
+    logger.error('Failed to send password reset email', {
+      to: toEmail,
+      error: (error as Error).message,
+    });
+    throw error;
+  }
+}
+
 export async function sendOtpEmail(toEmail: string, otp: string): Promise<void> {
   const htmlBody = `
 <!DOCTYPE html>

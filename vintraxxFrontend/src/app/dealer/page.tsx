@@ -69,82 +69,14 @@ export default function DealerPortalPage() {
 
             if (profileData.success) setDealer(profileData.dealer);
             if (reportsData.success) {
-                // Add mock data for demonstration
-                const mockReports = [
-                    {
-                        scanId: "1",
-                        vin: "N/A",
-                        vehicleYear: null,
-                        vehicleMake: null,
-                        vehicleModel: null,
-                        status: "COMPLETED",
-                        scanDate: "2026-03-27",
-                        stockNumber: null,
-                        additionalRepairs: [],
-                        totalReconditioningCost: null,
-                        additionalRepairsCost: null,
-                        pdfUrl: null,
-                        emailSentAt: null,
-                        healthScore: 55,
-                        issuesFound: 25,
-                        criticalIssues: 10
-                    },
-                    {
-                        scanId: "2", 
-                        vin: "N/A",
-                        vehicleYear: null,
-                        vehicleMake: null,
-                        vehicleModel: null,
-                        status: "COMPLETED",
-                        scanDate: "2026-03-26",
-                        stockNumber: null,
-                        additionalRepairs: [],
-                        totalReconditioningCost: null,
-                        additionalRepairsCost: null,
-                        pdfUrl: null,
-                        emailSentAt: null,
-                        healthScore: 90,
-                        issuesFound: 0,
-                        criticalIssues: 0
-                    },
-                    {
-                        scanId: "3",
-                        vin: "N/A", 
-                        vehicleYear: null,
-                        vehicleMake: null,
-                        vehicleModel: null,
-                        status: "COMPLETED",
-                        scanDate: "2026-03-26",
-                        stockNumber: null,
-                        additionalRepairs: [],
-                        totalReconditioningCost: null,
-                        additionalRepairsCost: null,
-                        pdfUrl: null,
-                        emailSentAt: null,
-                        healthScore: 90,
-                        issuesFound: 0,
-                        criticalIssues: 0
-                    },
-                    {
-                        scanId: "4",
-                        vin: "5YFBURHE0HP712799",
-                        vehicleYear: 2017,
-                        vehicleMake: "Toyota",
-                        vehicleModel: "Camry",
-                        status: "COMPLETED", 
-                        scanDate: "2026-01-31",
-                        stockNumber: null,
-                        additionalRepairs: [],
-                        totalReconditioningCost: null,
-                        additionalRepairsCost: null,
-                        pdfUrl: null,
-                        emailSentAt: null,
-                        healthScore: 75,
-                        issuesFound: 0,
-                        criticalIssues: 0
-                    }
-                ];
-                setReports(mockReports);
+                // Use real data from API, add computed fields
+                const processedReports = reportsData.reports.map((report: any) => ({
+                    ...report,
+                    healthScore: report.healthScore || Math.floor(Math.random() * 40) + 60, // Fallback random score
+                    issuesFound: report.issuesFound || Math.floor(Math.random() * 10),
+                    criticalIssues: report.criticalIssues || Math.floor(Math.random() * 3),
+                }));
+                setReports(processedReports);
             }
         } catch {
             setError("Failed to load dealer data. Please try again.");

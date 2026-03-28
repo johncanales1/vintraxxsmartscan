@@ -34,8 +34,8 @@ export async function verifyOtp(req: Request, res: Response, next: NextFunction)
 
 export async function register(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { email, password, isDealer, pricePerLaborHour } = req.body;
-    const result = await authService.register(email, password, isDealer, pricePerLaborHour);
+    const { email, password, isDealer, pricePerLaborHour, logoUrl } = req.body;
+    const result = await authService.register(email, password, isDealer, pricePerLaborHour, logoUrl);
     logger.info(`User registered: ${email}, isDealer: ${isDealer || false}`);
     res.status(201).json({ success: true, user: result.user, token: result.token });
   } catch (error) {
@@ -47,6 +47,46 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
   try {
     const { email, password, isDealer, pricePerLaborHour } = req.body;
     const result = await authService.login(email, password, isDealer, pricePerLaborHour);
+    res.json({ success: true, user: result.user, token: result.token });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function forgotPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { email } = req.body;
+    await authService.forgotPassword(email);
+    res.json({ success: true, message: 'If an account exists with that email, a reset link has been sent.' });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function resetPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { token, password } = req.body;
+    await authService.resetPassword(token, password);
+    res.json({ success: true, message: 'Password has been reset successfully.' });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function googleAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { idToken } = req.body;
+    const result = await authService.googleAuth(idToken);
+    res.json({ success: true, user: result.user, token: result.token });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function microsoftAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { accessToken } = req.body;
+    const result = await authService.microsoftAuth(accessToken);
     res.json({ success: true, user: result.user, token: result.token });
   } catch (error) {
     next(error);

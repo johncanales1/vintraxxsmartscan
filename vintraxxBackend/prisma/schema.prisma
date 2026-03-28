@@ -11,7 +11,10 @@ datasource db {
 model User {
   id               String   @id @default(uuid())
   email            String   @unique
-  passwordHash     String
+  passwordHash     String?
+  authProvider     String   @default("email")
+  googleId         String?  @unique
+  microsoftId      String?  @unique
   isDealer         Boolean  @default(false)
   pricePerLaborHour Float?
   logoUrl          String?
@@ -20,6 +23,20 @@ model User {
   scans            Scan[]
   usedScannerDevices UserScannerDevice[]
   usedVins           UserVinUsage[]
+  passwordResetTokens PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([token])
+  @@index([userId])
 }
 
 model Otp {

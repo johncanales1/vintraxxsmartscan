@@ -29,6 +29,9 @@ const envSchema = z.object({
   BLACKBOOK_PASSWORD: optionalNonEmptyString,
   REPORT_VERSION: z.string().default('5.1'),
   APP_URL: z.string().url().default('https://app.vintraxx.com'),
+  GOOGLE_CLIENT_ID: optionalNonEmptyString,
+  MICROSOFT_CLIENT_ID: optionalNonEmptyString,
+  MICROSOFT_TENANT_ID: z.string().default('common'),
 });
 
 const parsed = envSchema.safeParse(process.env);

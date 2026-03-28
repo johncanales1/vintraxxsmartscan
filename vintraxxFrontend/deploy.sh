@@ -3,7 +3,28 @@
 # Deployment script for vintraxxFrontend to dev.vintraxx.com
 echo "🚀 Deploying vintraxxFrontend to dev.vintraxx.com..."
 
-# 1. Build the application
+# 1. Clean up to prevent disk space issues
+echo "🧹 Cleaning up to prevent disk space issues..."
+rm -rf /home/ec2-user/vintraxxsmartscan/vintraxxFrontend/.next
+npm cache clean --force
+
+# 2. Build the backend first
+echo "🔧 Building the backend..."
+cd /home/ec2-user/vintraxxsmartscan/vintraxxBackend
+npm install
+npm run build
+
+if [ $? -ne 0 ]; then
+    echo "❌ Backend build failed!"
+    exit 1
+fi
+
+# Copy api-docs.html to root for backend
+cp /home/ec2-user/vintraxxsmartscan/vintraxxBackend/api-docs.html /home/ec2-user/vintraxxsmartscan/
+
+echo "✅ Backend build successful!"
+
+# 3. Build the frontend application
 echo "📦 Building the application..."
 cd /home/ec2-user/vintraxxsmartscan/vintraxxFrontend
 npm run build
@@ -15,48 +36,58 @@ fi
 
 echo "✅ Build successful!"
 
-# 2. Copy public directory to standalone build
+# 3. Copy public directory to standalone build
 echo "📁 Copying public directory to standalone build..."
 cp -r /home/ec2-user/vintraxxsmartscan/vintraxxFrontend/public /home/ec2-user/vintraxxsmartscan/vintraxxFrontend/.next/standalone/
 
-# 3. Copy static files to standalone build (required for CSS/JS)
+# 4. Copy static files to standalone build (required for CSS/JS)
 echo "📁 Copying .next/static to standalone build..."
 mkdir -p /home/ec2-user/vintraxxsmartscan/vintraxxFrontend/.next/standalone/.next
 cp -r /home/ec2-user/vintraxxsmartscan/vintraxxFrontend/.next/static /home/ec2-user/vintraxxsmartscan/vintraxxFrontend/.next/standalone/.next/
 
-# 4. Stop any existing process on port 3002
-echo "🛑 Stopping any existing process on port 3002..."
-pm2 stop vintraxx-frontend || true
-pm2 delete vintraxx-frontend || true
+# 5. Stop all PM2 processes and kill any processes using ports 3000/3002
+echo "🛑 Stopping all PM2 processes and cleaning up ports..."
+pm2 stop all || true
+pm2 delete all || true
 
-# 5. Start the application with PM2
-echo "🔄 Starting the application with PM2..."
-cd /home/ec2-user/vintraxxsmartscan/vintraxxFrontend/.next/standalone
-PORT=3002 HOSTNAME=0.0.0.0 pm2 start server.js --name "vintraxx-frontend"
+# Kill any processes using our ports to prevent EADDRINUSE
+lsof -ti:3000 | xargs kill -9 2>/dev/null || true
+lsof -ti:3002 | xargs kill -9 2>/dev/null || true
+sleep 1
+
+cd /home/ec2-user/vintraxxsmartscan
+pm2 start ecosystem.config.js
 
 if [ $? -ne 0 ]; then
-    echo "❌ Failed to start application!"
+    echo "❌ Failed to start applications!"
     exit 1
 fi
 
-echo "✅ Application started successfully!"
+echo "✅ Applications started successfully!"
 
-# 6. Save PM2 configuration
+# 6. Wait for applications to fully start
+echo "⏳ Waiting for applications to stabilize..."
+sleep 5
+
+echo "📊 PM2 Status (frontend should be ID 1):"
+pm2 status
+
+# 7. Save PM2 configuration
 pm2 save
 
-# 7. Setup PM2 to start on boot
+# 8. Setup PM2 to start on boot
 pm2 startup
 
 echo "✅ PM2 configuration saved!"
 
-# 8. Configure nginx automatically
+# 9. Configure nginx automatically
 echo "🌐 Configuring nginx reverse proxy..."
 sudo mkdir -p /etc/nginx/sites-available
 sudo mkdir -p /etc/nginx/sites-enabled
 sudo cp /home/ec2-user/vintraxxsmartscan/vintraxxFrontend/nginx-dev.vintraxx.com.conf /etc/nginx/sites-available/dev.vintraxx.com
 sudo ln -sf /etc/nginx/sites-available/dev.vintraxx.com /etc/nginx/sites-enabled/
 
-# 9. Test and reload nginx configuration
+# 10. Test and reload nginx configuration
 echo "🔧 Testing nginx configuration..."
 if sudo nginx -t; then
     echo "✅ Nginx configuration is valid!"
@@ -67,7 +98,7 @@ else
     exit 1
 fi
 
-# 10. Test the application locally
+# 11. Test the application locally
 echo "🧪 Testing the application locally..."
 sleep 3
 if curl -f -s http://127.0.0.1:3002/ > /dev/null; then
@@ -77,7 +108,7 @@ else
     exit 1
 fi
 
-# 11. Test external access
+# 12. Test external access
 echo "🌍 Testing external access..."
 sleep 2
 if curl -f -s https://dev.vintraxx.com/ > /dev/null; then

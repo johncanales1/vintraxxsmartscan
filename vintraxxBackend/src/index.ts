@@ -39,6 +39,9 @@ app.get('/', (_req, res) => {
   });
 });
 
+// Serve static assets (including dealer logos)
+app.use('/assets', express.static(path.join(__dirname, 'assets')));
+
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/scan', scanRoutes);
 app.use('/api/v1/appraisal', appraisalRoutes);

@@ -151,33 +151,7 @@ export const HeaderNavigationBase = ({
                             </div>
 
                             {showAvatarDropdown && (
-                                <DialogTrigger>
-                                    <AriaButton
-                                        className={({ isPressed, isFocused }) =>
-                                            cx(
-                                                "group relative inline-flex cursor-pointer",
-                                                (isPressed || isFocused) && "rounded-full outline-2 outline-offset-2 outline-focus-ring",
-                                            )
-                                        }
-                                    >
-                                        <Avatar alt="John Canales" src={johnImage.src} size="md" />
-                                    </AriaButton>
-                                    <Popover
-                                        placement="bottom right"
-                                        offset={8}
-                                        className={({ isEntering, isExiting }) =>
-                                            cx(
-                                                "will-change-transform",
-                                                isEntering &&
-                                                    "duration-300 ease-out animate-in fade-in placement-right:slide-in-from-left-2 placement-top:slide-in-from-bottom-2 placement-bottom:slide-in-from-top-2",
-                                                isExiting &&
-                                                    "duration-150 ease-in animate-out fade-out placement-right:slide-out-to-left-2 placement-top:slide-out-to-bottom-2 placement-bottom:slide-out-to-top-2",
-                                            )
-                                        }
-                                    >
-                                        <NavAccountMenu />
-                                    </Popover>
-                                </DialogTrigger>
+                                <NavAccountCard />
                             )}
                         </div>
                     </div>

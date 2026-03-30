@@ -1,11 +1,32 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Bell, FileText, Eye, Sparkles, Plus, CircleCheckBig, Upload, Download, Search, ChevronDown, LayoutGrid, List, Car, Settings } from "lucide-react";
+import { DealerNav } from "@/components/shared-assets/navigation/dealer-nav";
+
+interface DealerUser {
+    id: string;
+    email: string;
+    isDealer: boolean;
+    pricePerLaborHour: number | null;
+    logoUrl?: string | null;
+    createdAt?: string;
+    companyName?: string;
+}
 
 export default function VinLaneIMSPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedStatus, setSelectedStatus] = useState("All Status");
+    const [dealer, setDealer] = useState<DealerUser | null>(null);
+
+    useEffect(() => {
+        const storedUser = localStorage.getItem("dealer_user");
+        if (storedUser) {
+            try {
+                setDealer(JSON.parse(storedUser));
+            } catch {}
+        }
+    }, []);
 
     const inventoryData = [
         { days: "0-30", count: 8, color: "bg-emerald-500" },
@@ -55,7 +76,22 @@ export default function VinLaneIMSPage() {
     ];
 
     return (
-        <div className="min-h-screen bg-white space-y-8">
+        <>
+            <DealerNav 
+                dealerLogo={dealer?.logoUrl}
+                dealerName={dealer?.companyName}
+                userEmail={dealer?.email}
+                userId={dealer?.id}
+                pricePerLaborHour={dealer?.pricePerLaborHour}
+                createdAt={dealer?.createdAt}
+                onProfileUpdate={(data) => setDealer(prev => prev ? { 
+                    ...prev, 
+                    logoUrl: data.logoUrl || prev.logoUrl,
+                    pricePerLaborHour: data.pricePerLaborHour ?? prev.pricePerLaborHour
+                } : null)}
+            />
+            <main className="pt-20 min-h-screen bg-white">
+        <div className="space-y-8 p-6">
             {/* Header */}
             <div className="bg-white rounded-lg p-6 shadow-lg">
                 <div className="flex items-center justify-between mb-6">
@@ -299,5 +335,7 @@ export default function VinLaneIMSPage() {
                 </div>
             </div>
         </div>
+            </main>
+        </>
     );
 }

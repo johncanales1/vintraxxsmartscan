@@ -139,7 +139,7 @@ export const LoginSimple = ({ resetToken }: { resetToken: string | null }) => {
             }
             localStorage.setItem("dealer_token", data.token);
             localStorage.setItem("dealer_user", JSON.stringify(data.user));
-            router.push("/dealer");
+            router.push("/VinLaneIMS");
         } catch {
             setError("Microsoft login failed. Please try again.");
         } finally {
@@ -171,7 +171,7 @@ export const LoginSimple = ({ resetToken }: { resetToken: string | null }) => {
             }
             localStorage.setItem("dealer_token", data.token);
             localStorage.setItem("dealer_user", JSON.stringify(data.user));
-            router.push("/dealer");
+            router.push("/VinLaneIMS");
         } catch {
             setError("Network error. Please try again.");
         } finally {
@@ -368,7 +368,7 @@ export const LoginSimple = ({ resetToken }: { resetToken: string | null }) => {
             }
             localStorage.setItem("dealer_token", data.token);
             localStorage.setItem("dealer_user", JSON.stringify(data.user));
-            router.push("/dealer");
+            router.push("/VinLaneIMS");
         } catch {
             setError("Network error. Please try again.");
         } finally {
@@ -494,23 +494,9 @@ export const LoginSimple = ({ resetToken }: { resetToken: string | null }) => {
                                         <GoogleLoginButton 
                                             onError={setError}
                                             setLoading={setGoogleLoading}
-                                            onSuccess={() => router.push("/dealer")}
+                                            onSuccess={() => router.push("/VinLaneIMS")}
                                         />
                                     </GoogleOAuthProvider>
-                                    <button
-                                        type="button"
-                                        onClick={handleMicrosoftLogin}
-                                        disabled={microsoftLoading}
-                                        className="flex items-center justify-center gap-2 w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
-                                    >
-                                        <svg className="w-5 h-5" viewBox="0 0 24 24">
-                                            <path fill="#F25022" d="M11.4 11.4H2.6V2.6h8.8v8.8z"/>
-                                            <path fill="#7FBA00" d="M21.4 11.4h-8.8V2.6h8.8v8.8z"/>
-                                            <path fill="#00A4EF" d="M11.4 21.4H2.6v-8.8h8.8v8.8z"/>
-                                            <path fill="#FFB900" d="M21.4 21.4h-8.8v-8.8h8.8v8.8z"/>
-                                        </svg>
-                                        {microsoftLoading ? "Signing in with Microsoft..." : "Continue with Microsoft"}
-                                    </button>
                                 </div>
 
                                 <div className="relative">

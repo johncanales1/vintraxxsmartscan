@@ -2,6 +2,15 @@ import { Request, Response, NextFunction } from 'express';
 import * as authService from '../services/auth.service';
 import prisma from '../config/db';
 import logger from '../utils/logger';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const LOGO_DIR = path.join(__dirname, '..', 'assets', 'dealer-logos');
+
+// Ensure logo directory exists
+if (!fs.existsSync(LOGO_DIR)) {
+  fs.mkdirSync(LOGO_DIR, { recursive: true });
+}
 
 export async function dealerLogin(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -62,8 +71,43 @@ export async function updateDealerProfile(req: Request, res: Response, next: Nex
       updateData.pricePerLaborHour = pricePerLaborHour;
     }
 
-    if (logoImage && typeof logoImage === 'string') {
-      // Store base64 logo image directly (or URL if provided)
+    if (logoImage && typeof logoImage === 'string' && logoImage.startsWith('data:image/')) {
+      // Delete old logo file if it exists (not a base64 string)
+      if (user.logoUrl && !user.logoUrl.startsWith('data:') && user.logoUrl.includes('/dealer-logos/')) {
+        const oldFilename = user.logoUrl.split('/dealer-logos/').pop();
+        if (oldFilename) {
+          const oldFilePath = path.join(LOGO_DIR, oldFilename);
+          if (fs.existsSync(oldFilePath)) {
+            fs.unlinkSync(oldFilePath);
+            logger.info(`Deleted old logo file: ${oldFilename}`);
+          }
+        }
+      }
+
+      // Parse base64 image and save to file
+      const matches = logoImage.match(/^data:image\/(\w+);base64,(.+)$/);
+      if (matches) {
+        const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+        const base64Data = matches[2];
+        const filename = `${userId}-${Date.now()}.${ext}`;
+        const filePath = path.join(LOGO_DIR, filename);
+        
+        // Write file to disk
+        fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
+        
+        // Store URL path instead of base64
+        const apiBase = process.env.NODE_ENV === 'production' 
+          ? 'https://api.vintraxx.com' 
+          : 'http://localhost:3000';
+        updateData.logoUrl = `${apiBase}/assets/dealer-logos/${filename}`;
+        
+        logger.info(`Saved new logo file: ${filename}`);
+      } else {
+        // If not valid base64, store as-is (could be a URL)
+        updateData.logoUrl = logoImage;
+      }
+    } else if (logoImage && typeof logoImage === 'string') {
+      // Store URL directly if not base64
       updateData.logoUrl = logoImage;
     }
 

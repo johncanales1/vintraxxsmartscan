@@ -181,6 +181,14 @@ export default function DealerPortalPage() {
                 dealerLogo={dealer?.logoUrl}
                 dealerName={dealer?.companyName}
                 userEmail={dealer?.email}
+                userId={dealer?.id}
+                pricePerLaborHour={dealer?.pricePerLaborHour}
+                createdAt={dealer?.createdAt}
+                onProfileUpdate={(data) => setDealer(prev => prev ? { 
+                    ...prev, 
+                    logoUrl: data.logoUrl || prev.logoUrl,
+                    pricePerLaborHour: data.pricePerLaborHour ?? prev.pricePerLaborHour
+                } : null)}
             />
 
             <main className="pt-16 min-h-screen">

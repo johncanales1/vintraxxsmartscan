@@ -1,13 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Phone, ArrowRight, QrCode, DollarSign, CircleCheckBig, Clock, TrendingUp, Activity, FileText, Mail, Monitor, Settings, Search, Trash2 } from "lucide-react";
+import { DealerNav } from "@/components/shared-assets/navigation/dealer-nav";
+
+interface DealerUser {
+    id: string;
+    email: string;
+    isDealer: boolean;
+    pricePerLaborHour: number | null;
+    logoUrl?: string | null;
+    createdAt?: string;
+    companyName?: string;
+}
 
 export default function CapitalDealerPortalPage() {
     const [searchName, setSearchName] = useState("");
     const [searchEmail, setSearchEmail] = useState("");
     const [searchPhone, setSearchPhone] = useState("");
     const [statusFilter, setStatusFilter] = useState("All");
+    const [dealer, setDealer] = useState<DealerUser | null>(null);
+
+    useEffect(() => {
+        const storedUser = localStorage.getItem("dealer_user");
+        if (storedUser) {
+            try {
+                setDealer(JSON.parse(storedUser));
+            } catch {}
+        }
+    }, []);
 
     const applications = [
         { id: 1, name: "Lauren Kelley", email: "lkelley1384@gmail.com", phone: "210-445-7776", createdOn: "13 Mar 2026", status: "FinWise Bank, sub-serviced by American First Finance Funded" },
@@ -63,7 +84,21 @@ export default function CapitalDealerPortalPage() {
     ];
 
     return (
-        <div className="min-h-screen bg-slate-50">
+        <>
+            <DealerNav 
+                dealerLogo={dealer?.logoUrl}
+                dealerName={dealer?.companyName}
+                userEmail={dealer?.email}
+                userId={dealer?.id}
+                pricePerLaborHour={dealer?.pricePerLaborHour}
+                createdAt={dealer?.createdAt}
+                onProfileUpdate={(data) => setDealer(prev => prev ? { 
+                    ...prev, 
+                    logoUrl: data.logoUrl || prev.logoUrl,
+                    pricePerLaborHour: data.pricePerLaborHour ?? prev.pricePerLaborHour
+                } : null)}
+            />
+            <main className="pt-16 min-h-screen bg-slate-50">
             {/* Header */}
             <div className="bg-white border-b border-slate-200 sticky top-16 z-40">
                 <div className="max-w-7xl mx-auto px-6 py-5 flex items-center justify-between">
@@ -283,6 +318,7 @@ export default function CapitalDealerPortalPage() {
                     </div>
                 </div>
             </div>
-        </div>
+            </main>
+        </>
     );
 }

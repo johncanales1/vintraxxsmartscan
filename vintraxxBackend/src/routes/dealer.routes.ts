@@ -29,4 +29,10 @@ router.get('/profile', authMiddleware, dealerController.getDealerProfile);
 router.put('/profile', authMiddleware, validateRequest(dealerUpdateSchema), dealerController.updateDealerProfile);
 router.get('/reports', authMiddleware, dealerController.getDealerReports);
 
+// Dashboard: OBD scan history with statistics
+router.get('/scan-history', authMiddleware, dealerController.getDealerScanHistory);
+
+// Dashboard: single report detail
+router.get('/report/:scanId', authMiddleware, dealerController.getDealerReportDetail);
+
 export default router;

@@ -13,9 +13,9 @@ const products = [
         bgColor: "bg-slate-100",
     },
     {
-        title: "VinTraxx SmartScan Dashboard",
+        title: "VinTraxx SmartScan",
         subtitle: "OBD-II Diagnostics",
-        href: "/VehicleAppraisalDashboard",
+        href: "/VinTraxxSmartScanDashboard",
         icon: Scan,
         iconColor: "text-cyan-400",
         bgColor: "bg-slate-100",

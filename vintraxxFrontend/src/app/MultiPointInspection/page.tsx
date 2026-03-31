@@ -105,6 +105,11 @@ export default function MultiPointInspectionPage() {
         ratings: getDefaultRatings(),
         damageMarks: []
     }));
+    
+    // Delete confirmation modal state
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+    const [deleting, setDeleting] = useState(false);
 
     const fetchInspections = useCallback(async (token: string) => {
         try {
@@ -240,29 +245,43 @@ export default function MultiPointInspectionPage() {
         }
     };
 
-    const handleDeleteInspection = async (id: string) => {
-        if (!confirm('Are you sure you want to delete this inspection?')) return;
+    const openDeleteModal = (id: string) => {
+        setDeleteTargetId(id);
+        setDeleteModalOpen(true);
+    };
+    
+    const closeDeleteModal = () => {
+        setDeleteModalOpen(false);
+        setDeleteTargetId(null);
+    };
+
+    const handleDeleteInspection = async () => {
+        if (!deleteTargetId) return;
         
         const token = localStorage.getItem("dealer_token");
         if (!token) return;
 
+        setDeleting(true);
         try {
-            const res = await fetch(`${API_BASE}/inspection/${id}`, {
+            const res = await fetch(`${API_BASE}/inspection/${deleteTargetId}`, {
                 method: 'DELETE',
                 headers: { Authorization: `Bearer ${token}` }
             });
             
             const data = await res.json();
             if (data.success) {
-                setInspections(prev => prev.filter(i => i.id !== id));
+                setInspections(prev => prev.filter(i => i.id !== deleteTargetId));
             }
         } catch (err) {
             console.error("Failed to delete inspection:", err);
+        } finally {
+            setDeleting(false);
+            closeDeleteModal();
         }
     };
 
     const getRatingButtonClass = (itemName: string, rating: 'good' | 'fair' | 'poor') => {
-        const currentRating = formData.ratings[itemName];
+        const currentRating = selectedInspection ? selectedInspection.ratings[itemName] : formData.ratings[itemName];
         const baseClass = "w-7 h-7 rounded border-2 transition-all";
         
         if (currentRating === rating) {
@@ -314,7 +333,7 @@ export default function MultiPointInspectionPage() {
                         </div>
                         <div className="flex items-center gap-3">
                             <Link
-                                href="/VehicleAppraisalDashboard"
+                                href="/VinTraxxSmartScanDashboard"
                                 className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-[#8B2332] rounded-lg hover:bg-[#a12d3e] transition-colors shadow-lg"
                             >
                                 <ArrowLeft className="w-5 h-5" />
@@ -370,7 +389,7 @@ export default function MultiPointInspectionPage() {
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();
-                                                        handleDeleteInspection(inspection.id);
+                                                        openDeleteModal(inspection.id);
                                                     }}
                                                     className="p-2 text-slate-400 hover:text-red-500 transition-colors"
                                                 >
@@ -394,13 +413,7 @@ export default function MultiPointInspectionPage() {
                         <div className="bg-white rounded-xl shadow-lg overflow-hidden">
                             {/* Header */}
                             <div className="bg-[#1B3A5F] px-6 py-4 flex items-center justify-between">
-                                <div className="bg-white rounded-lg px-4 py-2 flex items-center gap-2">
-                                    <img 
-                                        src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695cac8c2981bc8a1da18bbf/564c8464e_Screenshot2026-01-12at100513AM.png" 
-                                        alt="VinTraxx SmartScan" 
-                                        className="h-8 w-auto"
-                                    />
-                                </div>
+                                <div></div>
                                 <div className="text-center">
                                     <h1 className="text-white font-black text-2xl tracking-widest uppercase">Car Inspection</h1>
                                     <div className="bg-[#8B2332] text-white text-sm font-bold tracking-widest px-4 py-0.5 rounded mt-1 inline-block">FORM</div>
@@ -752,6 +765,62 @@ export default function MultiPointInspectionPage() {
                                     </button>
                                 )}
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modern Delete Confirmation Modal */}
+            {deleteModalOpen && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center">
+                    <div 
+                        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                        onClick={closeDeleteModal}
+                    />
+                    <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        {/* Header with gradient */}
+                        <div className="bg-gradient-to-r from-red-500 to-red-600 px-6 py-8 text-center">
+                            <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <Trash2 className="w-8 h-8 text-white" />
+                            </div>
+                            <h2 className="text-2xl font-bold text-white">Delete Inspection</h2>
+                            <p className="text-red-100 mt-2 text-sm">This action cannot be undone</p>
+                        </div>
+                        
+                        {/* Content */}
+                        <div className="px-6 py-6">
+                            <p className="text-slate-600 text-center leading-relaxed">
+                                Are you sure you want to permanently delete this inspection record? 
+                                All associated data including ratings and damage marks will be removed.
+                            </p>
+                        </div>
+                        
+                        {/* Actions */}
+                        <div className="px-6 pb-6 flex gap-3">
+                            <button
+                                onClick={closeDeleteModal}
+                                disabled={deleting}
+                                className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition-colors disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleDeleteInspection}
+                                disabled={deleting}
+                                className="flex-1 px-4 py-3 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-semibold rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                            >
+                                {deleting ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        Deleting...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Trash2 className="w-4 h-4" />
+                                        Delete
+                                    </>
+                                )}
+                            </button>
                         </div>
                     </div>
                 </div>

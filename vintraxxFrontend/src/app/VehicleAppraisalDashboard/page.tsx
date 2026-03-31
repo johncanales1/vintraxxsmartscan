@@ -116,6 +116,9 @@ export default function DealerPortalPage() {
     const [scanDetail, setScanDetail] = useState<OBDReportDetail | null>(null);
     const [scanDetailLoading, setScanDetailLoading] = useState(false);
     const [selectedAppraisal, setSelectedAppraisal] = useState<AppraisalData | null>(null);
+    
+    // Scan Activity Period
+    const [scanActivityPeriod, setScanActivityPeriod] = useState<'1w' | '1m' | '3m' | '6m' | '12m'>('12m');
 
     const fetchDealerData = useCallback(async (token: string) => {
         try {
@@ -234,26 +237,71 @@ export default function DealerPortalPage() {
     const totalRepairCosts = completedReports.reduce((sum, r) => sum + getTotalRepairCost(r), 0);
     const scansWithRepairs = completedReports.filter(r => getTotalRepairCost(r) > 0).length;
     
-    // Monthly scan activity (last 12 months)
-    const getMonthlyActivity = () => {
+    // Scan activity based on selected period
+    const getActivityData = () => {
         const now = new Date();
-        const months: { month: string; scans: number }[] = [];
-        for (let i = 11; i >= 0; i--) {
-            const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-            const monthName = date.toLocaleString('en-US', { month: 'short' });
-            const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
-            const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59);
-            const count = completedReports.filter(r => {
-                const scanDate = new Date(r.scanDate);
-                return scanDate >= monthStart && scanDate <= monthEnd;
-            }).length;
-            months.push({ month: monthName, scans: count });
+        const data: { month: string; scans: number }[] = [];
+        
+        if (scanActivityPeriod === '1w') {
+            // Last 7 days
+            for (let i = 6; i >= 0; i--) {
+                const date = new Date(now);
+                date.setDate(date.getDate() - i);
+                const dayName = date.toLocaleString('en-US', { weekday: 'short' });
+                const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+                const dayEnd = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59);
+                const count = completedReports.filter(r => {
+                    const scanDate = new Date(r.scanDate);
+                    return scanDate >= dayStart && scanDate <= dayEnd;
+                }).length;
+                data.push({ month: dayName, scans: count });
+            }
+        } else {
+            // Monthly data for 1m, 3m, 6m, 12m
+            const monthCount = scanActivityPeriod === '1m' ? 4 : 
+                               scanActivityPeriod === '3m' ? 3 : 
+                               scanActivityPeriod === '6m' ? 6 : 12;
+            
+            if (scanActivityPeriod === '1m') {
+                // Last 4 weeks
+                for (let i = 3; i >= 0; i--) {
+                    const weekStart = new Date(now);
+                    weekStart.setDate(weekStart.getDate() - (i + 1) * 7);
+                    const weekEnd = new Date(now);
+                    weekEnd.setDate(weekEnd.getDate() - i * 7);
+                    const count = completedReports.filter(r => {
+                        const scanDate = new Date(r.scanDate);
+                        return scanDate >= weekStart && scanDate < weekEnd;
+                    }).length;
+                    data.push({ month: `Week ${4 - i}`, scans: count });
+                }
+            } else {
+                for (let i = monthCount - 1; i >= 0; i--) {
+                    const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                    const monthName = date.toLocaleString('en-US', { month: 'short' });
+                    const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
+                    const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59);
+                    const count = completedReports.filter(r => {
+                        const scanDate = new Date(r.scanDate);
+                        return scanDate >= monthStart && scanDate <= monthEnd;
+                    }).length;
+                    data.push({ month: monthName, scans: count });
+                }
+            }
         }
-        return months;
+        return data;
     };
     
     // Chart data
-    const scanActivityData = getMonthlyActivity();
+    const scanActivityData = getActivityData();
+    
+    const periodOptions = [
+        { value: '1w', label: 'Last Week' },
+        { value: '1m', label: 'Last Month' },
+        { value: '3m', label: 'Last 3 Months' },
+        { value: '6m', label: 'Last 6 Months' },
+        { value: '12m', label: 'Last 12 Months' },
+    ];
     
     // Cost distribution for bar chart
     const costDistribution = [
@@ -422,18 +470,20 @@ export default function DealerPortalPage() {
                                 </h3>
                                 {completedReports.length > 0 ? (
                                     <ResponsiveContainer width="100%" height={250}>
-                                        <BarChart data={costDistribution}>
-                                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                            <XAxis dataKey="range" stroke="#64748b" tick={{ fontSize: 12 }} />
-                                            <YAxis stroke="#64748b" allowDecimals={false} />
+                                        <BarChart data={costDistribution} style={{ outline: 'none' }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                                            <XAxis dataKey="range" stroke="#64748b" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+                                            <YAxis stroke="#64748b" allowDecimals={false} axisLine={false} tickLine={false} />
                                             <Tooltip 
+                                                cursor={false}
                                                 contentStyle={{ 
                                                     backgroundColor: 'rgb(255, 255, 255)', 
                                                     border: '1px solid rgb(226, 232, 240)', 
-                                                    borderRadius: '8px' 
+                                                    borderRadius: '8px',
+                                                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
                                                 }} 
                                             />
-                                            <Bar dataKey="count" radius={[8, 8, 0, 0]} />
+                                            <Bar dataKey="count" radius={[8, 8, 0, 0]} fill="#10b981" />
                                         </BarChart>
                                     </ResponsiveContainer>
                                 ) : (
@@ -443,21 +493,34 @@ export default function DealerPortalPage() {
                                 )}
                             </div>
                             <div className="rounded-xl border text-card-foreground shadow bg-white border-slate-200 p-6">
-                                <h3 className="text-slate-900 font-semibold mb-4 flex items-center gap-2">
-                                    <Activity className="w-5 h-5 text-blue-500" />
-                                    Scan Activity (Last 12 Months)
-                                </h3>
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-slate-900 font-semibold flex items-center gap-2">
+                                        <Activity className="w-5 h-5 text-blue-500" />
+                                        Scan Activity
+                                    </h3>
+                                    <select
+                                        value={scanActivityPeriod}
+                                        onChange={(e) => setScanActivityPeriod(e.target.value as '1w' | '1m' | '3m' | '6m' | '12m')}
+                                        className="text-sm border border-slate-300 rounded-lg px-3 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+                                    >
+                                        {periodOptions.map(opt => (
+                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
                                 {scanActivityData.length > 0 ? (
                                     <ResponsiveContainer width="100%" height={250}>
-                                        <LineChart data={scanActivityData}>
-                                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                            <XAxis dataKey="month" stroke="#64748b" tick={{ fontSize: 12 }} />
-                                            <YAxis stroke="#64748b" allowDecimals={false} />
+                                        <LineChart data={scanActivityData} style={{ outline: 'none' }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                                            <XAxis dataKey="month" stroke="#64748b" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+                                            <YAxis stroke="#64748b" allowDecimals={false} axisLine={false} tickLine={false} />
                                             <Tooltip 
+                                                cursor={false}
                                                 contentStyle={{ 
                                                     backgroundColor: 'rgb(255, 255, 255)', 
                                                     border: '1px solid rgb(226, 232, 240)', 
-                                                    borderRadius: '8px' 
+                                                    borderRadius: '8px',
+                                                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
                                                 }} 
                                             />
                                             <Line 

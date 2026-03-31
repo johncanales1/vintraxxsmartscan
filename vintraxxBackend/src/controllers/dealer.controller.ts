@@ -285,7 +285,7 @@ export async function getDealerScanHistory(req: Request, res: Response, next: Ne
 export async function getDealerReportDetail(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = req.user!.userId;
-    const { scanId } = req.params;
+    const scanId = req.params.scanId as string;
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user || !user.isDealer) {
@@ -293,7 +293,7 @@ export async function getDealerReportDetail(req: Request, res: Response, next: N
       return;
     }
 
-    const scan = await prisma.scan.findFirst({
+    const scan: any = await prisma.scan.findFirst({
       where: { id: scanId, userId },
       include: { fullReport: true },
     });

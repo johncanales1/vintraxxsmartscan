@@ -5,153 +5,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vintraxx API Documentation</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            background: #f8f9fa;
-        }
-        
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 40px 0;
-            text-align: center;
-            margin-bottom: 40px;
-            border-radius: 10px;
-        }
-        
-        h1 {
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-        }
-        
-        .subtitle {
-            font-size: 1.1rem;
-            opacity: 0.9;
-        }
-        
-        .endpoint-section {
-            background: white;
-            margin-bottom: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-        
-        .section-header {
-            background: #f1f3f4;
-            padding: 20px;
-            border-left: 4px solid #667eea;
-        }
-        
-        .section-title {
-            font-size: 1.5rem;
-            color: #333;
-            margin-bottom: 5px;
-        }
-        
-        .section-path {
-            color: #666;
-            font-family: monospace;
-            font-size: 0.9rem;
-        }
-        
-        .endpoint-list {
-            padding: 20px;
-        }
-        
-        .endpoint {
-            display: flex;
-            align-items: center;
-            padding: 15px 0;
-            border-bottom: 1px solid #eee;
-        }
-        
-        .endpoint:last-child {
-            border-bottom: none;
-        }
-        
-        .method {
-            font-weight: bold;
-            padding: 6px 12px;
-            border-radius: 4px;
-            font-size: 0.8rem;
-            min-width: 70px;
-            text-align: center;
-            margin-right: 20px;
-        }
-        
-        .method.post {
-            background: #10b981;
-            color: white;
-        }
-        
-        .method.get {
-            background: #3b82f6;
-            color: white;
-        }
-        
-        .method.put {
-            background: #f59e0b;
-            color: white;
-        }
-        
-        .endpoint-path {
-            font-family: monospace;
-            background: #f8f9fa;
-            padding: 8px 12px;
-            border-radius: 4px;
-            margin-right: 20px;
-            min-width: 200px;
-            color: #495057;
-        }
-        
-        .endpoint-desc {
-            color: #666;
-            flex: 1;
-        }
-        
-        .auth-badge {
-            background: #fef3c7;
-            color: #92400e;
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 0.75rem;
-            margin-left: 10px;
-        }
-        
-        .footer {
-            text-align: center;
-            padding: 40px 0;
-            color: #666;
-        }
-        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; background: #f8f9fa; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px 0; text-align: center; margin-bottom: 40px; border-radius: 10px; }
+        h1 { font-size: 2.5rem; margin-bottom: 10px; }
+        .subtitle { font-size: 1.1rem; opacity: 0.9; }
+        .base-url { background: rgba(255,255,255,0.2); padding: 10px 20px; border-radius: 6px; margin-top: 15px; font-family: monospace; display: inline-block; }
+        .endpoint-section { background: white; margin-bottom: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }
+        .section-header { background: #f1f3f4; padding: 20px; border-left: 4px solid #667eea; }
+        .section-title { font-size: 1.5rem; color: #333; margin-bottom: 5px; }
+        .section-path { color: #666; font-family: monospace; font-size: 0.9rem; }
+        .endpoint-list { padding: 20px; }
+        .endpoint { display: flex; align-items: center; padding: 15px 0; border-bottom: 1px solid #eee; flex-wrap: wrap; }
+        .endpoint:last-child { border-bottom: none; }
+        .method { font-weight: bold; padding: 6px 12px; border-radius: 4px; font-size: 0.8rem; min-width: 70px; text-align: center; margin-right: 15px; }
+        .method.post { background: #10b981; color: white; }
+        .method.get { background: #3b82f6; color: white; }
+        .method.put { background: #f59e0b; color: white; }
+        .method.delete { background: #ef4444; color: white; }
+        .endpoint-path { font-family: monospace; background: #f8f9fa; padding: 8px 12px; border-radius: 4px; margin-right: 15px; min-width: 220px; color: #495057; }
+        .endpoint-desc { color: #666; flex: 1; min-width: 200px; }
+        .auth-badge { background: #fef3c7; color: #92400e; padding: 4px 8px; border-radius: 12px; font-size: 0.75rem; margin-left: 10px; }
+        .footer { text-align: center; padding: 40px 0; color: #666; }
+        .info-box { background: #e0e7ff; border-left: 4px solid #667eea; padding: 15px 20px; margin-bottom: 30px; border-radius: 0 8px 8px 0; }
+        .info-box h3 { color: #4338ca; margin-bottom: 8px; }
+        .info-box p { color: #4338ca; font-size: 0.9rem; }
         @media (max-width: 768px) {
-            .endpoint {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-            
-            .method {
-                margin-bottom: 10px;
-            }
-            
-            .endpoint-path {
-                margin-bottom: 10px;
-            }
+            .endpoint { flex-direction: column; align-items: flex-start; }
+            .method { margin-bottom: 10px; }
+            .endpoint-path { margin-bottom: 10px; min-width: auto; }
         }
     </style>
 </head>
@@ -159,9 +42,16 @@
     <div class="container">
         <header>
             <h1>Vintraxx API</h1>
-            <p class="subtitle">OBD-II Vehicle Diagnostic Report System</p>
+            <p class="subtitle">OBD-II Vehicle Diagnostic & Appraisal System</p>
+            <div class="base-url">Base URL: https://api.vintraxx.com/api/v1</div>
         </header>
-        
+
+        <div class="info-box">
+            <h3>Authentication</h3>
+            <p>Protected endpoints require a Bearer token in the Authorization header: <code>Authorization: Bearer &lt;token&gt;</code></p>
+        </div>
+
+        <!-- Authentication Section -->
         <div class="endpoint-section">
             <div class="section-header">
                 <h2 class="section-title">Authentication</h2>
@@ -171,31 +61,52 @@
                 <div class="endpoint">
                     <span class="method post">POST</span>
                     <span class="endpoint-path">/check-email</span>
-                    <span class="endpoint-desc">Check if email exists</span>
+                    <span class="endpoint-desc">Check if email is registered. Body: { email }</span>
                 </div>
                 <div class="endpoint">
                     <span class="method post">POST</span>
                     <span class="endpoint-path">/send-otp</span>
-                    <span class="endpoint-desc">Send OTP to email</span>
+                    <span class="endpoint-desc">Send OTP to email for verification. Body: { email }</span>
                 </div>
                 <div class="endpoint">
                     <span class="method post">POST</span>
                     <span class="endpoint-path">/verify-otp</span>
-                    <span class="endpoint-desc">Verify OTP code</span>
+                    <span class="endpoint-desc">Verify OTP code. Body: { email, otp }</span>
                 </div>
                 <div class="endpoint">
                     <span class="method post">POST</span>
                     <span class="endpoint-path">/register</span>
-                    <span class="endpoint-desc">Register new user (supports dealer flag)</span>
+                    <span class="endpoint-desc">Register new user. Body: { email, password, isDealer?, pricePerLaborHour?, logoUrl? }</span>
                 </div>
                 <div class="endpoint">
                     <span class="method post">POST</span>
                     <span class="endpoint-path">/login</span>
-                    <span class="endpoint-desc">Login existing user (supports dealer flag)</span>
+                    <span class="endpoint-desc">Login user. Body: { email, password, isDealer?, pricePerLaborHour? }</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/forgot-password</span>
+                    <span class="endpoint-desc">Request password reset. Body: { email }</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/reset-password</span>
+                    <span class="endpoint-desc">Reset password with token. Body: { token, password }</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/google</span>
+                    <span class="endpoint-desc">Google OAuth authentication. Body: { idToken }</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/microsoft</span>
+                    <span class="endpoint-desc">Microsoft OAuth authentication. Body: { accessToken }</span>
                 </div>
             </div>
         </div>
-        
+
+        <!-- Scan Management Section -->
         <div class="endpoint-section">
             <div class="section-header">
                 <h2 class="section-title">Scan Management</h2>
@@ -205,24 +116,25 @@
                 <div class="endpoint">
                     <span class="method post">POST</span>
                     <span class="endpoint-path">/submit</span>
-                    <span class="endpoint-desc">Submit OBD-II scan data</span>
+                    <span class="endpoint-desc">Submit OBD-II scan data. Body: { vin, mileage, milStatus, storedDtcCodes[], pendingDtcCodes[], permanentDtcCodes[], scanDate, scannerDeviceId?, stockNumber?, additionalRepairs[]? }</span>
                     <span class="auth-badge">Requires Auth</span>
                 </div>
                 <div class="endpoint">
                     <span class="method get">GET</span>
                     <span class="endpoint-path">/report/:scanId</span>
-                    <span class="endpoint-desc">Get report (poll for completion)</span>
+                    <span class="endpoint-desc">Get scan report. Poll until status is 'completed' or 'failed'. Returns full report data with DTC analysis, repair costs, and PDF URL.</span>
                     <span class="auth-badge">Requires Auth</span>
                 </div>
                 <div class="endpoint">
                     <span class="method get">GET</span>
                     <span class="endpoint-path">/history</span>
-                    <span class="endpoint-desc">Get user's scan history</span>
+                    <span class="endpoint-desc">Get user's scan history. Returns list of scans with vehicle info and status.</span>
                     <span class="auth-badge">Requires Auth</span>
                 </div>
             </div>
         </div>
-        
+
+        <!-- Dealer Portal Section -->
         <div class="endpoint-section">
             <div class="section-header">
                 <h2 class="section-title">Dealer Portal</h2>
@@ -232,29 +144,42 @@
                 <div class="endpoint">
                     <span class="method post">POST</span>
                     <span class="endpoint-path">/login</span>
-                    <span class="endpoint-desc">Dealer portal login</span>
+                    <span class="endpoint-desc">Dealer-only login. Body: { email, password }. Returns error if account is not a dealer.</span>
                 </div>
                 <div class="endpoint">
                     <span class="method get">GET</span>
                     <span class="endpoint-path">/profile</span>
-                    <span class="endpoint-desc">Get dealer profile info</span>
-                    <span class="auth-badge">Requires Auth</span>
+                    <span class="endpoint-desc">Get dealer profile (email, pricePerLaborHour, logoUrl).</span>
+                    <span class="auth-badge">Dealer Only</span>
                 </div>
                 <div class="endpoint">
                     <span class="method put">PUT</span>
                     <span class="endpoint-path">/profile</span>
-                    <span class="endpoint-desc">Update dealer profile (price per labor hour, logo)</span>
-                    <span class="auth-badge">Requires Auth</span>
+                    <span class="endpoint-desc">Update dealer settings. Body: { pricePerLaborHour?, logoImage? (base64 or URL) }</span>
+                    <span class="auth-badge">Dealer Only</span>
                 </div>
                 <div class="endpoint">
                     <span class="method get">GET</span>
                     <span class="endpoint-path">/reports</span>
-                    <span class="endpoint-desc">Get dealer's scan reports</span>
-                    <span class="auth-badge">Requires Auth</span>
+                    <span class="endpoint-desc">Get all dealer scan reports with repair costs, PDF URLs, and stock numbers.</span>
+                    <span class="auth-badge">Dealer Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/scan-history</span>
+                    <span class="endpoint-desc">Get scan history with statistics for dashboard. Returns health scores, monthly activity, and distribution charts.</span>
+                    <span class="auth-badge">Dealer Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/report/:scanId</span>
+                    <span class="endpoint-desc">Get detailed report for single scan. Returns full DTC analysis, emissions check, repair recommendations, and costs.</span>
+                    <span class="auth-badge">Dealer Only</span>
                 </div>
             </div>
         </div>
-        
+
+        <!-- Vehicle Appraisal Section -->
         <div class="endpoint-section">
             <div class="section-header">
                 <h2 class="section-title">Vehicle Appraisal</h2>
@@ -263,28 +188,89 @@
             <div class="endpoint-list">
                 <div class="endpoint">
                     <span class="method post">POST</span>
-                    <span class="endpoint-path">/value</span>
-                    <span class="endpoint-desc">Get vehicle valuation/appraisal</span>
+                    <span class="endpoint-path">/valuate</span>
+                    <span class="endpoint-desc">Get AI-based vehicle valuation. Body: { vin, year, make, model, trim?, mileage, condition, zipCode, notes? }. Returns wholesale/trade-in/retail ranges with confidence.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/email</span>
+                    <span class="endpoint-desc">Send appraisal summary via email. Body: { toEmail, appraisalData }</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/pdf</span>
+                    <span class="endpoint-desc">Generate PDF and send via email. Body: { toEmail, appraisalData }</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/dashboard</span>
+                    <span class="endpoint-desc">Get all user's appraisals for dashboard display.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/dashboard/:appraisalId</span>
+                    <span class="endpoint-desc">Get single appraisal by ID.</span>
+                    <span class="auth-badge">Requires Auth</span>
                 </div>
             </div>
         </div>
-        
+
+        <!-- Vehicle Inspection Section -->
+        <div class="endpoint-section">
+            <div class="section-header">
+                <h2 class="section-title">Vehicle Inspection</h2>
+                <p class="section-path">/api/v1/inspection</p>
+            </div>
+            <div class="endpoint-list">
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/list</span>
+                    <span class="endpoint-desc">Get all user's vehicle inspections.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/create</span>
+                    <span class="endpoint-desc">Create new inspection. Body: { vehicleInfo?, vin?, mileage?, color?, inspector?, date?, ratings?, damageMarks[]? }</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/:id</span>
+                    <span class="endpoint-desc">Get single inspection by ID.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method delete">DELETE</span>
+                    <span class="endpoint-path">/:id</span>
+                    <span class="endpoint-desc">Delete inspection by ID.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- System Section -->
         <div class="endpoint-section">
             <div class="section-header">
                 <h2 class="section-title">System</h2>
-                <p class="section-path">Health Check</p>
+                <p class="section-path">Health & Status</p>
             </div>
             <div class="endpoint-list">
                 <div class="endpoint">
                     <span class="method get">GET</span>
                     <span class="endpoint-path">/api/v1/health</span>
-                    <span class="endpoint-desc">Health check endpoint</span>
+                    <span class="endpoint-desc">Health check endpoint. Returns { status: 'ok' }</span>
                 </div>
             </div>
         </div>
-        
+
         <footer class="footer">
-            <p>&copy; 2026 VinTraxx Inc. - OBD-II Vehicle Diagnostic Report System</p>
+            <p>&copy; 2026 VinTraxx Inc. - OBD-II Vehicle Diagnostic & Appraisal System</p>
+            <p style="margin-top: 10px; font-size: 0.85rem;">API Version 1.0 | Last Updated: March 2026</p>
         </footer>
     </div>
 </body>

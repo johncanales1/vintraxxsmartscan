@@ -674,7 +674,7 @@ export const DealerNav = ({ dealerLogo, dealerName, userEmail, userId, pricePerL
             <div className="max-w-[1800px] mx-auto px-4 sm:px-6">
                 <div className="flex items-center justify-between h-16">
                     {/* Dealer Logo */}
-                    <Link href="/VehicleAppraisalDashboard" className="flex items-center gap-3 group">
+                    <Link href="/VinTraxxSmartScanDashboard" className="flex items-center gap-3 group">
                         {currentLogo && (
                             <img 
                                 src={currentLogo} 

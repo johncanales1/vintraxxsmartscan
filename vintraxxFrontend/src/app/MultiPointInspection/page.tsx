@@ -282,7 +282,7 @@ export default function MultiPointInspectionPage() {
 
     const getRatingButtonClass = (itemName: string, rating: 'good' | 'fair' | 'poor') => {
         const currentRating = selectedInspection ? selectedInspection.ratings[itemName] : formData.ratings[itemName];
-        const baseClass = "w-7 h-7 rounded border-2 transition-all";
+        const baseClass = "w-5 h-5 sm:w-7 sm:h-7 rounded border-2 transition-all";
         
         if (currentRating === rating) {
             switch (rating) {
@@ -315,87 +315,87 @@ export default function MultiPointInspectionPage() {
                 createdAt={dealerUser?.createdAt}
             />
             
-            <main className="pt-20 pb-12">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <main className="pt-16 sm:pt-20 pb-8 sm:pb-12">
+                <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
                     {/* Header */}
-                    <div className="flex items-center justify-between mb-8">
-                        <div className="flex items-center gap-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8">
+                        <div className="flex items-center gap-3 sm:gap-4">
                             {/* Clipboard SVG Icon */}
-                            <div className="w-12 h-12 bg-gradient-to-br from-[#1B3A5F] to-[#2d5278] rounded-xl flex items-center justify-center shadow-lg">
-                                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-[#1B3A5F] to-[#2d5278] rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
+                                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                                 </svg>
                             </div>
                             <div>
-                                <h1 className="text-3xl font-bold text-[#1B3A5F]">Multi-Point Inspection</h1>
-                                <p className="text-slate-500 text-sm mt-1">Manage vehicle inspection reports</p>
+                                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-[#1B3A5F]">Multi-Point Inspection</h1>
+                                <p className="text-slate-500 text-xs sm:text-sm mt-0.5 sm:mt-1">Manage vehicle inspection reports</p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 sm:gap-3">
                             <Link
                                 href="/VinTraxxSmartScanDashboard"
-                                className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-[#8B2332] rounded-lg hover:bg-[#a12d3e] transition-colors shadow-lg"
+                                className="inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-medium text-white bg-[#8B2332] rounded-lg hover:bg-[#a12d3e] transition-colors shadow-lg"
                             >
-                                <ArrowLeft className="w-5 h-5" />
-                                Go Back
+                                <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+                                <span className="hidden xs:inline">Go </span>Back
                             </Link>
                             <button
                                 onClick={handleOpenAddModal}
-                                className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium bg-[#1B3A5F] text-white rounded-lg hover:bg-[#2d5278] transition-colors shadow-lg"
+                                className="inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-medium bg-[#1B3A5F] text-white rounded-lg hover:bg-[#2d5278] transition-colors shadow-lg"
                             >
-                                <Plus className="w-5 h-5" />
-                                Add Inspection Item
+                                <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+                                <span className="hidden sm:inline">Add </span>Inspection<span className="hidden sm:inline"> Item</span>
                             </button>
                         </div>
                     </div>
 
                     {/* Inspection List */}
                     {inspections.length === 0 ? (
-                        <div className="bg-white rounded-xl shadow-lg p-12 text-center">
-                            <Car className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                            <h3 className="text-xl font-semibold text-slate-700 mb-2">No Inspections Yet</h3>
-                            <p className="text-slate-500">Create your first multi-point inspection report</p>
+                        <div className="bg-white rounded-xl shadow-lg p-8 sm:p-12 text-center">
+                            <Car className="w-12 h-12 sm:w-16 sm:h-16 text-slate-300 mx-auto mb-3 sm:mb-4" />
+                            <h3 className="text-lg sm:text-xl font-semibold text-slate-700 mb-2">No Inspections Yet</h3>
+                            <p className="text-slate-500 text-sm sm:text-base">Create your first multi-point inspection report</p>
                         </div>
                     ) : (
-                        <div className="grid gap-4">
+                        <div className="grid gap-3 sm:gap-4">
                             {inspections.map((inspection) => (
                                 <div
                                     key={inspection.id}
-                                    className="bg-white rounded-xl shadow-lg p-5 hover:shadow-xl transition-shadow cursor-pointer"
+                                    className="bg-white rounded-xl shadow-lg p-3 sm:p-5 hover:shadow-xl transition-shadow cursor-pointer"
                                     onClick={() => setSelectedInspection(inspection)}
                                 >
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-4">
-                                            <div className="w-12 h-12 bg-gradient-to-br from-[#1B3A5F] to-[#2d5278] rounded-xl flex items-center justify-center">
-                                                <Car className="w-6 h-6 text-white" />
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0">
+                                        <div className="flex items-center gap-3 sm:gap-4">
+                                            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-[#1B3A5F] to-[#2d5278] rounded-xl flex items-center justify-center flex-shrink-0">
+                                                <Car className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                                             </div>
-                                            <div>
-                                                <h3 className="font-semibold text-slate-900">{inspection.vehicleInfo || 'Unknown Vehicle'}</h3>
-                                                <p className="text-sm text-slate-500 font-mono">{inspection.vin || 'No VIN'}</p>
+                                            <div className="min-w-0 flex-1">
+                                                <h3 className="font-semibold text-slate-900 text-sm sm:text-base truncate">{inspection.vehicleInfo || 'Unknown Vehicle'}</h3>
+                                                <p className="text-xs sm:text-sm text-slate-500 font-mono truncate">{inspection.vin || 'No VIN'}</p>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-6">
-                                            <div className="text-right">
-                                                <div className="flex items-center gap-2 text-sm text-slate-500">
-                                                    <User className="w-4 h-4" />
-                                                    {inspection.inspector || 'Unknown'}
+                                        <div className="flex items-center justify-between sm:justify-end gap-4 sm:gap-6 ml-[52px] sm:ml-0">
+                                            <div className="text-left sm:text-right">
+                                                <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-slate-500">
+                                                    <User className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                                    <span className="truncate max-w-[100px] sm:max-w-none">{inspection.inspector || 'Unknown'}</span>
                                                 </div>
-                                                <div className="flex items-center gap-2 text-sm text-slate-500">
-                                                    <Calendar className="w-4 h-4" />
+                                                <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-slate-500">
+                                                    <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                                     {inspection.date}
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-1 sm:gap-2">
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         openDeleteModal(inspection.id);
                                                     }}
-                                                    className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                                                    className="p-1.5 sm:p-2 text-slate-400 hover:text-red-500 transition-colors"
                                                 >
-                                                    <Trash2 className="w-5 h-5" />
+                                                    <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
                                                 </button>
-                                                <ChevronRight className="w-5 h-5 text-slate-400" />
+                                                <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
                                             </div>
                                         </div>
                                     </div>
@@ -408,30 +408,30 @@ export default function MultiPointInspectionPage() {
 
             {/* Add/Edit Inspection Modal */}
             {(showAddModal || selectedInspection) && (
-                <div className="fixed inset-0 bg-black/60 flex items-start justify-center z-50 p-4 overflow-y-auto">
-                    <div className="max-w-6xl w-full mx-auto mt-4 mb-8">
+                <div className="fixed inset-0 bg-black/60 flex items-start justify-center z-50 p-2 sm:p-4 overflow-y-auto">
+                    <div className="max-w-6xl w-full mx-auto mt-2 sm:mt-4 mb-4 sm:mb-8">
                         <div className="bg-white rounded-xl shadow-lg overflow-hidden">
                             {/* Header */}
-                            <div className="bg-[#1B3A5F] px-6 py-4 flex items-center justify-between">
-                                <div></div>
-                                <div className="text-center">
-                                    <h1 className="text-white font-black text-2xl tracking-widest uppercase">Car Inspection</h1>
-                                    <div className="bg-[#8B2332] text-white text-sm font-bold tracking-widest px-4 py-0.5 rounded mt-1 inline-block">FORM</div>
+                            <div className="bg-[#1B3A5F] px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
+                                <div className="w-6"></div>
+                                <div className="text-center flex-1">
+                                    <h1 className="text-white font-black text-lg sm:text-2xl tracking-wider sm:tracking-widest uppercase">Car Inspection</h1>
+                                    <div className="bg-[#8B2332] text-white text-xs sm:text-sm font-bold tracking-widest px-3 sm:px-4 py-0.5 rounded mt-1 inline-block">FORM</div>
                                 </div>
                                 <button 
                                     onClick={handleCloseModal}
                                     className="text-white/60 hover:text-white transition-colors"
                                 >
-                                    <X className="w-6 h-6" />
+                                    <X className="w-5 h-5 sm:w-6 sm:h-6" />
                                 </button>
                             </div>
 
                             {/* Vehicle Info */}
-                            <div className="px-6 py-4 border-b border-slate-200 grid grid-cols-2 gap-x-8 gap-y-3">
+                            <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-x-4 sm:gap-x-8 gap-y-2 sm:gap-y-3">
                                 <div className="border-b border-slate-100 pb-2">
-                                    <p className="text-xs text-slate-400 uppercase tracking-wider mb-0.5">YEAR / MAKE / MODEL</p>
+                                    <p className="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider mb-0.5">YEAR / MAKE / MODEL</p>
                                     <input
-                                        className="font-semibold text-slate-800 text-sm w-full bg-transparent outline-none placeholder:text-slate-300"
+                                        className="font-semibold text-slate-800 text-xs sm:text-sm w-full bg-transparent outline-none placeholder:text-slate-300"
                                         placeholder="2023 Ford F-150"
                                         value={selectedInspection?.vehicleInfo || formData.vehicleInfo}
                                         onChange={(e) => setFormData(prev => ({ ...prev, vehicleInfo: e.target.value }))}
@@ -439,9 +439,9 @@ export default function MultiPointInspectionPage() {
                                     />
                                 </div>
                                 <div className="border-b border-slate-100 pb-2">
-                                    <p className="text-xs text-slate-400 uppercase tracking-wider mb-0.5">VIN</p>
+                                    <p className="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider mb-0.5">VIN</p>
                                     <input
-                                        className="font-semibold text-slate-800 text-sm w-full bg-transparent outline-none placeholder:text-slate-300"
+                                        className="font-semibold text-slate-800 text-xs sm:text-sm w-full bg-transparent outline-none placeholder:text-slate-300"
                                         placeholder="1FTFW1E53NFA19284"
                                         value={selectedInspection?.vin || formData.vin}
                                         onChange={(e) => setFormData(prev => ({ ...prev, vin: e.target.value }))}
@@ -449,9 +449,9 @@ export default function MultiPointInspectionPage() {
                                     />
                                 </div>
                                 <div className="border-b border-slate-100 pb-2">
-                                    <p className="text-xs text-slate-400 uppercase tracking-wider mb-0.5">MILEAGE</p>
+                                    <p className="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider mb-0.5">MILEAGE</p>
                                     <input
-                                        className="font-semibold text-slate-800 text-sm w-full bg-transparent outline-none placeholder:text-slate-300"
+                                        className="font-semibold text-slate-800 text-xs sm:text-sm w-full bg-transparent outline-none placeholder:text-slate-300"
                                         placeholder="18,400 mi"
                                         value={selectedInspection?.mileage || formData.mileage}
                                         onChange={(e) => setFormData(prev => ({ ...prev, mileage: e.target.value }))}
@@ -459,9 +459,9 @@ export default function MultiPointInspectionPage() {
                                     />
                                 </div>
                                 <div className="border-b border-slate-100 pb-2">
-                                    <p className="text-xs text-slate-400 uppercase tracking-wider mb-0.5">COLOR</p>
+                                    <p className="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider mb-0.5">COLOR</p>
                                     <input
-                                        className="font-semibold text-slate-800 text-sm w-full bg-transparent outline-none placeholder:text-slate-300"
+                                        className="font-semibold text-slate-800 text-xs sm:text-sm w-full bg-transparent outline-none placeholder:text-slate-300"
                                         placeholder="Stone Gray"
                                         value={selectedInspection?.color || formData.color}
                                         onChange={(e) => setFormData(prev => ({ ...prev, color: e.target.value }))}
@@ -469,9 +469,9 @@ export default function MultiPointInspectionPage() {
                                     />
                                 </div>
                                 <div className="border-b border-slate-100 pb-2">
-                                    <p className="text-xs text-slate-400 uppercase tracking-wider mb-0.5">INSPECTOR</p>
+                                    <p className="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider mb-0.5">INSPECTOR</p>
                                     <input
-                                        className="font-semibold text-slate-800 text-sm w-full bg-transparent outline-none placeholder:text-slate-300"
+                                        className="font-semibold text-slate-800 text-xs sm:text-sm w-full bg-transparent outline-none placeholder:text-slate-300"
                                         placeholder="J. Martinez"
                                         value={selectedInspection?.inspector || formData.inspector}
                                         onChange={(e) => setFormData(prev => ({ ...prev, inspector: e.target.value }))}
@@ -479,9 +479,9 @@ export default function MultiPointInspectionPage() {
                                     />
                                 </div>
                                 <div className="border-b border-slate-100 pb-2">
-                                    <p className="text-xs text-slate-400 uppercase tracking-wider mb-0.5">DATE</p>
+                                    <p className="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider mb-0.5">DATE</p>
                                     <input
-                                        className="font-semibold text-slate-800 text-sm w-full bg-transparent outline-none placeholder:text-slate-300"
+                                        className="font-semibold text-slate-800 text-xs sm:text-sm w-full bg-transparent outline-none placeholder:text-slate-300"
                                         placeholder="Mar 31, 2026"
                                         value={selectedInspection?.date || formData.date}
                                         onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
@@ -491,34 +491,34 @@ export default function MultiPointInspectionPage() {
                             </div>
 
                             {/* Legend */}
-                            <div className="px-6 py-2 flex justify-end gap-4 border-b border-slate-100">
-                                <div className="flex items-center gap-1.5 text-sm text-slate-600">
-                                    <span className="w-4 h-4 rounded-full inline-block bg-green-500"></span>
+                            <div className="px-4 sm:px-6 py-2 flex justify-center sm:justify-end gap-3 sm:gap-4 border-b border-slate-100">
+                                <div className="flex items-center gap-1 sm:gap-1.5 text-xs sm:text-sm text-slate-600">
+                                    <span className="w-3 h-3 sm:w-4 sm:h-4 rounded-full inline-block bg-green-500"></span>
                                     Good
                                 </div>
-                                <div className="flex items-center gap-1.5 text-sm text-slate-600">
-                                    <span className="w-4 h-4 rounded-full inline-block bg-yellow-400"></span>
+                                <div className="flex items-center gap-1 sm:gap-1.5 text-xs sm:text-sm text-slate-600">
+                                    <span className="w-3 h-3 sm:w-4 sm:h-4 rounded-full inline-block bg-yellow-400"></span>
                                     Fair
                                 </div>
-                                <div className="flex items-center gap-1.5 text-sm text-slate-600">
-                                    <span className="w-4 h-4 rounded-full inline-block bg-red-500"></span>
+                                <div className="flex items-center gap-1 sm:gap-1.5 text-xs sm:text-sm text-slate-600">
+                                    <span className="w-3 h-3 sm:w-4 sm:h-4 rounded-full inline-block bg-red-500"></span>
                                     Poor
                                 </div>
                             </div>
 
                             {/* Inspection Grid */}
-                            <div className="grid grid-cols-3 gap-0 divide-x divide-slate-200">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-0 md:divide-x divide-slate-200">
                                 {/* Column 1: Tires & Brakes, Exterior Body */}
-                                <div className="p-4 space-y-4">
+                                <div className="p-3 sm:p-4 space-y-3 sm:space-y-4 border-b md:border-b-0 border-slate-200">
                                     {/* Tires & Brakes */}
                                     <div>
-                                        <div className="bg-[#1B3A5F] text-white font-bold text-sm px-3 py-2 rounded mb-2 uppercase tracking-wide">
+                                        <div className="bg-[#1B3A5F] text-white font-bold text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 rounded mb-2 uppercase tracking-wide">
                                             {INSPECTION_CATEGORIES.tiresAndBrakes.title}
                                         </div>
                                         {INSPECTION_CATEGORIES.tiresAndBrakes.items.map(item => (
-                                            <div key={item} className="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0">
-                                                <span className="text-sm text-slate-700">{item}</span>
-                                                <div className="flex gap-1 flex-shrink-0">
+                                            <div key={item} className="flex items-center justify-between py-1 sm:py-1.5 border-b border-slate-100 last:border-0">
+                                                <span className="text-xs sm:text-sm text-slate-700">{item}</span>
+                                                <div className="flex gap-0.5 sm:gap-1 flex-shrink-0">
                                                     <button
                                                         className={getRatingButtonClass(item, 'good')}
                                                         onClick={() => !selectedInspection && handleRatingClick(item, 'good')}
@@ -540,13 +540,13 @@ export default function MultiPointInspectionPage() {
                                     </div>
                                     {/* Exterior Body */}
                                     <div>
-                                        <div className="bg-[#1B3A5F] text-white font-bold text-sm px-3 py-2 rounded mb-2 uppercase tracking-wide">
+                                        <div className="bg-[#1B3A5F] text-white font-bold text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 rounded mb-2 uppercase tracking-wide">
                                             {INSPECTION_CATEGORIES.exteriorBody.title}
                                         </div>
                                         {INSPECTION_CATEGORIES.exteriorBody.items.map(item => (
-                                            <div key={item} className="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0">
-                                                <span className="text-sm text-slate-700">{item}</span>
-                                                <div className="flex gap-1 flex-shrink-0">
+                                            <div key={item} className="flex items-center justify-between py-1 sm:py-1.5 border-b border-slate-100 last:border-0">
+                                                <span className="text-xs sm:text-sm text-slate-700">{item}</span>
+                                                <div className="flex gap-0.5 sm:gap-1 flex-shrink-0">
                                                     <button
                                                         className={getRatingButtonClass(item, 'good')}
                                                         onClick={() => !selectedInspection && handleRatingClick(item, 'good')}
@@ -569,49 +569,49 @@ export default function MultiPointInspectionPage() {
                                 </div>
 
                                 {/* Column 2: Body Damage Map, Under Hood */}
-                                <div className="p-4 space-y-4">
+                                <div className="p-3 sm:p-4 space-y-3 sm:space-y-4 border-b md:border-b-0 border-slate-200">
                                     {/* Body Damage Map */}
                                     <div>
-                                        <div className="bg-[#8B2332] text-white font-bold text-sm px-3 py-2 rounded mb-2 uppercase tracking-wide">
+                                        <div className="bg-[#8B2332] text-white font-bold text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 rounded mb-2 uppercase tracking-wide">
                                             Body Damage Map
                                         </div>
                                         <div>
-                                            <div className="flex gap-2 mb-3 justify-center">
+                                            <div className="flex gap-1.5 sm:gap-2 mb-2 sm:mb-3 justify-center flex-wrap">
                                                 <button
-                                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold border-2 transition-all ${
+                                                    className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded text-[10px] sm:text-xs font-bold border-2 transition-all ${
                                                         selectedDamageSeverity === 'major' 
                                                             ? 'text-slate-900 border-slate-500 bg-slate-200' 
                                                             : 'text-slate-900 border-slate-300 bg-white hover:border-slate-400'
                                                     }`}
                                                     onClick={() => setSelectedDamageSeverity('major')}
                                                 >
-                                                    <span className="w-3 h-3 rounded-full inline-block flex-shrink-0 bg-red-500"></span>
+                                                    <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full inline-block flex-shrink-0 bg-red-500"></span>
                                                     <span className="text-slate-800 font-semibold">Major</span>
                                                 </button>
                                                 <button
-                                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold border-2 transition-all ${
+                                                    className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded text-[10px] sm:text-xs font-bold border-2 transition-all ${
                                                         selectedDamageSeverity === 'moderate' 
                                                             ? 'text-slate-900 border-slate-500 bg-slate-200' 
                                                             : 'text-slate-900 border-slate-300 bg-white hover:border-slate-400'
                                                     }`}
                                                     onClick={() => setSelectedDamageSeverity('moderate')}
                                                 >
-                                                    <span className="w-3 h-3 rounded-full inline-block flex-shrink-0 bg-orange-500"></span>
+                                                    <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full inline-block flex-shrink-0 bg-orange-500"></span>
                                                     <span className="text-slate-800 font-semibold">Moderate</span>
                                                 </button>
                                                 <button
-                                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold border-2 transition-all ${
+                                                    className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded text-[10px] sm:text-xs font-bold border-2 transition-all ${
                                                         selectedDamageSeverity === 'minor' 
                                                             ? 'text-slate-900 border-slate-500 bg-slate-200' 
                                                             : 'text-slate-900 border-slate-300 bg-white hover:border-slate-400'
                                                     }`}
                                                     onClick={() => setSelectedDamageSeverity('minor')}
                                                 >
-                                                    <span className="w-3 h-3 rounded-full inline-block flex-shrink-0 bg-yellow-400"></span>
+                                                    <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full inline-block flex-shrink-0 bg-yellow-400"></span>
                                                     <span className="text-slate-800 font-semibold">Minor</span>
                                                 </button>
                                             </div>
-                                            <div className="relative mx-auto" style={{ width: '180px', height: '280px' }}>
+                                            <div className="relative mx-auto w-[140px] h-[220px] sm:w-[180px] sm:h-[280px]">
                                                 <svg viewBox="0 0 100 160" className="w-full h-full absolute top-0 left-0">
                                                     <rect x="20" y="10" width="60" height="140" rx="10" fill="#dde3ea" stroke="#b0bec5" strokeWidth="1.5" />
                                                     <rect x="26" y="25" width="48" height="22" rx="4" fill="#bfdbfe" stroke="#93c5fd" strokeWidth="1" />
@@ -640,20 +640,20 @@ export default function MultiPointInspectionPage() {
                                                     );
                                                 })}
                                             </div>
-                                            <div className="mt-3 space-y-1">
-                                                <p className="text-xs text-slate-400 text-center">Click zones above to mark damage</p>
+                                            <div className="mt-2 sm:mt-3 space-y-1">
+                                                <p className="text-[10px] sm:text-xs text-slate-400 text-center">Click zones above to mark damage</p>
                                             </div>
                                         </div>
                                     </div>
                                     {/* Under Hood */}
                                     <div>
-                                        <div className="bg-[#1B3A5F] text-white font-bold text-sm px-3 py-2 rounded mb-2 uppercase tracking-wide">
+                                        <div className="bg-[#1B3A5F] text-white font-bold text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 rounded mb-2 uppercase tracking-wide">
                                             {INSPECTION_CATEGORIES.underHood.title}
                                         </div>
                                         {INSPECTION_CATEGORIES.underHood.items.map(item => (
-                                            <div key={item} className="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0">
-                                                <span className="text-sm text-slate-700">{item}</span>
-                                                <div className="flex gap-1 flex-shrink-0">
+                                            <div key={item} className="flex items-center justify-between py-1 sm:py-1.5 border-b border-slate-100 last:border-0">
+                                                <span className="text-xs sm:text-sm text-slate-700">{item}</span>
+                                                <div className="flex gap-0.5 sm:gap-1 flex-shrink-0">
                                                     <button
                                                         className={getRatingButtonClass(item, 'good')}
                                                         onClick={() => !selectedInspection && handleRatingClick(item, 'good')}
@@ -676,16 +676,16 @@ export default function MultiPointInspectionPage() {
                                 </div>
 
                                 {/* Column 3: Lights, Interior Check */}
-                                <div className="p-4 space-y-4">
+                                <div className="p-3 sm:p-4 space-y-3 sm:space-y-4">
                                     {/* Lights */}
                                     <div>
-                                        <div className="bg-[#1B3A5F] text-white font-bold text-sm px-3 py-2 rounded mb-2 uppercase tracking-wide">
+                                        <div className="bg-[#1B3A5F] text-white font-bold text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 rounded mb-2 uppercase tracking-wide">
                                             {INSPECTION_CATEGORIES.lights.title}
                                         </div>
                                         {INSPECTION_CATEGORIES.lights.items.map(item => (
-                                            <div key={item} className="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0">
-                                                <span className="text-sm text-slate-700">{item}</span>
-                                                <div className="flex gap-1 flex-shrink-0">
+                                            <div key={item} className="flex items-center justify-between py-1 sm:py-1.5 border-b border-slate-100 last:border-0">
+                                                <span className="text-xs sm:text-sm text-slate-700">{item}</span>
+                                                <div className="flex gap-0.5 sm:gap-1 flex-shrink-0">
                                                     <button
                                                         className={getRatingButtonClass(item, 'good')}
                                                         onClick={() => !selectedInspection && handleRatingClick(item, 'good')}
@@ -707,13 +707,13 @@ export default function MultiPointInspectionPage() {
                                     </div>
                                     {/* Interior Check */}
                                     <div>
-                                        <div className="bg-[#1B3A5F] text-white font-bold text-sm px-3 py-2 rounded mb-2 uppercase tracking-wide">
+                                        <div className="bg-[#1B3A5F] text-white font-bold text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 rounded mb-2 uppercase tracking-wide">
                                             {INSPECTION_CATEGORIES.interiorCheck.title}
                                         </div>
                                         {INSPECTION_CATEGORIES.interiorCheck.items.map(item => (
-                                            <div key={item} className="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0">
-                                                <span className="text-sm text-slate-700">{item}</span>
-                                                <div className="flex gap-1 flex-shrink-0">
+                                            <div key={item} className="flex items-center justify-between py-1 sm:py-1.5 border-b border-slate-100 last:border-0">
+                                                <span className="text-xs sm:text-sm text-slate-700">{item}</span>
+                                                <div className="flex gap-0.5 sm:gap-1 flex-shrink-0">
                                                     <button
                                                         className={getRatingButtonClass(item, 'good')}
                                                         onClick={() => !selectedInspection && handleRatingClick(item, 'good')}
@@ -737,20 +737,20 @@ export default function MultiPointInspectionPage() {
                             </div>
 
                             {/* Footer */}
-                            <div className="bg-slate-50 border-t border-slate-200 px-6 py-3 flex items-center justify-between">
-                                <p className="text-xs text-slate-400">VinTraxx SmartScan • Car Inspection Form • {formData.date}</p>
+                            <div className="bg-slate-50 border-t border-slate-200 px-4 sm:px-6 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0">
+                                <p className="text-[10px] sm:text-xs text-slate-400 text-center sm:text-left">VinTraxx SmartScan • Car Inspection Form • {formData.date}</p>
                                 {!selectedInspection && (
-                                    <div className="flex gap-3">
+                                    <div className="flex gap-2 sm:gap-3 w-full sm:w-auto">
                                         <button
                                             onClick={handleCloseModal}
-                                            className="px-5 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+                                            className="flex-1 sm:flex-none px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
                                         >
                                             Cancel
                                         </button>
                                         <button
                                             onClick={handleSaveInspection}
                                             disabled={saving}
-                                            className="px-5 py-2 text-sm font-medium text-white bg-[#1B3A5F] rounded-lg hover:bg-[#2d5278] transition-colors disabled:opacity-50"
+                                            className="flex-1 sm:flex-none px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium text-white bg-[#1B3A5F] rounded-lg hover:bg-[#2d5278] transition-colors disabled:opacity-50"
                                         >
                                             {saving ? 'Saving...' : 'Save'}
                                         </button>
@@ -759,7 +759,7 @@ export default function MultiPointInspectionPage() {
                                 {selectedInspection && (
                                     <button
                                         onClick={handleCloseModal}
-                                        className="px-5 py-2 text-sm font-medium text-white bg-[#1B3A5F] rounded-lg hover:bg-[#2d5278] transition-colors"
+                                        className="w-full sm:w-auto px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium text-white bg-[#1B3A5F] rounded-lg hover:bg-[#2d5278] transition-colors"
                                     >
                                         Close
                                     </button>
@@ -772,51 +772,51 @@ export default function MultiPointInspectionPage() {
 
             {/* Modern Delete Confirmation Modal */}
             {deleteModalOpen && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center">
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4">
                     <div 
                         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
                         onClick={closeDeleteModal}
                     />
-                    <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                    <div className="relative bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-md w-full mx-2 sm:mx-4 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                         {/* Header with gradient */}
-                        <div className="bg-gradient-to-r from-red-500 to-red-600 px-6 py-8 text-center">
-                            <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <Trash2 className="w-8 h-8 text-white" />
+                        <div className="bg-gradient-to-r from-red-500 to-red-600 px-4 sm:px-6 py-6 sm:py-8 text-center">
+                            <div className="w-12 h-12 sm:w-16 sm:h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
+                                <Trash2 className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
                             </div>
-                            <h2 className="text-2xl font-bold text-white">Delete Inspection</h2>
-                            <p className="text-red-100 mt-2 text-sm">This action cannot be undone</p>
+                            <h2 className="text-xl sm:text-2xl font-bold text-white">Delete Inspection</h2>
+                            <p className="text-red-100 mt-1 sm:mt-2 text-xs sm:text-sm">This action cannot be undone</p>
                         </div>
                         
                         {/* Content */}
-                        <div className="px-6 py-6">
-                            <p className="text-slate-600 text-center leading-relaxed">
+                        <div className="px-4 sm:px-6 py-4 sm:py-6">
+                            <p className="text-slate-600 text-center leading-relaxed text-sm sm:text-base">
                                 Are you sure you want to permanently delete this inspection record? 
                                 All associated data including ratings and damage marks will be removed.
                             </p>
                         </div>
                         
                         {/* Actions */}
-                        <div className="px-6 pb-6 flex gap-3">
+                        <div className="px-4 sm:px-6 pb-4 sm:pb-6 flex gap-2 sm:gap-3">
                             <button
                                 onClick={closeDeleteModal}
                                 disabled={deleting}
-                                className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition-colors disabled:opacity-50"
+                                className="flex-1 px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg sm:rounded-xl transition-colors disabled:opacity-50 text-sm sm:text-base"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={handleDeleteInspection}
                                 disabled={deleting}
-                                className="flex-1 px-4 py-3 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-semibold rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                className="flex-1 px-3 sm:px-4 py-2.5 sm:py-3 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-semibold rounded-lg sm:rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 sm:gap-2 text-sm sm:text-base"
                             >
                                 {deleting ? (
                                     <>
-                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                                         Deleting...
                                     </>
                                 ) : (
                                     <>
-                                        <Trash2 className="w-4 h-4" />
+                                        <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                         Delete
                                     </>
                                 )}

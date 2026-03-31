@@ -171,3 +171,197 @@ export async function getDealerReports(req: Request, res: Response, next: NextFu
     next(error);
   }
 }
+
+// ================================================================
+// GET /api/v1/dealer/scan-history
+// Get OBD scan history with statistics for dashboard charts
+// ================================================================
+export async function getDealerScanHistory(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.user!.userId;
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.isDealer) {
+      res.status(403).json({ success: false, error: 'Dealer access required.' });
+      return;
+    }
+
+    const scans = await prisma.scan.findMany({
+      where: { userId, status: 'COMPLETED' },
+      orderBy: { scanDate: 'desc' },
+      include: { fullReport: true },
+    });
+
+    // Calculate health scores and build report list
+    const reports = scans.map((scan) => {
+      const fr = scan.fullReport;
+      let healthScore = 100;
+      
+      if (fr) {
+        const aiRaw = fr.aiRawResponse as any;
+        if (aiRaw?.dtcAnalysis) {
+          for (const dtc of aiRaw.dtcAnalysis) {
+            switch (dtc.severity) {
+              case 'critical': healthScore -= 20; break;
+              case 'moderate': healthScore -= 10; break;
+              case 'minor': healthScore -= 5; break;
+            }
+          }
+        }
+        if (scan.milOn) healthScore -= 10;
+        const emCheck = aiRaw?.emissionsCheck;
+        if (emCheck?.status === 'fail') healthScore -= 10;
+      }
+      healthScore = Math.max(0, Math.min(100, healthScore));
+
+      const totalCost = (fr?.totalReconditioningCost ?? 0) + (fr?.additionalRepairsCost ?? 0);
+
+      return {
+        scanId: scan.id,
+        vin: scan.vin,
+        vehicleYear: scan.vehicleYear,
+        vehicleMake: scan.vehicleMake,
+        vehicleModel: scan.vehicleModel,
+        mileage: scan.mileage,
+        stockNumber: scan.stockNumber,
+        scanDate: scan.scanDate.toISOString(),
+        healthScore,
+        totalRepairCost: totalCost,
+        dtcCount: scan.dtcCount,
+        status: scan.status,
+        pdfUrl: fr?.pdfUrl ?? null,
+      };
+    });
+
+    // Calculate statistics
+    const totalScans = reports.length;
+    const totalRepairCosts = reports.reduce((sum, r) => sum + r.totalRepairCost, 0);
+    const scansWithRepairs = reports.filter(r => r.healthScore < 100).length;
+
+    // Health score distribution
+    const healthScoreDistribution = {
+      excellent: reports.filter(r => r.healthScore >= 90).length,
+      good: reports.filter(r => r.healthScore >= 70 && r.healthScore < 90).length,
+      fair: reports.filter(r => r.healthScore >= 50 && r.healthScore < 70).length,
+      poor: reports.filter(r => r.healthScore < 50).length,
+    };
+
+    // Monthly scan activity (last 12 months)
+    const now = new Date();
+    const monthlyActivity: { month: string; scans: number }[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthName = date.toLocaleString('en-US', { month: 'short' });
+      const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
+      const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59);
+      const count = reports.filter(r => {
+        const scanDate = new Date(r.scanDate);
+        return scanDate >= monthStart && scanDate <= monthEnd;
+      }).length;
+      monthlyActivity.push({ month: monthName, scans: count });
+    }
+
+    res.json({
+      success: true,
+      statistics: {
+        totalScans,
+        totalRepairCosts,
+        scansWithRepairs,
+        healthScoreDistribution,
+        monthlyActivity,
+      },
+      reports,
+    });
+  } catch (error) {
+    logger.error('Dealer scan history failed', { error: (error as Error).message });
+    next(error);
+  }
+}
+
+// ================================================================
+// GET /api/v1/dealer/report/:scanId
+// Get single OBD scan report detail
+// ================================================================
+export async function getDealerReportDetail(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.user!.userId;
+    const { scanId } = req.params;
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.isDealer) {
+      res.status(403).json({ success: false, error: 'Dealer access required.' });
+      return;
+    }
+
+    const scan = await prisma.scan.findFirst({
+      where: { id: scanId, userId },
+      include: { fullReport: true },
+    });
+
+    if (!scan) {
+      res.status(404).json({ success: false, error: 'Scan not found' });
+      return;
+    }
+
+    if (scan.status !== 'COMPLETED' || !scan.fullReport) {
+      res.json({ success: true, status: 'processing' });
+      return;
+    }
+
+    const fr = scan.fullReport;
+    const aiRaw = fr.aiRawResponse as any;
+
+    // Calculate health score
+    let healthScore = 100;
+    if (aiRaw?.dtcAnalysis) {
+      for (const dtc of aiRaw.dtcAnalysis) {
+        switch (dtc.severity) {
+          case 'critical': healthScore -= 20; break;
+          case 'moderate': healthScore -= 10; break;
+          case 'minor': healthScore -= 5; break;
+        }
+      }
+    }
+    if (scan.milOn) healthScore -= 10;
+    if (aiRaw?.emissionsCheck?.status === 'fail') healthScore -= 10;
+    healthScore = Math.max(0, Math.min(100, healthScore));
+
+    const report = {
+      scanId: scan.id,
+      vin: scan.vin,
+      vehicleYear: scan.vehicleYear,
+      vehicleMake: scan.vehicleMake,
+      vehicleModel: scan.vehicleModel,
+      vehicleEngine: scan.vehicleEngine,
+      mileage: scan.mileage,
+      stockNumber: scan.stockNumber,
+      scanDate: scan.scanDate.toISOString(),
+      healthScore,
+      overallStatus: healthScore >= 80 ? 'healthy' : healthScore >= 50 ? 'attention_needed' : 'critical',
+      milOn: scan.milOn,
+      dtcCount: scan.dtcCount,
+      storedDtcCodes: scan.storedDtcCodes,
+      pendingDtcCodes: scan.pendingDtcCodes,
+      permanentDtcCodes: scan.permanentDtcCodes,
+      distanceSinceCleared: scan.distanceSinceCleared,
+      dtcAnalysis: aiRaw?.dtcAnalysis || [],
+      emissionsCheck: aiRaw?.emissionsCheck || null,
+      mileageRiskAssessment: aiRaw?.mileageRiskAssessment || [],
+      repairRecommendations: fr.repairRecommendations || [],
+      modulesScanned: fr.modulesScanned || [],
+      datapointsScanned: fr.datapointsScanned || 0,
+      totalReconditioningCost: fr.totalReconditioningCost || 0,
+      additionalRepairsCost: fr.additionalRepairsCost || 0,
+      additionalRepairsData: fr.additionalRepairsData || null,
+      grandTotalCost: (fr.totalReconditioningCost || 0) + (fr.additionalRepairsCost || 0),
+      aiSummary: aiRaw?.aiSummary || '',
+      pdfUrl: fr.pdfUrl,
+      createdAt: fr.createdAt.toISOString(),
+    };
+
+    res.json({ success: true, status: 'completed', report });
+  } catch (error) {
+    logger.error('Dealer report detail failed', { error: (error as Error).message });
+    next(error);
+  }
+}

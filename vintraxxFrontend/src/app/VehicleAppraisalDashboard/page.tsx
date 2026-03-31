@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Search, Eye, Car, Scan, DollarSign, TrendingUp, TrendingDown, ClipboardList } from "lucide-react";
+import { Search, Eye, Car, Scan, DollarSign, TrendingUp, ClipboardList, X, FileText, Wrench, Activity } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line, ResponsiveContainer } from "recharts";
 import { DealerNav } from "@/components/shared-assets/navigation/dealer-nav";
 
@@ -19,40 +19,114 @@ interface DealerUser {
     companyName?: string;
 }
 
-interface Report {
+// OBD Scan Report from /dealer/reports (existing endpoint)
+interface OBDScanReport {
     scanId: string;
     vin: string;
     vehicleYear: number | null;
     vehicleMake: string | null;
     vehicleModel: string | null;
-    status: string;
-    scanDate: string;
     stockNumber: string | null;
+    scanDate: string;
+    status: string;
     additionalRepairs: string[];
     totalReconditioningCost: number | null;
     additionalRepairsCost: number | null;
     pdfUrl: string | null;
     emailSentAt: string | null;
-    healthScore?: number;
-    issuesFound?: number;
-    criticalIssues?: number;
+}
+
+// Detailed report from /scan/report/:scanId (FullReportData structure)
+interface OBDReportDetail {
+    scanId: string;
+    vehicle: {
+        vin: string;
+        year: number;
+        make: string;
+        model: string;
+        mileage: number | null;
+    };
+    healthScore: number;
+    overallStatus: 'healthy' | 'attention_needed' | 'critical';
+    dtcAnalysis: Array<{
+        code: string;
+        description: string;
+        severity: 'critical' | 'moderate' | 'minor' | 'info';
+        category: string;
+        possibleCauses: string[];
+        repairEstimate: { low: number; high: number };
+        urgency: 'immediate' | 'soon' | 'monitor';
+    }>;
+    repairRecommendations: Array<{
+        title: string;
+        description: string;
+        priority: 'high' | 'medium' | 'low';
+        estimatedCost: { labor: number; parts: number; total: number };
+    }>;
+    emissionsAnalysis: {
+        status: 'pass' | 'fail' | 'incomplete';
+        summary: string;
+    };
+    totalEstimatedRepairCost: number;
+    additionalRepairs?: any[];
+    additionalRepairsTotalCost?: number;
+    grandTotalCost?: number;
+    aiSummary: string;
+    stockNumber?: string;
+}
+
+// Appraisal data from /appraisal/dashboard
+interface AppraisalData {
+    appraisalId: string;
+    vin: string;
+    vehicle: {
+        year: number;
+        make: string;
+        model: string;
+        trim?: string;
+        mileage: number;
+    };
+    valuation: {
+        wholesale: number;
+        retail: number;
+        tradeIn: number;
+    };
+    createdAt: string;
+    userEmail: string;
 }
 
 export default function DealerPortalPage() {
     const router = useRouter();
     const [dealer, setDealer] = useState<DealerUser | null>(null);
-    const [reports, setReports] = useState<Report[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
-    const [searchQuery, setSearchQuery] = useState("");
+    
+    // OBD Scan Data
+    const [obdReports, setObdReports] = useState<OBDScanReport[]>([]);
+    const [obdSearchQuery, setObdSearchQuery] = useState("");
+    
+    // Appraisal Data
+    const [appraisals, setAppraisals] = useState<AppraisalData[]>([]);
+    const [appraisalSearchQuery, setAppraisalSearchQuery] = useState("");
+    
+    // Modal States
+    const [showScanListModal, setShowScanListModal] = useState(false);
+    const [scanListFilter, setScanListFilter] = useState<'all' | 'repairs'>('all');
+    const [selectedScanId, setSelectedScanId] = useState<string | null>(null);
+    const [scanDetail, setScanDetail] = useState<OBDReportDetail | null>(null);
+    const [scanDetailLoading, setScanDetailLoading] = useState(false);
+    const [selectedAppraisal, setSelectedAppraisal] = useState<AppraisalData | null>(null);
 
     const fetchDealerData = useCallback(async (token: string) => {
         try {
-            const [profileRes, reportsRes] = await Promise.all([
+            const [profileRes, reportsRes, appraisalsRes] = await Promise.all([
                 fetch(`${API_BASE}/dealer/profile`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
                 fetch(`${API_BASE}/dealer/reports`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                }),
+                fetch(`${API_BASE}/appraisal/dashboard`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             ]);
@@ -66,17 +140,14 @@ export default function DealerPortalPage() {
 
             const profileData = await profileRes.json();
             const reportsData = await reportsRes.json();
+            const appraisalsData = await appraisalsRes.json();
 
             if (profileData.success) setDealer(profileData.dealer);
             if (reportsData.success) {
-                // Use real data from API, add computed fields
-                const processedReports = reportsData.reports.map((report: any) => ({
-                    ...report,
-                    healthScore: report.healthScore || Math.floor(Math.random() * 40) + 60, // Fallback random score
-                    issuesFound: report.issuesFound || Math.floor(Math.random() * 10),
-                    criticalIssues: report.criticalIssues || Math.floor(Math.random() * 3),
-                }));
-                setReports(processedReports);
+                setObdReports(reportsData.reports || []);
+            }
+            if (appraisalsData.success) {
+                setAppraisals(appraisalsData.data || []);
             }
         } catch {
             setError("Failed to load dealer data. Please try again.");
@@ -84,6 +155,59 @@ export default function DealerPortalPage() {
             setLoading(false);
         }
     }, [router]);
+    
+    // Fetch single scan report detail
+    const fetchScanDetail = useCallback(async (scanId: string) => {
+        const token = localStorage.getItem("dealer_token");
+        if (!token) return;
+        
+        setScanDetailLoading(true);
+        try {
+            const res = await fetch(`${API_BASE}/scan/report/${scanId}`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await res.json();
+            if (data.success && data.status === 'completed') {
+                setScanDetail(data.data);
+            }
+        } catch (err) {
+            console.error('Failed to fetch scan detail:', err);
+        } finally {
+            setScanDetailLoading(false);
+        }
+    }, []);
+    
+    // Handle panel clicks
+    const handleTotalScansClick = () => {
+        setScanListFilter('all');
+        setShowScanListModal(true);
+    };
+    
+    const handleRepairCostsClick = () => {
+        setScanListFilter('repairs');
+        setShowScanListModal(true);
+    };
+    
+    // Handle scan item click to show detail
+    const handleScanItemClick = (scanId: string) => {
+        setSelectedScanId(scanId);
+        fetchScanDetail(scanId);
+    };
+    
+    // Close modals
+    const closeScanListModal = () => {
+        setShowScanListModal(false);
+        setScanListFilter('all');
+    };
+    
+    const closeScanDetailModal = () => {
+        setSelectedScanId(null);
+        setScanDetail(null);
+    };
+    
+    const closeAppraisalModal = () => {
+        setSelectedAppraisal(null);
+    };
 
     useEffect(() => {
         const token = localStorage.getItem("dealer_token");
@@ -94,35 +218,73 @@ export default function DealerPortalPage() {
         fetchDealerData(token);
     }, [fetchDealerData, router]);
 
-    const handleLogout = () => {
-        localStorage.removeItem("dealer_token");
-        localStorage.removeItem("dealer_user");
-        router.push("/login");
-    };
-
-    const formatCurrency = (val: number | null) =>
-        val !== null ? `$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—";
+    const formatCurrency = (val: number | null | undefined) =>
+        val !== null && val !== undefined ? `$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—";
 
     const formatDate = (iso: string) =>
         new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
-    // Mock data for charts
-    const healthScoreData = [
-        { range: "90-100", count: 2 },
-        { range: "80-89", count: 0 },
-        { range: "70-79", count: 1 },
-        { range: "60-69", count: 0 },
-        { range: "<60", count: 1 },
+    // Helper to get total repair cost for a report
+    const getTotalRepairCost = (r: OBDScanReport) => 
+        (r.totalReconditioningCost || 0) + (r.additionalRepairsCost || 0);
+    
+    // Computed statistics from reports
+    const completedReports = obdReports.filter(r => r.status === 'COMPLETED');
+    const totalScans = completedReports.length;
+    const totalRepairCosts = completedReports.reduce((sum, r) => sum + getTotalRepairCost(r), 0);
+    const scansWithRepairs = completedReports.filter(r => getTotalRepairCost(r) > 0).length;
+    
+    // Monthly scan activity (last 12 months)
+    const getMonthlyActivity = () => {
+        const now = new Date();
+        const months: { month: string; scans: number }[] = [];
+        for (let i = 11; i >= 0; i--) {
+            const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const monthName = date.toLocaleString('en-US', { month: 'short' });
+            const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
+            const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59);
+            const count = completedReports.filter(r => {
+                const scanDate = new Date(r.scanDate);
+                return scanDate >= monthStart && scanDate <= monthEnd;
+            }).length;
+            months.push({ month: monthName, scans: count });
+        }
+        return months;
+    };
+    
+    // Chart data
+    const scanActivityData = getMonthlyActivity();
+    
+    // Cost distribution for bar chart
+    const costDistribution = [
+        { range: "No Cost", count: completedReports.filter(r => getTotalRepairCost(r) === 0).length, fill: "#10b981" },
+        { range: "$1-$500", count: completedReports.filter(r => { const c = getTotalRepairCost(r); return c > 0 && c <= 500; }).length, fill: "#22c55e" },
+        { range: "$500-$1k", count: completedReports.filter(r => { const c = getTotalRepairCost(r); return c > 500 && c <= 1000; }).length, fill: "#eab308" },
+        { range: "$1k-$2k", count: completedReports.filter(r => { const c = getTotalRepairCost(r); return c > 1000 && c <= 2000; }).length, fill: "#f97316" },
+        { range: "$2k+", count: completedReports.filter(r => getTotalRepairCost(r) > 2000).length, fill: "#ef4444" },
     ];
-
-    const scanActivityData = [
-        { date: "Mar 27", scans: 1 },
-        { date: "Mar 26", scans: 2 },
-        { date: "Jan 31", scans: 1 },
-    ];
-
-    const totalScans = reports.length;
-    const totalRepairCosts = reports.reduce((sum, report) => sum + (report.totalReconditioningCost || 0), 0);
+    
+    // Filtered reports for scan list modal
+    const filteredScanReports = completedReports.filter(r => {
+        if (scanListFilter === 'repairs') return getTotalRepairCost(r) > 0;
+        return true;
+    }).filter(r => {
+        if (!obdSearchQuery) return true;
+        const query = obdSearchQuery.toLowerCase();
+        return r.vin.toLowerCase().includes(query) ||
+               r.vehicleMake?.toLowerCase().includes(query) ||
+               r.vehicleModel?.toLowerCase().includes(query) ||
+               r.stockNumber?.toLowerCase().includes(query);
+    });
+    
+    // Filtered appraisals
+    const filteredAppraisals = appraisals.filter(a => {
+        if (!appraisalSearchQuery) return true;
+        const query = appraisalSearchQuery.toLowerCase();
+        return a.vin.toLowerCase().includes(query) ||
+               a.vehicle.make?.toLowerCase().includes(query) ||
+               a.vehicle.model?.toLowerCase().includes(query);
+    });
 
     if (loading) {
         return (
@@ -214,154 +376,183 @@ export default function DealerPortalPage() {
                     </div>
 
                     <div className="max-w-7xl mx-auto px-6 py-12">
-                        {/* Stats Cards */}
-                        <div className="grid md:grid-cols-2 gap-6 mb-12">
-                            <div className="bg-blue-600 text-card-foreground p-6 rounded-xl shadow from-blue-600 to-cyan-600 border-0 cursor-pointer hover:shadow-xl transition-shadow">
+                        {/* OBD Scan Section Header */}
+                        <div className="mb-6">
+                            <h2 className="text-2xl font-bold text-[#1B3A5F] flex items-center gap-2">
+                                <Activity className="w-6 h-6" />
+                                OBD Scan Analytics
+                            </h2>
+                            <p className="text-slate-500 text-sm mt-1">Click panels to view detailed scan reports</p>
+                        </div>
+                        
+                        {/* Stats Cards - Clickable Panels */}
+                        <div className="grid md:grid-cols-2 gap-6 mb-8">
+                            <div 
+                                onClick={handleTotalScansClick}
+                                className="bg-gradient-to-br from-blue-600 to-blue-700 text-white p-6 rounded-xl shadow-lg cursor-pointer hover:shadow-xl hover:scale-[1.02] transition-all duration-200"
+                            >
                                 <div className="flex items-center justify-between mb-3">
                                     <Scan className="w-8 h-8 text-white" />
                                     <TrendingUp className="w-5 h-5 text-white/70" />
                                 </div>
                                 <p className="text-4xl font-bold text-white mb-1">{totalScans}</p>
-                                <p className="text-blue-100 text-sm">Total Scans</p>
+                                <p className="text-blue-100 text-sm">Total OBD Scans</p>
+                                <p className="text-blue-200 text-xs mt-2">Click to view all scan reports →</p>
                             </div>
-                            <div className="bg-green-700 text-card-foreground p-6 rounded-xl shadow from-purple-600 to-indigo-600 border-0 cursor-pointer hover:shadow-xl transition-shadow">
+                            <div 
+                                onClick={handleRepairCostsClick}
+                                className="bg-gradient-to-br from-emerald-600 to-emerald-700 text-white p-6 rounded-xl shadow-lg cursor-pointer hover:shadow-xl hover:scale-[1.02] transition-all duration-200"
+                            >
                                 <div className="flex items-center justify-between mb-3">
                                     <DollarSign className="w-8 h-8 text-white" />
-                                    <TrendingDown className="w-5 h-5 text-white/70" />
+                                    <Wrench className="w-5 h-5 text-white/70" />
                                 </div>
-                                <p className="text-4xl font-bold text-white mb-1">${totalRepairCosts.toLocaleString()}</p>
-                                <p className="text-purple-100 text-sm">Repair Costs Identified</p>
+                                <p className="text-4xl font-bold text-white mb-1">{formatCurrency(totalRepairCosts)}</p>
+                                <p className="text-emerald-100 text-sm">Repair Costs Identified</p>
+                                <p className="text-emerald-200 text-xs mt-2">{scansWithRepairs} vehicles need repairs →</p>
                             </div>
                         </div>
 
                         {/* Charts */}
                         <div className="grid lg:grid-cols-2 gap-6 mb-12">
                             <div className="rounded-xl border text-card-foreground shadow bg-white border-slate-200 p-6">
-                                <h3 className="text-slate-900 font-semibold mb-4">Health Score Distribution</h3>
-                                <ResponsiveContainer width="100%" height={250}>
-                                    <BarChart data={healthScoreData}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                        <XAxis dataKey="range" stroke="#64748b" />
-                                        <YAxis stroke="#64748b" />
-                                        <Tooltip 
-                                            contentStyle={{ 
-                                                backgroundColor: 'rgb(255, 255, 255)', 
-                                                border: '1px solid rgb(226, 232, 240)', 
-                                                borderRadius: '8px' 
-                                            }} 
-                                        />
-                                        <Bar dataKey="count" radius={[8, 8, 0, 0]} />
-                                        <Bar dataKey="count" fill="#10b981" radius={[8, 8, 0, 0]} />
-                                        <Bar dataKey="count" fill="#eab308" radius={[8, 8, 0, 0]} />
-                                        <Bar dataKey="count" fill="#ef4444" radius={[8, 8, 0, 0]} />
-                                    </BarChart>
-                                </ResponsiveContainer>
+                                <h3 className="text-slate-900 font-semibold mb-4 flex items-center gap-2">
+                                    <DollarSign className="w-5 h-5 text-emerald-500" />
+                                    Repair Cost Distribution
+                                </h3>
+                                {completedReports.length > 0 ? (
+                                    <ResponsiveContainer width="100%" height={250}>
+                                        <BarChart data={costDistribution}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                            <XAxis dataKey="range" stroke="#64748b" tick={{ fontSize: 12 }} />
+                                            <YAxis stroke="#64748b" allowDecimals={false} />
+                                            <Tooltip 
+                                                contentStyle={{ 
+                                                    backgroundColor: 'rgb(255, 255, 255)', 
+                                                    border: '1px solid rgb(226, 232, 240)', 
+                                                    borderRadius: '8px' 
+                                                }} 
+                                            />
+                                            <Bar dataKey="count" radius={[8, 8, 0, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                ) : (
+                                    <div className="h-[250px] flex items-center justify-center text-slate-400">
+                                        No scan data available
+                                    </div>
+                                )}
                             </div>
                             <div className="rounded-xl border text-card-foreground shadow bg-white border-slate-200 p-6">
-                                <h3 className="text-slate-900 font-semibold mb-4">Scan Activity (Last 7 Days)</h3>
-                                <ResponsiveContainer width="100%" height={250}>
-                                    <LineChart data={scanActivityData}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                        <XAxis dataKey="date" stroke="#64748b" />
-                                        <YAxis stroke="#64748b" />
-                                        <Tooltip 
-                                            contentStyle={{ 
-                                                backgroundColor: 'rgb(255, 255, 255)', 
-                                                border: '1px solid rgb(226, 232, 240)', 
-                                                borderRadius: '8px' 
-                                            }} 
-                                        />
-                                        <Line 
-                                            type="monotone" 
-                                            dataKey="scans" 
-                                            stroke="#1B3A5F" 
-                                            strokeWidth={3}
-                                            dot={{ fill: "#1B3A5F", r: 5 }}
-                                        />
-                                    </LineChart>
-                                </ResponsiveContainer>
+                                <h3 className="text-slate-900 font-semibold mb-4 flex items-center gap-2">
+                                    <Activity className="w-5 h-5 text-blue-500" />
+                                    Scan Activity (Last 12 Months)
+                                </h3>
+                                {scanActivityData.length > 0 ? (
+                                    <ResponsiveContainer width="100%" height={250}>
+                                        <LineChart data={scanActivityData}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                            <XAxis dataKey="month" stroke="#64748b" tick={{ fontSize: 12 }} />
+                                            <YAxis stroke="#64748b" allowDecimals={false} />
+                                            <Tooltip 
+                                                contentStyle={{ 
+                                                    backgroundColor: 'rgb(255, 255, 255)', 
+                                                    border: '1px solid rgb(226, 232, 240)', 
+                                                    borderRadius: '8px' 
+                                                }} 
+                                            />
+                                            <Line 
+                                                type="monotone" 
+                                                dataKey="scans" 
+                                                stroke="#1B3A5F" 
+                                                strokeWidth={3}
+                                                dot={{ fill: "#1B3A5F", r: 4 }}
+                                            />
+                                        </LineChart>
+                                    </ResponsiveContainer>
+                                ) : (
+                                    <div className="h-[250px] flex items-center justify-center text-slate-400">
+                                        No scan data available
+                                    </div>
+                                )}
                             </div>
                         </div>
 
-                        {/* Search and Table */}
+                        {/* Appraisal Data Section */}
                         <div className="mb-12">
+                            <div className="mb-6">
+                                <h2 className="text-2xl font-bold text-[#1B3A5F] flex items-center gap-2">
+                                    <FileText className="w-6 h-6" />
+                                    Vehicle Appraisals
+                                </h2>
+                                <p className="text-slate-500 text-sm mt-1">Click on any row to view detailed appraisal information</p>
+                            </div>
+                            
                             <div className="flex gap-3 max-w-2xl mb-6">
                                 <div className="relative flex-1">
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                     <input 
-                                        className="flex h-9 w-full rounded-md border px-3 py-1 text-base shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm pl-10 bg-white border-slate-300 text-slate-900 placeholder:text-slate-500" 
-                                        placeholder="Search by VIN, Make, or Model..." 
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="flex h-10 w-full rounded-lg border px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 pl-10 bg-white border-slate-300 text-slate-900 placeholder:text-slate-500" 
+                                        placeholder="Search appraisals by VIN, Make, or Model..." 
+                                        value={appraisalSearchQuery}
+                                        onChange={(e) => setAppraisalSearchQuery(e.target.value)}
                                     />
                                 </div>
-                                <button className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 shadow h-9 px-4 py-2 bg-[#1B3A5F] hover:bg-[#2d5278] text-white gap-2">
-                                    View All
-                                </button>
                             </div>
 
-                            <div className="rounded-xl border border-slate-700/50 overflow-hidden">
+                            <div className="rounded-xl border border-slate-200 overflow-hidden bg-white shadow-sm">
                                 <div className="relative w-full overflow-auto">
                                     <table className="w-full caption-bottom text-sm">
-                                        <thead className="[&_tr]:border-b">
-                                            <tr className="border-b transition-colors data-[state=selected]:bg-muted bg-slate-800/50 border-slate-700/50 hover:bg-slate-800/50">
-                                                <th className="bg-red-700 text-slate-50 px-2 font-medium text-left h-10 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]">Vehicle</th>
-                                                <th className="bg-red-700 text-slate-50 px-2 font-medium text-left h-10 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]">Scan Type</th>
-                                                <th className="bg-red-700 text-slate-50 px-2 font-medium text-left h-10 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]">Health Score</th>
-                                                <th className="bg-red-700 text-slate-50 px-2 font-medium text-left h-10 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]">Issues</th>
-                                                <th className="bg-red-700 text-slate-50 px-2 font-medium text-left h-10 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]">Date</th>
-                                                <th className="bg-red-700 text-slate-50 px-2 font-medium text-left h-10 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]"></th>
+                                        <thead>
+                                            <tr className="bg-[#1B3A5F]">
+                                                <th className="text-white px-4 py-3 font-semibold text-left">Vehicle</th>
+                                                <th className="text-white px-4 py-3 font-semibold text-left">VIN</th>
+                                                <th className="text-white px-4 py-3 font-semibold text-left">Mileage</th>
+                                                <th className="text-white px-4 py-3 font-semibold text-left">Wholesale</th>
+                                                <th className="text-white px-4 py-3 font-semibold text-left">Retail</th>
+                                                <th className="text-white px-4 py-3 font-semibold text-left">Trade-In</th>
+                                                <th className="text-white px-4 py-3 font-semibold text-left">Date</th>
+                                                <th className="text-white px-4 py-3 font-semibold text-center w-16">View</th>
                                             </tr>
                                         </thead>
-                                        <tbody className="[&_tr:last-child]:border-0">
-                                            {reports.map((report) => (
-                                                <tr key={report.scanId} className="border-b data-[state=selected]:bg-muted border-slate-700/50 hover:bg-slate-800/30 transition-colors">
-                                                    <td className="p-2 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] text-slate-300">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="w-10 h-10 bg-gradient-to-br from-[#1B3A5F] to-[#8B2332] rounded-lg flex items-center justify-center">
-                                                                <Car className="w-5 h-5 text-white" />
-                                                            </div>
-                                                            <div>
-                                                                <p className="font-mono text-sm text-[#1B3A5F]/80">{report.vin}</p>
-                                                            </div>
-                                                        </div>
-                                                    </td>
-                                                    <td className="p-2 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] text-slate-300">
-                                                        <span className="capitalize text-[#1B3A5F] font-medium">full</span>
-                                                    </td>
-                                                    <td className="p-2 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] text-slate-300">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white ${
-                                                                report.healthScore && report.healthScore >= 90 ? 'bg-emerald-700' :
-                                                                report.healthScore && report.healthScore >= 75 ? 'bg-yellow-400' :
-                                                                'bg-red-500'
-                                                            }`}>
-                                                                {report.healthScore || 'N/A'}
-                                                            </div>
-                                                        </div>
-                                                    </td>
-                                                    <td className="p-2 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] text-slate-300">
-                                                        <div className="flex items-center gap-3">
-                                                            <span className="text-[#1B3A5F] font-medium">{report.issuesFound || 0} found</span>
-                                                            {report.criticalIssues && report.criticalIssues > 0 && (
-                                                                <div className="inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent shadow hover:bg-primary/80 bg-red-600 text-white border-0">
-                                                                    {report.criticalIssues} critical
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                    <td className="p-2 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] text-slate-300">
-                                                        <span className="text-[#1B3A5F] text-sm font-medium">{formatDate(report.scanDate)}</span>
-                                                    </td>
-                                                    <td className="p-2 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] text-slate-300">
-                                                        <div className="flex items-center gap-2">
-                                                            <button className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 hover:bg-accent h-9 w-9 text-slate-400 hover:text-white">
-                                                                <Eye className="w-4 h-4" />
-                                                            </button>
-                                                        </div>
+                                        <tbody>
+                                            {filteredAppraisals.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={8} className="text-center py-12 text-slate-400">
+                                                        {appraisals.length === 0 ? 'No appraisals found' : 'No matching appraisals'}
                                                     </td>
                                                 </tr>
-                                            ))}
+                                            ) : (
+                                                filteredAppraisals.map((appraisal) => (
+                                                    <tr 
+                                                        key={appraisal.appraisalId} 
+                                                        onClick={() => setSelectedAppraisal(appraisal)}
+                                                        className="border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer"
+                                                    >
+                                                        <td className="px-4 py-3">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-10 h-10 bg-gradient-to-br from-[#1B3A5F] to-[#2d5278] rounded-lg flex items-center justify-center">
+                                                                    <Car className="w-5 h-5 text-white" />
+                                                                </div>
+                                                                <div>
+                                                                    <p className="font-medium text-slate-900">{appraisal.vehicle.year} {appraisal.vehicle.make}</p>
+                                                                    <p className="text-sm text-slate-500">{appraisal.vehicle.model} {appraisal.vehicle.trim || ''}</p>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3 font-mono text-sm text-slate-600">{appraisal.vin}</td>
+                                                        <td className="px-4 py-3 text-slate-600">{appraisal.vehicle.mileage?.toLocaleString() || '—'} mi</td>
+                                                        <td className="px-4 py-3 text-emerald-600 font-semibold">{formatCurrency(appraisal.valuation.wholesale)}</td>
+                                                        <td className="px-4 py-3 text-blue-600 font-semibold">{formatCurrency(appraisal.valuation.retail)}</td>
+                                                        <td className="px-4 py-3 text-amber-600 font-semibold">{formatCurrency(appraisal.valuation.tradeIn)}</td>
+                                                        <td className="px-4 py-3 text-slate-500 text-sm">{formatDate(appraisal.createdAt)}</td>
+                                                        <td className="px-4 py-3 text-center">
+                                                            <button className="p-2 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-[#1B3A5F] transition-colors">
+                                                                <Eye className="w-4 h-4" />
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
                                         </tbody>
                                     </table>
                                 </div>
@@ -370,6 +561,277 @@ export default function DealerPortalPage() {
                     </div>
                 </div>
             </main>
+            
+            {/* Scan List Modal - Shows when clicking blue or green panels */}
+            {showScanListModal && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={closeScanListModal}>
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <div className="bg-[#1B3A5F] px-6 py-4 flex items-center justify-between">
+                            <div>
+                                <h2 className="text-xl font-bold text-white">
+                                    {scanListFilter === 'all' ? 'All OBD Scan Reports' : 'Vehicles Needing Repairs'}
+                                </h2>
+                                <p className="text-blue-200 text-sm">
+                                    {filteredScanReports.length} {filteredScanReports.length === 1 ? 'vehicle' : 'vehicles'} found
+                                </p>
+                            </div>
+                            <button onClick={closeScanListModal} className="text-white/80 hover:text-white p-2">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+                        <div className="p-4">
+                            <div className="relative mb-4">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                <input 
+                                    className="w-full h-10 rounded-lg border px-3 py-2 text-sm pl-10 bg-slate-50 border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                                    placeholder="Search by VIN, Make, Model, or Stock #..." 
+                                    value={obdSearchQuery}
+                                    onChange={(e) => setObdSearchQuery(e.target.value)}
+                                />
+                            </div>
+                            <div className="overflow-y-auto max-h-[50vh]">
+                                {filteredScanReports.length === 0 ? (
+                                    <div className="text-center py-12 text-slate-400">No scan reports found</div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {filteredScanReports.map((report) => {
+                                            const repairCost = getTotalRepairCost(report);
+                                            return (
+                                                <div 
+                                                    key={report.scanId}
+                                                    onClick={() => handleScanItemClick(report.scanId)}
+                                                    className="p-4 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/50 cursor-pointer transition-all"
+                                                >
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="w-10 h-10 bg-gradient-to-br from-[#1B3A5F] to-[#2d5278] rounded-lg flex items-center justify-center">
+                                                                <Car className="w-5 h-5 text-white" />
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-semibold text-slate-900">
+                                                                    {report.vehicleYear} {report.vehicleMake} {report.vehicleModel}
+                                                                </p>
+                                                                <p className="text-sm text-slate-500 font-mono">{report.vin}</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className={`font-semibold ${repairCost > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                                                {repairCost > 0 ? formatCurrency(repairCost) : 'No repairs'}
+                                                            </p>
+                                                            <p className="text-sm text-slate-500">{formatDate(report.scanDate)}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="mt-2 flex items-center gap-2">
+                                                        {repairCost > 0 && (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-red-100 text-red-700 text-xs font-medium">
+                                                                <Wrench className="w-3 h-3" />
+                                                                Repairs needed
+                                                            </span>
+                                                        )}
+                                                        {report.stockNumber && (
+                                                            <span className="text-xs text-slate-400">Stock: {report.stockNumber}</span>
+                                                        )}
+                                                        {report.pdfUrl && (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-medium">
+                                                                <FileText className="w-3 h-3" />
+                                                                PDF available
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
+            {/* Scan Detail Modal */}
+            {selectedScanId && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={closeScanDetailModal}>
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[85vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+                        {scanDetailLoading ? (
+                            <div className="p-12 text-center">
+                                <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                                <p className="text-slate-500">Loading report details...</p>
+                            </div>
+                        ) : scanDetail ? (
+                            <>
+                                <div className="bg-[#1B3A5F] px-6 py-4 flex items-center justify-between">
+                                    <div>
+                                        <h2 className="text-xl font-bold text-white">
+                                            {scanDetail.vehicle.year} {scanDetail.vehicle.make} {scanDetail.vehicle.model}
+                                        </h2>
+                                        <p className="text-blue-200 text-sm font-mono">{scanDetail.vehicle.vin}</p>
+                                    </div>
+                                    <button onClick={closeScanDetailModal} className="text-white/80 hover:text-white p-2">
+                                        <X className="w-6 h-6" />
+                                    </button>
+                                </div>
+                                <div className="p-6 overflow-y-auto max-h-[calc(85vh-80px)]">
+                                    {/* Health Score */}
+                                    <div className="flex items-center gap-6 mb-6 pb-6 border-b border-slate-200">
+                                        <div className={`w-20 h-20 rounded-full flex items-center justify-center text-white text-2xl font-bold ${
+                                            scanDetail.healthScore >= 90 ? 'bg-emerald-500' :
+                                            scanDetail.healthScore >= 70 ? 'bg-yellow-500' :
+                                            scanDetail.healthScore >= 50 ? 'bg-orange-500' : 'bg-red-500'
+                                        }`}>
+                                            {scanDetail.healthScore}
+                                        </div>
+                                        <div>
+                                            <p className="text-sm text-slate-500">Health Score</p>
+                                            <p className="text-2xl font-bold text-slate-900">
+                                                {scanDetail.healthScore >= 90 ? 'Excellent' :
+                                                 scanDetail.healthScore >= 70 ? 'Good' :
+                                                 scanDetail.healthScore >= 50 ? 'Fair' : 'Poor'}
+                                            </p>
+                                            <p className="text-sm text-slate-500 capitalize">{scanDetail.overallStatus.replace('_', ' ')}</p>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Vehicle Info */}
+                                    <div className="grid grid-cols-2 gap-4 mb-6">
+                                        <div className="bg-slate-50 rounded-lg p-4">
+                                            <p className="text-sm text-slate-500">Mileage</p>
+                                            <p className="font-semibold text-slate-900">{scanDetail.vehicle.mileage?.toLocaleString() || '—'} mi</p>
+                                        </div>
+                                        <div className="bg-slate-50 rounded-lg p-4">
+                                            <p className="text-sm text-slate-500">Stock Number</p>
+                                            <p className="font-semibold text-slate-900">{scanDetail.stockNumber || '—'}</p>
+                                        </div>
+                                        <div className="bg-slate-50 rounded-lg p-4">
+                                            <p className="text-sm text-slate-500">DTC Codes</p>
+                                            <p className="font-semibold text-slate-900">{scanDetail.dtcAnalysis?.length || 0}</p>
+                                        </div>
+                                        <div className="bg-slate-50 rounded-lg p-4">
+                                            <p className="text-sm text-slate-500">Emissions Status</p>
+                                            <p className={`font-semibold capitalize ${
+                                                scanDetail.emissionsAnalysis?.status === 'pass' ? 'text-emerald-600' : 
+                                                scanDetail.emissionsAnalysis?.status === 'fail' ? 'text-red-600' : 'text-yellow-600'
+                                            }`}>
+                                                {scanDetail.emissionsAnalysis?.status || '—'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Costs */}
+                                    <div className="bg-gradient-to-r from-slate-50 to-slate-100 rounded-xl p-4 mb-6">
+                                        <h3 className="font-semibold text-slate-900 mb-3">Repair Costs</h3>
+                                        <div className="grid grid-cols-3 gap-4 text-center">
+                                            <div>
+                                                <p className="text-sm text-slate-500">DTC Repairs</p>
+                                                <p className="text-lg font-bold text-slate-900">{formatCurrency(scanDetail.totalEstimatedRepairCost)}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-sm text-slate-500">Additional</p>
+                                                <p className="text-lg font-bold text-slate-900">{formatCurrency(scanDetail.additionalRepairsTotalCost || 0)}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-sm text-slate-500">Grand Total</p>
+                                                <p className="text-lg font-bold text-emerald-600">{formatCurrency(scanDetail.grandTotalCost || scanDetail.totalEstimatedRepairCost)}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* AI Summary */}
+                                    {scanDetail.aiSummary && (
+                                        <div className="mb-6">
+                                            <h3 className="font-semibold text-slate-900 mb-2">AI Analysis Summary</h3>
+                                            <p className="text-slate-600 text-sm leading-relaxed">{scanDetail.aiSummary}</p>
+                                        </div>
+                                    )}
+                                    
+                                    {/* DTC Analysis */}
+                                    {scanDetail.dtcAnalysis && scanDetail.dtcAnalysis.length > 0 && (
+                                        <div className="mb-6">
+                                            <h3 className="font-semibold text-slate-900 mb-2">DTC Codes ({scanDetail.dtcAnalysis.length})</h3>
+                                            <div className="space-y-2">
+                                                {scanDetail.dtcAnalysis.map((dtc, idx) => (
+                                                    <div key={idx} className="flex items-start gap-3 p-3 rounded-lg bg-slate-50">
+                                                        <span className={`px-2 py-1 rounded text-xs font-bold text-white ${
+                                                            dtc.severity === 'critical' ? 'bg-red-500' :
+                                                            dtc.severity === 'moderate' ? 'bg-orange-500' :
+                                                            dtc.severity === 'minor' ? 'bg-yellow-500' : 'bg-blue-500'
+                                                        }`}>
+                                                            {dtc.code}
+                                                        </span>
+                                                        <div className="flex-1">
+                                                            <p className="text-sm font-medium text-slate-900">{dtc.description}</p>
+                                                            <p className="text-xs text-slate-500 capitalize">{dtc.severity} • {dtc.urgency}</p>
+                                                        </div>
+                                                        <p className="text-sm font-semibold text-slate-900">
+                                                            {formatCurrency(dtc.repairEstimate.high)}
+                                                        </p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </>
+                        ) : (
+                            <div className="p-12 text-center text-slate-500">Report not available</div>
+                        )}
+                    </div>
+                </div>
+            )}
+            
+            {/* Appraisal Detail Modal */}
+            {selectedAppraisal && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={closeAppraisalModal}>
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <div className="bg-gradient-to-r from-[#1B3A5F] to-[#2d5278] px-6 py-4 flex items-center justify-between">
+                            <div>
+                                <h2 className="text-xl font-bold text-white">
+                                    {selectedAppraisal.vehicle.year} {selectedAppraisal.vehicle.make} {selectedAppraisal.vehicle.model}
+                                </h2>
+                                <p className="text-blue-200 text-sm">{selectedAppraisal.vehicle.trim || ''}</p>
+                            </div>
+                            <button onClick={closeAppraisalModal} className="text-white/80 hover:text-white p-2">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+                        <div className="p-6">
+                            {/* VIN & Mileage */}
+                            <div className="grid grid-cols-2 gap-4 mb-6">
+                                <div className="bg-slate-50 rounded-lg p-4">
+                                    <p className="text-sm text-slate-500">VIN</p>
+                                    <p className="font-mono text-slate-900">{selectedAppraisal.vin}</p>
+                                </div>
+                                <div className="bg-slate-50 rounded-lg p-4">
+                                    <p className="text-sm text-slate-500">Mileage</p>
+                                    <p className="font-semibold text-slate-900">{selectedAppraisal.vehicle.mileage?.toLocaleString() || '—'} mi</p>
+                                </div>
+                            </div>
+                            
+                            {/* Valuation */}
+                            <h3 className="font-semibold text-slate-900 mb-4">Vehicle Valuation</h3>
+                            <div className="grid grid-cols-3 gap-4 mb-6">
+                                <div className="bg-emerald-50 rounded-xl p-4 text-center border border-emerald-200">
+                                    <p className="text-sm text-emerald-700 mb-1">Wholesale</p>
+                                    <p className="text-2xl font-bold text-emerald-600">{formatCurrency(selectedAppraisal.valuation.wholesale)}</p>
+                                </div>
+                                <div className="bg-blue-50 rounded-xl p-4 text-center border border-blue-200">
+                                    <p className="text-sm text-blue-700 mb-1">Retail</p>
+                                    <p className="text-2xl font-bold text-blue-600">{formatCurrency(selectedAppraisal.valuation.retail)}</p>
+                                </div>
+                                <div className="bg-amber-50 rounded-xl p-4 text-center border border-amber-200">
+                                    <p className="text-sm text-amber-700 mb-1">Trade-In</p>
+                                    <p className="text-2xl font-bold text-amber-600">{formatCurrency(selectedAppraisal.valuation.tradeIn)}</p>
+                                </div>
+                            </div>
+                            
+                            {/* Date */}
+                            <div className="text-sm text-slate-500">
+                                Appraisal Date: {formatDate(selectedAppraisal.createdAt)}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

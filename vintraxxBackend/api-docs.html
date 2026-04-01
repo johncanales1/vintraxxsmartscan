@@ -76,7 +76,7 @@
                 <div class="endpoint">
                     <span class="method post">POST</span>
                     <span class="endpoint-path">/register</span>
-                    <span class="endpoint-desc">Register new user. Body: { email, password, isDealer?, pricePerLaborHour?, logoUrl? }</span>
+                    <span class="endpoint-desc">Register new user. Body: { email, password, isDealer?, pricePerLaborHour?, logoUrl?, qrCodeUrl? }</span>
                 </div>
                 <div class="endpoint">
                     <span class="method post">POST</span>
@@ -149,13 +149,13 @@
                 <div class="endpoint">
                     <span class="method get">GET</span>
                     <span class="endpoint-path">/profile</span>
-                    <span class="endpoint-desc">Get dealer profile (email, pricePerLaborHour, logoUrl).</span>
+                    <span class="endpoint-desc">Get dealer profile (email, pricePerLaborHour, logoUrl, qrCodeUrl).</span>
                     <span class="auth-badge">Dealer Only</span>
                 </div>
                 <div class="endpoint">
                     <span class="method put">PUT</span>
                     <span class="endpoint-path">/profile</span>
-                    <span class="endpoint-desc">Update dealer settings. Body: { pricePerLaborHour?, logoImage? (base64 or URL) }</span>
+                    <span class="endpoint-desc">Update dealer settings. Body: { pricePerLaborHour?, logoImage?, qrCodeImage?, password? }. Password required when updating qrCodeImage.</span>
                     <span class="auth-badge">Dealer Only</span>
                 </div>
                 <div class="endpoint">
@@ -270,7 +270,7 @@
 
         <footer class="footer">
             <p>&copy; 2026 VinTraxx Inc. - OBD-II Vehicle Diagnostic & Appraisal System</p>
-            <p style="margin-top: 10px; font-size: 0.85rem;">API Version 1.0 | Last Updated: March 2026</p>
+            <p style="margin-top: 10px; font-size: 0.85rem;">API Version 1.0 | Last Updated: April 2026</p>
         </footer>
     </div>
 </body>

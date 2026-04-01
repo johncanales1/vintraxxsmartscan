@@ -18,6 +18,8 @@ model User {
   isDealer         Boolean  @default(false)
   pricePerLaborHour Float?
   logoUrl          String?
+  originalLogoUrl  String?
+  qrCodeUrl        String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   scans            Scan[]

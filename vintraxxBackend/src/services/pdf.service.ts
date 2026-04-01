@@ -171,22 +171,87 @@ export async function generatePdf(report: FullReportData): Promise<string> {
       const logoW = 90;
       const logoY = y + (logoHeaderH - logoH) / 2;
       const vintraxxLogoPath = path.resolve(__dirname, '../assets/VinTraxxLOGO.jpeg');
-      const motorsLogoPath = path.resolve(__dirname, '../assets/35MotorsLOGO.jpeg');
 
-      try {
-        if (fs.existsSync(vintraxxLogoPath)) {
-          doc.image(vintraxxLogoPath, leftMargin + 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
+      // For OBD scan reports: Dealer QR code on left, Dealer logo on right
+      // If no dealer QR code, fall back to VinTraxx logo on left
+      let leftLogoLoaded = false;
+
+      // Try to load dealer QR code on the left
+      if (report.dealerQrCodeUrl) {
+        try {
+          if (report.dealerQrCodeUrl.startsWith('data:image/')) {
+            // Base64 image
+            const base64Match = report.dealerQrCodeUrl.match(/^data:image\/\w+;base64,(.+)$/);
+            if (base64Match) {
+              const imgBuffer = Buffer.from(base64Match[1], 'base64');
+              doc.image(imgBuffer, leftMargin + 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
+              leftLogoLoaded = true;
+            }
+          } else if (report.dealerQrCodeUrl.includes('/dealer-qrcodes/')) {
+            // File path - extract filename and load from disk
+            const filename = report.dealerQrCodeUrl.split('/dealer-qrcodes/').pop();
+            if (filename) {
+              const qrCodePath = path.resolve(__dirname, '../assets/dealer-qrcodes', filename);
+              if (fs.existsSync(qrCodePath)) {
+                doc.image(qrCodePath, leftMargin + 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
+                leftLogoLoaded = true;
+              }
+            }
+          }
+        } catch (qrErr) {
+          logger.warn('Failed to load dealer QR code for scan PDF', { error: (qrErr as Error).message });
         }
-      } catch (logoErr) {
-        logger.warn('Failed to load VinTraxx logo for scan PDF', { error: (logoErr as Error).message });
       }
 
-      try {
-        if (fs.existsSync(motorsLogoPath)) {
-          doc.image(motorsLogoPath, leftMargin + pageWidth - logoW - 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
+      // Fall back to VinTraxx logo on left if no dealer QR code
+      if (!leftLogoLoaded) {
+        try {
+          if (fs.existsSync(vintraxxLogoPath)) {
+            doc.image(vintraxxLogoPath, leftMargin + 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
+          }
+        } catch (logoErr) {
+          logger.warn('Failed to load VinTraxx logo for scan PDF', { error: (logoErr as Error).message });
         }
-      } catch (logoErr) {
-        logger.warn('Failed to load 35Motors logo for scan PDF', { error: (logoErr as Error).message });
+      }
+
+      // Load dealer logo on the right (or fall back to Motors logo)
+      let rightLogoLoaded = false;
+      if (report.dealerLogoUrl) {
+        try {
+          if (report.dealerLogoUrl.startsWith('data:image/')) {
+            // Base64 image
+            const base64Match = report.dealerLogoUrl.match(/^data:image\/\w+;base64,(.+)$/);
+            if (base64Match) {
+              const imgBuffer = Buffer.from(base64Match[1], 'base64');
+              doc.image(imgBuffer, leftMargin + pageWidth - logoW - 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
+              rightLogoLoaded = true;
+            }
+          } else if (report.dealerLogoUrl.includes('/dealer-logos/')) {
+            // File path - extract filename and load from disk
+            const filename = report.dealerLogoUrl.split('/dealer-logos/').pop();
+            if (filename) {
+              const logoPath = path.resolve(__dirname, '../assets/dealer-logos', filename);
+              if (fs.existsSync(logoPath)) {
+                doc.image(logoPath, leftMargin + pageWidth - logoW - 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
+                rightLogoLoaded = true;
+              }
+            }
+          }
+        } catch (logoErr) {
+          logger.warn('Failed to load dealer logo for scan PDF', { error: (logoErr as Error).message });
+        }
+      }
+
+      // Fall back to 35Motors logo on right if no dealer logo
+      if (!rightLogoLoaded) {
+        const motorsLogoPath = path.resolve(__dirname, '../assets/35MotorsLOGO.jpeg');
+        try {
+          if (fs.existsSync(motorsLogoPath)) {
+            doc.image(motorsLogoPath, leftMargin + pageWidth - logoW - 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
+          }
+        } catch (logoErr) {
+          logger.warn('Failed to load 35Motors logo for scan PDF', { error: (logoErr as Error).message });
+        }
       }
 
       doc.fontSize(18).font('Helvetica-Bold').fillColor('#FFFFFF')

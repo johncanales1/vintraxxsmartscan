@@ -26,6 +26,7 @@ export const registerSchema = z.object({
     isDealer: z.boolean().optional(),
     pricePerLaborHour: z.number().positive().optional(),
     logoUrl: z.string().optional(),
+    qrCodeUrl: z.string().optional(),
   }),
 });
 

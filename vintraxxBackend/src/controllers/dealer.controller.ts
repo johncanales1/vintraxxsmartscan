@@ -4,12 +4,17 @@ import prisma from '../config/db';
 import logger from '../utils/logger';
 import * as fs from 'fs';
 import * as path from 'path';
+import bcrypt from 'bcrypt';
 
 const LOGO_DIR = path.join(__dirname, '..', 'assets', 'dealer-logos');
+const QR_CODE_DIR = path.join(__dirname, '..', 'assets', 'dealer-qrcodes');
 
-// Ensure logo directory exists
+// Ensure logo and QR code directories exist
 if (!fs.existsSync(LOGO_DIR)) {
   fs.mkdirSync(LOGO_DIR, { recursive: true });
+}
+if (!fs.existsSync(QR_CODE_DIR)) {
+  fs.mkdirSync(QR_CODE_DIR, { recursive: true });
 }
 
 export async function dealerLogin(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -39,6 +44,8 @@ export async function getDealerProfile(req: Request, res: Response, next: NextFu
         isDealer: true,
         pricePerLaborHour: true,
         logoUrl: true,
+        originalLogoUrl: true,
+        qrCodeUrl: true,
         createdAt: true,
       },
     });
@@ -57,7 +64,7 @@ export async function getDealerProfile(req: Request, res: Response, next: NextFu
 export async function updateDealerProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = req.user!.userId;
-    const { pricePerLaborHour, logoImage } = req.body;
+    const { pricePerLaborHour, logoImage, originalLogoImage, qrCodeImage, password } = req.body;
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user || !user.isDealer) {
@@ -65,10 +72,60 @@ export async function updateDealerProfile(req: Request, res: Response, next: Nex
       return;
     }
 
-    const updateData: { pricePerLaborHour?: number; logoUrl?: string } = {};
+    // If updating QR code, require password verification
+    if (qrCodeImage) {
+      if (!password) {
+        res.status(400).json({ success: false, error: 'Password is required to update QR code.' });
+        return;
+      }
+      if (!user.passwordHash) {
+        res.status(400).json({ success: false, error: 'Cannot verify password for OAuth users.' });
+        return;
+      }
+      const passwordValid = await bcrypt.compare(password, user.passwordHash);
+      if (!passwordValid) {
+        res.status(401).json({ success: false, error: 'Invalid password.' });
+        return;
+      }
+    }
+
+    const updateData: { pricePerLaborHour?: number; logoUrl?: string; originalLogoUrl?: string; qrCodeUrl?: string } = {};
 
     if (pricePerLaborHour !== undefined && typeof pricePerLaborHour === 'number' && pricePerLaborHour > 0) {
       updateData.pricePerLaborHour = pricePerLaborHour;
+    }
+
+    const apiBase = process.env.NODE_ENV === 'production' 
+      ? 'https://api.vintraxx.com' 
+      : 'http://localhost:3000';
+
+    // Handle original logo image (unedited version for crop editor)
+    if (originalLogoImage && typeof originalLogoImage === 'string' && originalLogoImage.startsWith('data:image/')) {
+      // Delete old original logo file if it exists
+      if (user.originalLogoUrl && !user.originalLogoUrl.startsWith('data:') && user.originalLogoUrl.includes('/dealer-logos/')) {
+        const oldFilename = user.originalLogoUrl.split('/dealer-logos/').pop();
+        if (oldFilename) {
+          const oldFilePath = path.join(LOGO_DIR, oldFilename);
+          if (fs.existsSync(oldFilePath)) {
+            fs.unlinkSync(oldFilePath);
+            logger.info(`Deleted old original logo file: ${oldFilename}`);
+          }
+        }
+      }
+
+      // Parse base64 image and save original to file
+      const origMatches = originalLogoImage.match(/^data:image\/(\w+);base64,(.+)$/);
+      if (origMatches) {
+        const ext = origMatches[1] === 'jpeg' ? 'jpg' : origMatches[1];
+        const base64Data = origMatches[2];
+        const filename = `original-${userId}-${Date.now()}.${ext}`;
+        const filePath = path.join(LOGO_DIR, filename);
+        
+        fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
+        updateData.originalLogoUrl = `${apiBase}/assets/dealer-logos/${filename}`;
+        
+        logger.info(`Saved new original logo file: ${filename}`);
+      }
     }
 
     if (logoImage && typeof logoImage === 'string' && logoImage.startsWith('data:image/')) {
@@ -96,9 +153,6 @@ export async function updateDealerProfile(req: Request, res: Response, next: Nex
         fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
         
         // Store URL path instead of base64
-        const apiBase = process.env.NODE_ENV === 'production' 
-          ? 'https://api.vintraxx.com' 
-          : 'http://localhost:3000';
         updateData.logoUrl = `${apiBase}/assets/dealer-logos/${filename}`;
         
         logger.info(`Saved new logo file: ${filename}`);
@@ -111,6 +165,45 @@ export async function updateDealerProfile(req: Request, res: Response, next: Nex
       updateData.logoUrl = logoImage;
     }
 
+    // Handle QR code image
+    if (qrCodeImage && typeof qrCodeImage === 'string' && qrCodeImage.startsWith('data:image/')) {
+      // Delete old QR code file if it exists
+      if (user.qrCodeUrl && !user.qrCodeUrl.startsWith('data:') && user.qrCodeUrl.includes('/dealer-qrcodes/')) {
+        const oldFilename = user.qrCodeUrl.split('/dealer-qrcodes/').pop();
+        if (oldFilename) {
+          const oldFilePath = path.join(QR_CODE_DIR, oldFilename);
+          if (fs.existsSync(oldFilePath)) {
+            fs.unlinkSync(oldFilePath);
+            logger.info(`Deleted old QR code file: ${oldFilename}`);
+          }
+        }
+      }
+
+      // Parse base64 image and save to file
+      const matches = qrCodeImage.match(/^data:image\/(\w+);base64,(.+)$/);
+      if (matches) {
+        const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+        const base64Data = matches[2];
+        const filename = `qr-${userId}-${Date.now()}.${ext}`;
+        const filePath = path.join(QR_CODE_DIR, filename);
+        
+        // Write file to disk
+        fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
+        
+        // Store URL path instead of base64
+        const apiBase = process.env.NODE_ENV === 'production' 
+          ? 'https://api.vintraxx.com' 
+          : 'http://localhost:3000';
+        updateData.qrCodeUrl = `${apiBase}/assets/dealer-qrcodes/${filename}`;
+        
+        logger.info(`Saved new QR code file: ${filename}`);
+      } else {
+        updateData.qrCodeUrl = qrCodeImage;
+      }
+    } else if (qrCodeImage && typeof qrCodeImage === 'string') {
+      updateData.qrCodeUrl = qrCodeImage;
+    }
+
     const updated = await prisma.user.update({
       where: { id: userId },
       data: updateData,
@@ -120,12 +213,14 @@ export async function updateDealerProfile(req: Request, res: Response, next: Nex
         isDealer: true,
         pricePerLaborHour: true,
         logoUrl: true,
+        qrCodeUrl: true,
       },
     });
 
     logger.info(`Dealer profile updated: ${user.email}`, {
       pricePerLaborHour: updated.pricePerLaborHour,
       hasLogo: !!updated.logoUrl,
+      hasQrCode: !!updated.qrCodeUrl,
     });
 
     res.json({ success: true, dealer: updated });

@@ -133,6 +133,8 @@ export interface FullReportData {
     userEmail: string;
   };
   stockNumber?: string;
+  dealerLogoUrl?: string;
+  dealerQrCodeUrl?: string;
 }
 
 export interface JwtPayload {
@@ -211,4 +213,5 @@ export interface AppraisalSummaryData {
   photos?: string[];
   createdAt: string;
   userEmail: string;
+  dealerLogoUrl?: string;
 }

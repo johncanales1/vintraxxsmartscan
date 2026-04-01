@@ -18,6 +18,9 @@ const dealerUpdateSchema = z.object({
   body: z.object({
     pricePerLaborHour: z.number().positive().optional(),
     logoImage: z.string().optional(),
+    originalLogoImage: z.string().optional(),
+    qrCodeImage: z.string().optional(),
+    password: z.string().optional(),
   }),
 });
 

@@ -146,8 +146,9 @@ export async function generateAppraisalPdf(appraisal: AppraisalSummaryData): Pro
       };
 
       const vintraxxLogoPath = findLogoPath('VinTraxxLOGO.jpeg');
-      const motorsLogoPath = findLogoPath('35MotorsLOGO.jpeg');
 
+      // For appraisal reports: VinTraxx logo on left, Dealer logo on right
+      // VinTraxx logo always on the left
       try {
         if (vintraxxLogoPath) {
           doc.image(vintraxxLogoPath, leftMargin + 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
@@ -156,12 +157,44 @@ export async function generateAppraisalPdf(appraisal: AppraisalSummaryData): Pro
         logger.warn('Failed to load VinTraxx logo for PDF', { error: (logoErr as Error).message });
       }
 
-      try {
-        if (motorsLogoPath) {
-          doc.image(motorsLogoPath, leftMargin + pageWidth - logoW - 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
+      // Load dealer logo on the right (or fall back to Motors logo)
+      let rightLogoLoaded = false;
+      if (appraisal.dealerLogoUrl) {
+        try {
+          if (appraisal.dealerLogoUrl.startsWith('data:image/')) {
+            // Base64 image
+            const base64Match = appraisal.dealerLogoUrl.match(/^data:image\/\w+;base64,(.+)$/);
+            if (base64Match) {
+              const imgBuffer = Buffer.from(base64Match[1], 'base64');
+              doc.image(imgBuffer, leftMargin + pageWidth - logoW - 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
+              rightLogoLoaded = true;
+            }
+          } else if (appraisal.dealerLogoUrl.includes('/dealer-logos/')) {
+            // File path - extract filename and load from disk
+            const filename = appraisal.dealerLogoUrl.split('/dealer-logos/').pop();
+            if (filename) {
+              const logoPath = path.resolve(__dirname, '../assets/dealer-logos', filename);
+              if (fs.existsSync(logoPath)) {
+                doc.image(logoPath, leftMargin + pageWidth - logoW - 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
+                rightLogoLoaded = true;
+              }
+            }
+          }
+        } catch (logoErr) {
+          logger.warn('Failed to load dealer logo for appraisal PDF', { error: (logoErr as Error).message });
         }
-      } catch (logoErr) {
-        logger.warn('Failed to load 35Motors logo for PDF', { error: (logoErr as Error).message });
+      }
+
+      // Fall back to 35Motors logo on right if no dealer logo
+      if (!rightLogoLoaded) {
+        const motorsLogoPath = findLogoPath('35MotorsLOGO.jpeg');
+        try {
+          if (motorsLogoPath) {
+            doc.image(motorsLogoPath, leftMargin + pageWidth - logoW - 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
+          }
+        } catch (logoErr) {
+          logger.warn('Failed to load 35Motors logo for PDF', { error: (logoErr as Error).message });
+        }
       }
 
       // Center title

@@ -18,10 +18,12 @@ interface ReportAssemblyInput {
   stockNumber?: string;
   additionalRepairs?: AdditionalRepairItem[];
   additionalRepairsTotalCost?: number;
+  dealerLogoUrl?: string;
+  dealerQrCodeUrl?: string;
 }
 
 export function assembleFullReport(input: ReportAssemblyInput): FullReportData {
-  const { scanId, reportId, vin, year, make, model, mileage, milOn, distanceSinceCleared, userEmail, aiOutput, stockNumber, additionalRepairs, additionalRepairsTotalCost } = input;
+  const { scanId, reportId, vin, year, make, model, mileage, milOn, distanceSinceCleared, userEmail, aiOutput, stockNumber, additionalRepairs, additionalRepairsTotalCost, dealerLogoUrl, dealerQrCodeUrl } = input;
 
   const healthScore = calculateHealthScore(aiOutput, milOn);
   const overallStatus = determineOverallStatus(healthScore);
@@ -92,6 +94,8 @@ export function assembleFullReport(input: ReportAssemblyInput): FullReportData {
     additionalRepairs: additionalRepairs || undefined,
     additionalRepairsTotalCost: additionalRepairsTotalCost || 0,
     grandTotalCost: totalEstimatedRepairCost + (additionalRepairsTotalCost || 0),
+    dealerLogoUrl,
+    dealerQrCodeUrl,
   };
 
   logger.info('Report assembled', {

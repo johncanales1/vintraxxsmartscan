@@ -9,12 +9,14 @@ import { cx } from "@/utils/cx";
 
 interface DealerNavProps {
     dealerLogo?: string | null;
+    originalLogoUrl?: string | null;
     dealerName?: string;
     userEmail?: string;
     userId?: string;
     pricePerLaborHour?: number | null;
+    qrCodeUrl?: string | null;
     createdAt?: string;
-    onProfileUpdate?: (data: { logoUrl?: string; pricePerLaborHour?: number }) => void;
+    onProfileUpdate?: (data: { logoUrl?: string; originalLogoUrl?: string; pricePerLaborHour?: number; qrCodeUrl?: string }) => void;
 }
 
 const API_BASE = process.env.NODE_ENV === 'production' 
@@ -24,11 +26,13 @@ const API_BASE = process.env.NODE_ENV === 'production'
 interface ProfileModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (data: { logoUrl?: string; pricePerLaborHour?: number }) => Promise<void>;
+    onSave: (data: { logoUrl?: string; originalLogoUrl?: string; pricePerLaborHour?: number; qrCodeUrl?: string; password?: string }) => Promise<void>;
     userId?: string;
     userEmail?: string;
     pricePerLaborHour?: number | null;
     logoUrl?: string | null;
+    originalLogoUrl?: string | null;
+    qrCodeUrl?: string | null;
     createdAt?: string;
 }
 
@@ -254,30 +258,42 @@ const ImageCropEditor = ({
     );
 };
 
-const ProfileModal = ({ isOpen, onClose, onSave, userId, userEmail, pricePerLaborHour, logoUrl, createdAt }: ProfileModalProps) => {
+const ProfileModal = ({ isOpen, onClose, onSave, userId, userEmail, pricePerLaborHour, logoUrl, originalLogoUrl, qrCodeUrl, createdAt }: ProfileModalProps) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const qrCodeInputRef = useRef<HTMLInputElement>(null);
     const [saving, setSaving] = useState(false);
     const [editedLaborRate, setEditedLaborRate] = useState<string>(pricePerLaborHour?.toString() || "");
     const [originalImage, setOriginalImage] = useState<string | null>(null);
+    const [selectedOriginalImage, setSelectedOriginalImage] = useState<string | null>(null);
     const [croppedImage, setCroppedImage] = useState<string | null>(null);
     const [showCropEditor, setShowCropEditor] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
+    const [newQrCode, setNewQrCode] = useState<string | null>(null);
+    const [qrCodePassword, setQrCodePassword] = useState("");
+    const [showQrPasswordInput, setShowQrPasswordInput] = useState(false);
+    const [qrCodeError, setQrCodeError] = useState("");
 
     useEffect(() => {
         if (isOpen) {
             setEditedLaborRate(pricePerLaborHour?.toString() || "");
             setCroppedImage(null);
             setOriginalImage(null);
+            setSelectedOriginalImage(null);
             setShowCropEditor(false);
             setHasChanges(false);
+            setNewQrCode(null);
+            setQrCodePassword("");
+            setShowQrPasswordInput(false);
+            setQrCodeError("");
         }
     }, [isOpen, pricePerLaborHour]);
 
     useEffect(() => {
         const laborRateChanged = editedLaborRate !== (pricePerLaborHour?.toString() || "");
         const logoChanged = croppedImage !== null;
-        setHasChanges(laborRateChanged || logoChanged);
-    }, [editedLaborRate, pricePerLaborHour, croppedImage]);
+        const qrCodeChanged = newQrCode !== null;
+        setHasChanges(laborRateChanged || logoChanged || qrCodeChanged);
+    }, [editedLaborRate, pricePerLaborHour, croppedImage, newQrCode]);
 
     if (!isOpen) return null;
 
@@ -310,6 +326,7 @@ const ProfileModal = ({ isOpen, onClose, onSave, userId, userEmail, pricePerLabo
         });
         
         setOriginalImage(base64);
+        setSelectedOriginalImage(base64);
         setShowCropEditor(true);
     };
 
@@ -320,23 +337,58 @@ const ProfileModal = ({ isOpen, onClose, onSave, userId, userEmail, pricePerLabo
     };
 
     const handleEditClick = () => {
-        // If there's already a logo, use it as the original for editing
-        const currentLogo = croppedImage || logoUrl;
-        if (currentLogo) {
-            setOriginalImage(currentLogo);
+        // Use the original unedited logo from backend if available, otherwise use current logo
+        const imageForEditing = originalLogoUrl || selectedOriginalImage || croppedImage || logoUrl;
+        if (imageForEditing) {
+            setOriginalImage(imageForEditing);
             setShowCropEditor(true);
         } else {
             fileInputRef.current?.click();
         }
     };
 
+    const handleQrCodeSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        if (!file.type.startsWith('image/')) {
+            setQrCodeError("Please select an image file.");
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            setQrCodeError("QR code file must be less than 5MB.");
+            return;
+        }
+
+        const base64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.readAsDataURL(file);
+        });
+        
+        setNewQrCode(base64);
+        setShowQrPasswordInput(true);
+        setQrCodeError("");
+    };
+
     const handleSave = async () => {
+        // Validate QR code password if QR code is being changed
+        if (newQrCode && !qrCodePassword.trim()) {
+            setQrCodeError("Password is required to update QR code.");
+            return;
+        }
+
         setSaving(true);
+        setQrCodeError("");
         try {
-            const updateData: { logoUrl?: string; pricePerLaborHour?: number } = {};
+            const updateData: { logoUrl?: string; originalLogoUrl?: string; pricePerLaborHour?: number; qrCodeUrl?: string; password?: string } = {};
             
             if (croppedImage) {
                 updateData.logoUrl = croppedImage;
+                // Include the original unedited image if a new image was selected
+                if (selectedOriginalImage) {
+                    updateData.originalLogoUrl = selectedOriginalImage;
+                }
             }
             
             const parsedRate = parseFloat(editedLaborRate);
@@ -344,12 +396,21 @@ const ProfileModal = ({ isOpen, onClose, onSave, userId, userEmail, pricePerLabo
                 updateData.pricePerLaborHour = parsedRate;
             }
 
+            if (newQrCode) {
+                updateData.qrCodeUrl = newQrCode;
+                updateData.password = qrCodePassword;
+            }
+
             if (Object.keys(updateData).length > 0) {
                 await onSave(updateData);
             }
             onClose();
-        } catch (error) {
-            alert("Failed to save changes. Please try again.");
+        } catch (error: any) {
+            if (error.message?.includes("password") || error.message?.includes("Invalid")) {
+                setQrCodeError(error.message || "Invalid password. Please try again.");
+            } else {
+                alert("Failed to save changes. Please try again.");
+            }
         } finally {
             setSaving(false);
         }
@@ -359,9 +420,16 @@ const ProfileModal = ({ isOpen, onClose, onSave, userId, userEmail, pricePerLabo
         setEditedLaborRate(pricePerLaborHour?.toString() || "");
         setCroppedImage(null);
         setOriginalImage(null);
+        setSelectedOriginalImage(null);
         setShowCropEditor(false);
+        setNewQrCode(null);
+        setQrCodePassword("");
+        setShowQrPasswordInput(false);
+        setQrCodeError("");
         onClose();
     };
+
+    const displayQrCode = newQrCode || qrCodeUrl;
 
     const displayLogo = croppedImage || logoUrl;
 
@@ -471,6 +539,56 @@ const ProfileModal = ({ isOpen, onClose, onSave, userId, userEmail, pricePerLabo
                             <p className="text-sm text-slate-900">{formatDate(createdAt)}</p>
                         </div>
                     </div>
+
+                    {/* QR Code Section */}
+                    <div className="p-4 bg-slate-50 rounded-xl">
+                        <div className="flex items-center gap-4">
+                            <div className="w-16 h-16 rounded-lg overflow-hidden bg-white border border-slate-200 flex items-center justify-center">
+                                {displayQrCode ? (
+                                    <img src={displayQrCode} alt="QR Code" className="w-full h-full object-cover" />
+                                ) : (
+                                    <Upload className="w-6 h-6 text-slate-400" />
+                                )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">QR Code</p>
+                                <p className="text-xs text-slate-500 mb-2">Used in OBD scan reports</p>
+                                <input
+                                    ref={qrCodeInputRef}
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={handleQrCodeSelect}
+                                    className="hidden"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => qrCodeInputRef.current?.click()}
+                                    className="text-sm text-blue-600 hover:text-blue-800 underline cursor-pointer"
+                                >
+                                    {displayQrCode ? "Change QR code" : "Upload QR code"}
+                                </button>
+                            </div>
+                        </div>
+                        
+                        {/* Password input for QR code change */}
+                        {showQrPasswordInput && newQrCode && (
+                            <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                                <p className="text-xs text-amber-800 mb-2 font-medium">
+                                    Password required to change QR code
+                                </p>
+                                <input
+                                    type="password"
+                                    value={qrCodePassword}
+                                    onChange={(e) => setQrCodePassword(e.target.value)}
+                                    placeholder="Enter your password"
+                                    className="w-full text-sm bg-white border border-amber-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                                />
+                                {qrCodeError && (
+                                    <p className="text-xs text-red-600 mt-1">{qrCodeError}</p>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex gap-3">
@@ -494,7 +612,7 @@ const ProfileModal = ({ isOpen, onClose, onSave, userId, userEmail, pricePerLabo
     );
 };
 
-const UserDropdownMenu = ({ className, userEmail, onProfileClick }: { className?: string; userEmail?: string; onProfileClick: () => void }) => {
+const UserDropdownMenu = ({ className, userEmail, onProfileClick, onClose }: { className?: string; userEmail?: string; onProfileClick: () => void; onClose?: () => void }) => {
     return (
         <div className={cx(
             "z-50 min-w-[8rem] overflow-hidden rounded-md border text-popover-foreground shadow-md w-64 bg-white border-slate-200 p-2",
@@ -506,7 +624,10 @@ const UserDropdownMenu = ({ className, userEmail, onProfileClick }: { className?
             </div>
             <div className="py-1">
                 <button 
-                    onClick={onProfileClick}
+                    onClick={() => {
+                        onClose?.();
+                        onProfileClick();
+                    }}
                     className="flex w-full items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 cursor-pointer"
                 >
                     <UserCircle className="w-4 h-4 text-slate-500" />
@@ -531,13 +652,16 @@ const UserDropdownMenu = ({ className, userEmail, onProfileClick }: { className?
     );
 };
 
-export const DealerNav = ({ dealerLogo, dealerName, userEmail, userId, pricePerLaborHour, createdAt, onProfileUpdate }: DealerNavProps) => {
+export const DealerNav = ({ dealerLogo, originalLogoUrl, dealerName, userEmail, userId, pricePerLaborHour, qrCodeUrl, createdAt, onProfileUpdate }: DealerNavProps) => {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isProductsDropdownOpen, setIsProductsDropdownOpen] = useState(false);
     const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+    const [isUserPopoverOpen, setIsUserPopoverOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     const [currentLogo, setCurrentLogo] = useState(dealerLogo);
+    const [currentOriginalLogo, setCurrentOriginalLogo] = useState(originalLogoUrl);
     const [currentLaborRate, setCurrentLaborRate] = useState(pricePerLaborHour);
+    const [currentQrCode, setCurrentQrCode] = useState(qrCodeUrl);
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const searchInputRef = useRef<HTMLInputElement>(null);
@@ -547,8 +671,16 @@ export const DealerNav = ({ dealerLogo, dealerName, userEmail, userId, pricePerL
     }, [dealerLogo]);
 
     useEffect(() => {
+        setCurrentOriginalLogo(originalLogoUrl);
+    }, [originalLogoUrl]);
+
+    useEffect(() => {
         setCurrentLaborRate(pricePerLaborHour);
     }, [pricePerLaborHour]);
+
+    useEffect(() => {
+        setCurrentQrCode(qrCodeUrl);
+    }, [qrCodeUrl]);
 
     useEffect(() => {
         if (isSearchOpen && searchInputRef.current) {
@@ -556,7 +688,7 @@ export const DealerNav = ({ dealerLogo, dealerName, userEmail, userId, pricePerL
         }
     }, [isSearchOpen]);
 
-    const handleProfileSave = async (data: { logoUrl?: string; pricePerLaborHour?: number }) => {
+    const handleProfileSave = async (data: { logoUrl?: string; originalLogoUrl?: string; pricePerLaborHour?: number; qrCodeUrl?: string; password?: string }) => {
         const token = localStorage.getItem("dealer_token");
         const res = await fetch(`${API_BASE}/dealer/profile`, {
             method: "PUT",
@@ -566,20 +698,30 @@ export const DealerNav = ({ dealerLogo, dealerName, userEmail, userId, pricePerL
             },
             body: JSON.stringify({ 
                 logoImage: data.logoUrl,
-                pricePerLaborHour: data.pricePerLaborHour 
+                originalLogoImage: data.originalLogoUrl,
+                pricePerLaborHour: data.pricePerLaborHour,
+                qrCodeImage: data.qrCodeUrl,
+                password: data.password
             }),
         });
         
         if (!res.ok) {
-            throw new Error("Failed to update profile");
+            const errorData = await res.json();
+            throw new Error(errorData.error || "Failed to update profile");
         }
         
         const result = await res.json();
         if (data.logoUrl) {
             setCurrentLogo(data.logoUrl);
         }
+        if (data.originalLogoUrl) {
+            setCurrentOriginalLogo(data.originalLogoUrl);
+        }
         if (data.pricePerLaborHour) {
             setCurrentLaborRate(data.pricePerLaborHour);
+        }
+        if (data.qrCodeUrl) {
+            setCurrentQrCode(data.qrCodeUrl);
         }
         
         // Update localStorage
@@ -587,7 +729,9 @@ export const DealerNav = ({ dealerLogo, dealerName, userEmail, userId, pricePerL
         if (storedUser) {
             const user = JSON.parse(storedUser);
             if (data.logoUrl) user.logoUrl = data.logoUrl;
+            if (data.originalLogoUrl) user.originalLogoUrl = data.originalLogoUrl;
             if (data.pricePerLaborHour) user.pricePerLaborHour = data.pricePerLaborHour;
+            if (data.qrCodeUrl) user.qrCodeUrl = data.qrCodeUrl;
             localStorage.setItem("dealer_user", JSON.stringify(user));
         }
         
@@ -766,7 +910,7 @@ export const DealerNav = ({ dealerLogo, dealerName, userEmail, userId, pricePerL
                         </div>
 
                         {/* User menu */}
-                        <AriaDialogTrigger>
+                        <AriaDialogTrigger isOpen={isUserPopoverOpen} onOpenChange={setIsUserPopoverOpen}>
                             <AriaButton className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-md font-semibold text-secondary outline-focus-ring transition duration-100 ease-linear hover:text-secondary_hover hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2">
                                 <div className="relative flex shrink-0 overflow-hidden rounded-full w-8 h-8">
                                     <div className="flex h-full w-full items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-emerald-500 text-white text-sm">
@@ -796,7 +940,11 @@ export const DealerNav = ({ dealerLogo, dealerName, userEmail, userId, pricePerL
                                             isExiting && "duration-150 ease-in animate-out zoom-out-95",
                                         )}
                                     >
-                                        <UserDropdownMenu userEmail={userEmail} onProfileClick={() => setIsProfileModalOpen(true)} />
+                                        <UserDropdownMenu 
+                                            userEmail={userEmail} 
+                                            onProfileClick={() => setIsProfileModalOpen(true)} 
+                                            onClose={() => setIsUserPopoverOpen(false)}
+                                        />
                                     </AriaDialog>
                                 )}
                             </AriaPopover>
@@ -844,7 +992,7 @@ export const DealerNav = ({ dealerLogo, dealerName, userEmail, userId, pricePerL
                                         className={cx("size-4 stroke-[2.625px] text-fg-quaternary transition duration-100 ease-linear", isUserDropdownOpen ? "-rotate-180" : "rotate-0")}
                                     />
                                 </button>
-                                {isUserDropdownOpen && <div className="mt-1"><UserDropdownMenu userEmail={userEmail} onProfileClick={() => setIsProfileModalOpen(true)} /></div>}
+                                {isUserDropdownOpen && <div className="mt-1"><UserDropdownMenu userEmail={userEmail} onProfileClick={() => setIsProfileModalOpen(true)} onClose={() => { setIsUserDropdownOpen(false); setIsMobileMenuOpen(false); }} /></div>}
                             </div>
                         </div>
                     </div>
@@ -860,6 +1008,8 @@ export const DealerNav = ({ dealerLogo, dealerName, userEmail, userId, pricePerL
                 userEmail={userEmail}
                 pricePerLaborHour={currentLaborRate}
                 logoUrl={currentLogo}
+                originalLogoUrl={currentOriginalLogo}
+                qrCodeUrl={currentQrCode}
                 createdAt={createdAt}
             />
         </>

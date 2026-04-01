@@ -34,8 +34,8 @@ export async function verifyOtp(req: Request, res: Response, next: NextFunction)
 
 export async function register(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { email, password, isDealer, pricePerLaborHour, logoUrl } = req.body;
-    const result = await authService.register(email, password, isDealer, pricePerLaborHour, logoUrl);
+    const { email, password, isDealer, pricePerLaborHour, logoUrl, qrCodeUrl } = req.body;
+    const result = await authService.register(email, password, isDealer, pricePerLaborHour, logoUrl, qrCodeUrl);
     logger.info(`User registered: ${email}, isDealer: ${isDealer || false}`);
     res.status(201).json({ success: true, user: result.user, token: result.token });
   } catch (error) {

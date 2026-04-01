@@ -304,6 +304,8 @@ async function processScanInBackground(scanId: string, userId: string, userEmail
       stockNumber: scan.stockNumber ?? undefined,
       additionalRepairs: additionalRepairItems,
       additionalRepairsTotalCost,
+      dealerLogoUrl: user.isDealer ? user.logoUrl ?? undefined : undefined,
+      dealerQrCodeUrl: user.isDealer ? user.qrCodeUrl ?? undefined : undefined,
     });
 
     // Step 4: Generate PDF

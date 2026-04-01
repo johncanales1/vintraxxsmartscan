@@ -104,6 +104,8 @@ export const LoginSimple = ({ resetToken }: { resetToken: string | null }) => {
     const [pricePerLaborHour, setPricePerLaborHour] = useState("");
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [logoPreview, setLogoPreview] = useState<string>("");
+    const [qrCodeFile, setQrCodeFile] = useState<File | null>(null);
+    const [qrCodePreview, setQrCodePreview] = useState<string>("");
 
     // Reset password fields
     const [resetPassword, setResetPassword] = useState("");
@@ -119,6 +121,7 @@ export const LoginSimple = ({ resetToken }: { resetToken: string | null }) => {
     const [microsoftLoading, setMicrosoftLoading] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const qrCodeInputRef = useRef<HTMLInputElement>(null);
 
     // Microsoft OAuth
     const handleMicrosoftLogin = async () => {
@@ -350,6 +353,16 @@ export const LoginSimple = ({ resetToken }: { resetToken: string | null }) => {
                 });
             }
 
+            let qrCodeUrl = "";
+            if (qrCodeFile) {
+                // Convert QR code file to base64
+                qrCodeUrl = await new Promise<string>((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result as string);
+                    reader.readAsDataURL(qrCodeFile);
+                });
+            }
+
             const res = await fetch(`${API_BASE}/auth/register`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -359,6 +372,7 @@ export const LoginSimple = ({ resetToken }: { resetToken: string | null }) => {
                     isDealer: true,
                     pricePerLaborHour: price,
                     logoUrl: logoUrl || undefined,
+                    qrCodeUrl: qrCodeUrl || undefined,
                 }),
             });
             const data = await res.json();
@@ -391,6 +405,24 @@ export const LoginSimple = ({ resetToken }: { resetToken: string | null }) => {
             setLogoFile(file);
             const reader = new FileReader();
             reader.onload = () => setLogoPreview(reader.result as string);
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const handleQrCodeSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            if (!file.type.startsWith('image/')) {
+                setError("Please select an image file for QR code.");
+                return;
+            }
+            if (file.size > 5 * 1024 * 1024) { // 5MB
+                setError("QR code file must be less than 5MB.");
+                return;
+            }
+            setQrCodeFile(file);
+            const reader = new FileReader();
+            reader.onload = () => setQrCodePreview(reader.result as string);
             reader.readAsDataURL(file);
         }
     };
@@ -807,6 +839,36 @@ export const LoginSimple = ({ resetToken }: { resetToken: string | null }) => {
                                                         className="text-sm text-blue-600 hover:text-blue-800 underline"
                                                     >
                                                         {logoFile ? "Change logo" : "Upload logo"}
+                                                    </button>
+                                                    <p className="text-xs text-gray-500">PNG, JPG up to 5MB</p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-col gap-1.5">
+                                            <span className="text-xs sm:text-sm font-medium text-gray-700">QR Code Image (Optional)</span>
+                                            <div className="flex items-center gap-3">
+                                                {qrCodePreview ? (
+                                                    <img src={qrCodePreview} alt="QR Code preview" className="w-12 h-12 rounded-lg object-cover" />
+                                                ) : (
+                                                    <div className="w-12 h-12 rounded-lg bg-gray-200 flex items-center justify-center">
+                                                        <Upload01 className="w-6 h-6 text-gray-400" />
+                                                    </div>
+                                                )}
+                                                <div className="flex-1">
+                                                    <input
+                                                        ref={qrCodeInputRef}
+                                                        type="file"
+                                                        accept="image/*"
+                                                        onChange={handleQrCodeSelect}
+                                                        className="hidden"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => qrCodeInputRef.current?.click()}
+                                                        className="text-sm text-blue-600 hover:text-blue-800 underline"
+                                                    >
+                                                        {qrCodeFile ? "Change QR code" : "Upload QR code"}
                                                     </button>
                                                     <p className="text-xs text-gray-500">PNG, JPG up to 5MB</p>
                                                 </div>

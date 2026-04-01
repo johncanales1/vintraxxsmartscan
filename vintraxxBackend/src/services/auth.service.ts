@@ -69,7 +69,7 @@ export async function register(
   pricePerLaborHour?: number,
   logoUrl?: string,
   qrCodeUrl?: string,
-): Promise<{ user: { id: string; email: string; isDealer: boolean; pricePerLaborHour: number | null; logoUrl: string | null; qrCodeUrl: string | null }; token: string }> {
+): Promise<{ user: { id: string; email: string; isDealer: boolean; pricePerLaborHour: number | null; logoUrl: string | null; originalLogoUrl: string | null; qrCodeUrl: string | null }; token: string }> {
   const verifiedOtp = await prisma.otp.findFirst({
     where: {
       email,
@@ -106,12 +106,12 @@ export async function register(
   logger.info(`User registered: ${user.email}, isDealer: ${dealer}`);
 
   return {
-    user: { id: user.id, email: user.email, isDealer: user.isDealer, pricePerLaborHour: user.pricePerLaborHour, logoUrl: user.logoUrl, qrCodeUrl: user.qrCodeUrl },
+    user: { id: user.id, email: user.email, isDealer: user.isDealer, pricePerLaborHour: user.pricePerLaborHour, logoUrl: user.logoUrl, originalLogoUrl: user.originalLogoUrl, qrCodeUrl: user.qrCodeUrl },
     token,
   };
 }
 
-export async function login(email: string, password: string, isDealer?: boolean, pricePerLaborHour?: number): Promise<{ user: { id: string; email: string; isDealer: boolean; pricePerLaborHour: number | null; logoUrl: string | null; qrCodeUrl: string | null }; token: string }> {
+export async function login(email: string, password: string, isDealer?: boolean, pricePerLaborHour?: number): Promise<{ user: { id: string; email: string; isDealer: boolean; pricePerLaborHour: number | null; logoUrl: string | null; originalLogoUrl: string | null; qrCodeUrl: string | null }; token: string }> {
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
     throw new AppError('Invalid email or password', 401);
@@ -147,7 +147,7 @@ export async function login(email: string, password: string, isDealer?: boolean,
   logger.info(`User logged in: ${user.email}, isDealer: ${user.isDealer}`);
 
   return {
-    user: { id: user.id, email: user.email, isDealer: user.isDealer, pricePerLaborHour: user.pricePerLaborHour, logoUrl: user.logoUrl, qrCodeUrl: user.qrCodeUrl },
+    user: { id: user.id, email: user.email, isDealer: user.isDealer, pricePerLaborHour: user.pricePerLaborHour, logoUrl: user.logoUrl, originalLogoUrl: user.originalLogoUrl, qrCodeUrl: user.qrCodeUrl },
     token,
   };
 }
@@ -230,7 +230,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
   logger.info(`Password reset successful for user: ${resetToken.user.email}`);
 }
 
-export async function googleAuth(idToken: string): Promise<{ user: { id: string; email: string; isDealer: boolean; pricePerLaborHour: number | null; logoUrl: string | null; qrCodeUrl: string | null }; token: string }> {
+export async function googleAuth(idToken: string): Promise<{ user: { id: string; email: string; isDealer: boolean; pricePerLaborHour: number | null; logoUrl: string | null; originalLogoUrl: string | null; qrCodeUrl: string | null }; token: string }> {
   if (!env.GOOGLE_CLIENT_ID) {
     throw new AppError('Google authentication is not configured.', 500);
   }
@@ -288,12 +288,12 @@ export async function googleAuth(idToken: string): Promise<{ user: { id: string;
   logger.info(`User logged in via Google: ${user.email}`);
 
   return {
-    user: { id: user.id, email: user.email, isDealer: user.isDealer, pricePerLaborHour: user.pricePerLaborHour, logoUrl: user.logoUrl, qrCodeUrl: user.qrCodeUrl },
+    user: { id: user.id, email: user.email, isDealer: user.isDealer, pricePerLaborHour: user.pricePerLaborHour, logoUrl: user.logoUrl, originalLogoUrl: user.originalLogoUrl, qrCodeUrl: user.qrCodeUrl },
     token,
   };
 }
 
-export async function microsoftAuth(accessToken: string): Promise<{ user: { id: string; email: string; isDealer: boolean; pricePerLaborHour: number | null; logoUrl: string | null; qrCodeUrl: string | null }; token: string }> {
+export async function microsoftAuth(accessToken: string): Promise<{ user: { id: string; email: string; isDealer: boolean; pricePerLaborHour: number | null; logoUrl: string | null; originalLogoUrl: string | null; qrCodeUrl: string | null }; token: string }> {
   if (!env.MICROSOFT_CLIENT_ID) {
     throw new AppError('Microsoft authentication is not configured.', 500);
   }
@@ -349,7 +349,7 @@ export async function microsoftAuth(accessToken: string): Promise<{ user: { id: 
   logger.info(`User logged in via Microsoft: ${user.email}`);
 
   return {
-    user: { id: user.id, email: user.email, isDealer: user.isDealer, pricePerLaborHour: user.pricePerLaborHour, logoUrl: user.logoUrl, qrCodeUrl: user.qrCodeUrl },
+    user: { id: user.id, email: user.email, isDealer: user.isDealer, pricePerLaborHour: user.pricePerLaborHour, logoUrl: user.logoUrl, originalLogoUrl: user.originalLogoUrl, qrCodeUrl: user.qrCodeUrl },
     token,
   };
 }

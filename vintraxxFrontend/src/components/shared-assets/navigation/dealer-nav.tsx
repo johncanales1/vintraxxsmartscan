@@ -59,6 +59,7 @@ const ImageCropEditor = ({
 
     useEffect(() => {
         const img = new Image();
+        img.crossOrigin = "anonymous";
         img.onload = () => {
             // Calculate display size (fit within 250x250 container)
             const maxSize = 250;
@@ -146,6 +147,7 @@ const ImageCropEditor = ({
         if (!ctx) return;
 
         const img = new Image();
+        img.crossOrigin = "anonymous";
         img.onload = () => {
             // Calculate the crop area in original image coordinates
             const scaleX = img.width / imageSize.width;

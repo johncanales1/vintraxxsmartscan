@@ -15,6 +15,8 @@ interface DealerUser {
     isDealer: boolean;
     pricePerLaborHour: number | null;
     logoUrl?: string | null;
+    originalLogoUrl?: string | null;
+    qrCodeUrl?: string | null;
     createdAt?: string;
     companyName?: string;
 }
@@ -389,14 +391,18 @@ export default function DealerPortalPage() {
 
             <DealerNav 
                 dealerLogo={dealer?.logoUrl}
+                originalLogoUrl={dealer?.originalLogoUrl}
                 dealerName={dealer?.companyName}
                 userEmail={dealer?.email}
                 userId={dealer?.id}
                 pricePerLaborHour={dealer?.pricePerLaborHour}
+                qrCodeUrl={dealer?.qrCodeUrl}
                 createdAt={dealer?.createdAt}
                 onProfileUpdate={(data) => setDealer(prev => prev ? { 
                     ...prev, 
                     logoUrl: data.logoUrl || prev.logoUrl,
+                    originalLogoUrl: data.originalLogoUrl || prev.originalLogoUrl,
+                    qrCodeUrl: data.qrCodeUrl || prev.qrCodeUrl,
                     pricePerLaborHour: data.pricePerLaborHour ?? prev.pricePerLaborHour
                 } : null)}
             />

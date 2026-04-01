@@ -16,7 +16,17 @@ const app = express();
 // Trust nginx reverse proxy headers for rate limiting
 app.set('trust proxy', 1);
 
-app.use(helmet());
+// Serve static assets BEFORE helmet to avoid CORP blocking
+// Add explicit CORS headers for cross-origin image loading
+app.use('/assets', (_req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(path.join(__dirname, 'assets')));
+
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}));
 app.use(cors({ 
   origin: env.NODE_ENV === 'production' 
     ? ['https://app.vintraxx.com', 'https://vintraxx.com', 'https://dev.vintraxx.com']
@@ -39,9 +49,6 @@ app.get('/', (_req, res) => {
     }
   });
 });
-
-// Serve static assets (including dealer logos)
-app.use('/assets', express.static(path.join(__dirname, 'assets')));
 
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/scan', scanRoutes);

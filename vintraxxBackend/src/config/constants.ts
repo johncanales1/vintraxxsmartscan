@@ -2,7 +2,7 @@ export const APP_CONSTANTS = {
   BCRYPT_SALT_ROUNDS: 12,
   OTP_LENGTH: 6,
   OTP_TTL_MINUTES: 10,
-  AUTH_RATE_LIMIT: { windowMs: 60 * 1000, max: 5 },
+  AUTH_RATE_LIMIT: { windowMs: 60 * 1000, max: 30 },
   SCAN_RATE_LIMIT: { windowMs: 60 * 1000, max: 10 },
   AI_RETRY_DELAY_MS: 2000,
   AI_MAX_RETRIES: 1,

@@ -27,12 +27,21 @@ app.use('/assets', (_req, res, next) => {
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' }
 }));
-app.use(cors({ 
+
+// CORS configuration - must be before routes
+const corsOptions = {
   origin: env.NODE_ENV === 'production' 
     ? ['https://app.vintraxx.com', 'https://vintraxx.com', 'https://dev.vintraxx.com']
     : ['https://app.vintraxx.com', 'https://vintraxx.com', 'https://dev.vintraxx.com', 'http://localhost:3000', 'http://localhost:3001', 'capacitor://localhost', 'http://localhost'], 
-  credentials: true 
-}));
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+};
+app.use(cors(corsOptions));
+
+// Handle OPTIONS preflight requests explicitly for all routes
+app.options('*', cors(corsOptions));
+
 app.use(express.json({ limit: '50mb' }));
 
 app.get('/api/v1/health', (_req, res) => {

@@ -320,30 +320,29 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
 
   // Real scan using ScannerService
   const handleStartScan = useCallback(async () => {
-    logger.info(LogCategory.APP, 'Starting vehicle scan');
-    setScanStatus('scanning');
-    setProgress(0);
-    setProgressMessage('Connecting to ECU...');
-    setScanError(null);
-    setCancelRequested(false);
-    
-    // Reset scan steps
-    setScanSteps([
-      { id: 'connecting', label: 'Connecting', completeLabel: 'Connected', status: 'pending', progress: 0 },
-      { id: 'reading_vin', label: 'Reading VIN', completeLabel: 'VIN Read', status: 'pending', progress: 0 },
-      { id: 'reading_codes', label: 'Reading Codes', completeLabel: 'Codes Read', status: 'pending', progress: 0 },
-      { id: 'building_report', label: 'Building Report', completeLabel: 'Report Built', status: 'pending', progress: 0 },
-    ]);
-
-    // Require real connection
-    if (!isConnected) {
-      setScanError('Scanner not connected. Please connect first.');
-      setScanStatus('idle');
-      Alert.alert('Not Connected', 'Please connect to an OBD-II scanner first from the Connect tab.');
-      return;
-    }
-
     try {
+      logger.info(LogCategory.APP, 'Starting vehicle scan');
+      setScanStatus('scanning');
+      setProgress(0);
+      setProgressMessage('Connecting to ECU...');
+      setScanError(null);
+      setCancelRequested(false);
+      
+      // Reset scan steps
+      setScanSteps([
+        { id: 'connecting', label: 'Connecting', completeLabel: 'Connected', status: 'pending', progress: 0 },
+        { id: 'reading_vin', label: 'Reading VIN', completeLabel: 'VIN Read', status: 'pending', progress: 0 },
+        { id: 'reading_codes', label: 'Reading Codes', completeLabel: 'Codes Read', status: 'pending', progress: 0 },
+        { id: 'building_report', label: 'Building Report', completeLabel: 'Report Built', status: 'pending', progress: 0 },
+      ]);
+
+      // Require real connection
+      if (!isConnected) {
+        setScanError('Scanner not connected. Please connect first.');
+        setScanStatus('idle');
+        Alert.alert('Not Connected', 'Please connect to an OBD-II scanner first from the Connect tab.');
+        return;
+      }
       const result = await scannerService.performScan(
         (step, progressValue, message) => {
           logger.debug(LogCategory.APP, `Scan progress: ${step} - ${progressValue}% - ${message}`);
@@ -484,7 +483,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
       setScanStatus('idle');
       Alert.alert('Scan Failed', errorMessage);
     }
-  }, [isConnected, selectedVehicle, addSavedReport, user]);
+  }, [isConnected, selectedVehicle, addSavedReport]);
 
   // Auto-start scan effect - must be after handleStartScan is defined
   useEffect(() => {

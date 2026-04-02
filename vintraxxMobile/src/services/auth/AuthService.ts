@@ -626,7 +626,7 @@ class AuthService {
 
    */
 
-  async register(email: string, password: string, isDealer?: boolean, pricePerLaborHour?: number): Promise<AuthResponse> {
+  async register(email: string, password: string, isDealer?: boolean, pricePerLaborHour?: number, logoUrl?: string, qrCodeUrl?: string): Promise<AuthResponse> {
 
     try {
 
@@ -635,6 +635,8 @@ class AuthService {
       const body: Record<string, unknown> = { email, password };
       if (isDealer) body.isDealer = true;
       if (pricePerLaborHour) body.pricePerLaborHour = pricePerLaborHour;
+      if (logoUrl) body.logoUrl = logoUrl;
+      if (qrCodeUrl) body.qrCodeUrl = qrCodeUrl;
 
       const data = await this.apiCall<ApiRegisterResponse>(AUTH_ENDPOINTS.REGISTER, body);
 
@@ -800,6 +802,110 @@ class AuthService {
       logger.error(LogCategory.APP, 'Login error', error);
 
       const message = error instanceof Error ? error.message : 'Unknown error';
+      return { success: false, message };
+
+    }
+
+  }
+
+
+
+  /**
+
+   * Request a password reset link via email
+
+   */
+
+  async forgotPassword(email: string): Promise<{ success: boolean; message: string }> {
+
+    try {
+
+      logger.info(LogCategory.APP, `Requesting password reset for: ${email}`);
+
+      const data = await this.apiCall<{ success: boolean; message?: string }>(AUTH_ENDPOINTS.FORGOT_PASSWORD, { email });
+
+      return {
+        success: true,
+        message: 'If an account exists with that email, a reset link has been sent.',
+      };
+
+    } catch (error) {
+
+      logger.error(LogCategory.APP, 'Forgot password error', error);
+
+      // Don't reveal whether email exists - always show success message
+      return {
+        success: true,
+        message: 'If an account exists with that email, a reset link has been sent.',
+      };
+
+    }
+
+  }
+
+
+
+  /**
+
+   * Login/Register with Google OAuth
+
+   */
+
+  async googleAuth(idToken: string): Promise<AuthResponse> {
+
+    try {
+
+      logger.info(LogCategory.APP, 'Attempting Google authentication');
+
+      const data = await this.apiCall<ApiLoginResponse>(AUTH_ENDPOINTS.GOOGLE, { idToken });
+
+      if (data.success && data.token) {
+
+        const user: User = {
+
+          id: data.user.id,
+
+          email: data.user.email,
+
+          token: data.token,
+
+          isDealer: data.user.isDealer || false,
+
+          pricePerLaborHour: data.user.pricePerLaborHour || null,
+
+          deviceSetupCompleted: false,
+
+          createdAt: new Date(),
+
+          lastLoginAt: new Date(),
+
+        };
+
+        this.currentUser = user;
+
+        this.authToken = data.token;
+
+        this.persistAuth();
+
+        logger.info(LogCategory.APP, `Google auth successful: ${user.email}`);
+
+        return { success: true, user, token: data.token };
+
+      }
+
+      const anyData = data as any;
+      const message =
+        data.message ||
+        (typeof anyData?.error === 'string' && anyData.error) ||
+        'Google authentication failed.';
+
+      return { success: false, message };
+
+    } catch (error) {
+
+      logger.error(LogCategory.APP, 'Google auth error', error);
+
+      const message = error instanceof Error ? error.message : 'Google authentication failed.';
       return { success: false, message };
 
     }

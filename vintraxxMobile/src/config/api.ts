@@ -28,6 +28,17 @@ export const AUTH_ENDPOINTS = {
 
   LOGIN: '/api/v1/auth/login',
 
+  FORGOT_PASSWORD: '/api/v1/auth/forgot-password',
+
+  RESET_PASSWORD: '/api/v1/auth/reset-password',
+
+  GOOGLE: '/api/v1/auth/google',
+
+};
+
+// Google OAuth configuration
+export const GOOGLE_CONFIG = {
+  WEB_CLIENT_ID: '701476871517-lv31geo71p9fbfbs7r7iqdbp7nbru98g.apps.googleusercontent.com',
 };
 
 

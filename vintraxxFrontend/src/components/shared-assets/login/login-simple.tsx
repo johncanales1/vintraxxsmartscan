@@ -7,6 +7,7 @@ import { Input } from "@/components/base/input/input";
 import { UntitledLogoMinimal } from "@/components/foundations/logo/untitledui-logo-minimal";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import jsQR from "jsqr";
 
 // OAuth imports
 import { GoogleOAuthProvider, GoogleLogin, useGoogleLogin } from "@react-oauth/google";
@@ -409,7 +410,7 @@ export const LoginSimple = ({ resetToken }: { resetToken: string | null }) => {
         }
     };
 
-    const handleQrCodeSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleQrCodeSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
             if (!file.type.startsWith('image/')) {
@@ -420,11 +421,67 @@ export const LoginSimple = ({ resetToken }: { resetToken: string | null }) => {
                 setError("QR code file must be less than 5MB.");
                 return;
             }
+
+            // Validate that the image contains a real QR code
+            try {
+                const isValidQr = await validateQrCodeImage(file);
+                if (!isValidQr) {
+                    setError("The selected image does not contain a valid QR code. Please upload an image with a readable QR code.");
+                    // Clear the file input
+                    if (qrCodeInputRef.current) {
+                        qrCodeInputRef.current.value = '';
+                    }
+                    return;
+                }
+            } catch (err) {
+                setError("Failed to validate QR code image. Please try again.");
+                return;
+            }
+
             setQrCodeFile(file);
             const reader = new FileReader();
             reader.onload = () => setQrCodePreview(reader.result as string);
             reader.readAsDataURL(file);
         }
+    };
+
+    // Validate that an image file contains a real QR code
+    const validateQrCodeImage = (file: File): Promise<boolean> => {
+        return new Promise((resolve) => {
+            const img = new Image();
+            const reader = new FileReader();
+            
+            reader.onload = (e) => {
+                img.onload = () => {
+                    // Create a canvas to extract image data
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) {
+                        resolve(false);
+                        return;
+                    }
+                    
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                    
+                    // Get image data
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    
+                    // Use jsQR to detect QR code
+                    const qrCode = jsQR(imageData.data, imageData.width, imageData.height);
+                    
+                    // QR code is valid if jsQR found it and returned data
+                    resolve(qrCode !== null && qrCode.data.length > 0);
+                };
+                
+                img.onerror = () => resolve(false);
+                img.src = e.target?.result as string;
+            };
+            
+            reader.onerror = () => resolve(false);
+            reader.readAsDataURL(file);
+        });
     };
 
     const switchToRegister = () => {

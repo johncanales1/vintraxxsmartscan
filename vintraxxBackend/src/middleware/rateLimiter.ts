@@ -7,6 +7,8 @@ export const authRateLimiter = rateLimit({
   message: { success: false, error: 'Too many requests, please try again later' },
   standardHeaders: true,
   legacyHeaders: false,
+  // Skip rate limiting for OPTIONS preflight requests to allow CORS
+  skip: (req) => req.method === 'OPTIONS',
 });
 
 export const scanRateLimiter = rateLimit({
@@ -15,4 +17,6 @@ export const scanRateLimiter = rateLimit({
   message: { success: false, error: 'Too many scan requests, please try again later' },
   standardHeaders: true,
   legacyHeaders: false,
+  // Skip rate limiting for OPTIONS preflight requests to allow CORS
+  skip: (req) => req.method === 'OPTIONS',
 });

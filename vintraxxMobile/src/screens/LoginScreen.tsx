@@ -402,8 +402,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
       return;
     }
 
-    if (password.length < 6) {
-      setErrorMessage('Password must be at least 6 characters.');
+    if (password.length < 8) {
+      setErrorMessage('Password must be at least 8 characters.');
       return;
     }
 
@@ -745,7 +745,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
                 {!isRegistered && (
                   <Text style={styles.passwordHint}>
-                    Minimum 6 characters
+                    Minimum 8 characters
                   </Text>
                 )}
 

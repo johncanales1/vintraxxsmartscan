@@ -16,6 +16,18 @@
         {
           "client_id": "701476871517-for6b5esr0itht4cltqh2vmfhb07mjac.apps.googleusercontent.com",
           "client_type": 3
+        },
+        {
+          "client_id": "701476871517-2h0qbn3hiovpp5mjlqu907op6rgktnf0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.vtsmartscan",
+            "certificate_hash": "0000000000000000000000000000000000000000"
+          }
+        },
+        {
+          "client_id": "701476871517-2h0qbn3hiovpp5mjlqu907op6rgktnf0.apps.googleusercontent.com",
+          "client_type": 3
         }
       ],
       "api_key": [

@@ -37,9 +37,11 @@ export const AUTH_ENDPOINTS = {
 };
 
 // Google OAuth configuration
+// Note: WEB_CLIENT_ID (client_type: 3) is used for token verification on backend
+// IOS_CLIENT_ID should match CLIENT_ID in GoogleService-Info.plist
 export const GOOGLE_CONFIG = {
-  WEB_CLIENT_ID: '701476871517-2h0qbn3hiovpp5mjlqu907op6rgktnf0.apps.googleusercontent.com',
-  ANDROID_CLIENT_ID: '701476871517-for6b5esr0itht4cltqh2vmfhb07mjac.apps.googleusercontent.com',
+  WEB_CLIENT_ID: '701476871517-for6b5esr0itht4cltqh2vmfhb07mjac.apps.googleusercontent.com',
+  ANDROID_CLIENT_ID: '701476871517-2h0qbn3hiovpp5mjlqu907op6rgktnf0.apps.googleusercontent.com',
   IOS_CLIENT_ID: '701476871517-2h0qbn3hiovpp5mjlqu907op6rgktnf0.apps.googleusercontent.com',
 };
 

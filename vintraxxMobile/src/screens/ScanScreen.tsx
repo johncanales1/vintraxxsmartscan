@@ -11,6 +11,7 @@ import {
   Alert,
   Animated,
   Easing,
+  Modal,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -195,21 +196,25 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
   const [showStockNumber, setShowStockNumber] = useState(false);
   const [showAdditionalRepairs, setShowAdditionalRepairs] = useState(false);
   const [selectedAdditionalRepairs, setSelectedAdditionalRepairs] = useState<string[]>([]);
+  const [errorModalVisible, setErrorModalVisible] = useState(false);
+  const [errorModalMessage, setErrorModalMessage] = useState<string>('');
+  const [errorModalStack, setErrorModalStack] = useState<string>('');
   
   // Start/stop animations based on scan status
   useEffect(() => {
     if (scanStatus === 'scanning') {
-      // Smooth spin animation
+      // Smooth spin animation - using useNativeDriver: false to be consistent with other animations
       const spinAnimation = Animated.loop(
         Animated.timing(spinValue, {
           toValue: 1,
           duration: 4000,
           easing: Easing.linear,
-          useNativeDriver: true,
+          useNativeDriver: false,
         })
       );
 
       // Water wave ripple: each wave starts from center (scale 0) and expands out
+      // IMPORTANT: Using useNativeDriver: false because we mix with color interpolation on same views
       const createWaveAnimation = (scaleVal: Animated.Value, opacityVal: Animated.Value, delay: number) => {
         return Animated.loop(
           Animated.sequence([
@@ -219,18 +224,18 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
                 toValue: 2.2,
                 duration: 2400,
                 easing: Easing.out(Easing.cubic),
-                useNativeDriver: true,
+                useNativeDriver: false,
               }),
               Animated.timing(opacityVal, {
                 toValue: 0,
                 duration: 2400,
                 easing: Easing.out(Easing.cubic),
-                useNativeDriver: true,
+                useNativeDriver: false,
               }),
             ]),
             Animated.parallel([
-              Animated.timing(scaleVal, { toValue: 0, duration: 0, useNativeDriver: true }),
-              Animated.timing(opacityVal, { toValue: 0.6, duration: 0, useNativeDriver: true }),
+              Animated.timing(scaleVal, { toValue: 0, duration: 0, useNativeDriver: false }),
+              Animated.timing(opacityVal, { toValue: 0.6, duration: 0, useNativeDriver: false }),
             ]),
           ])
         );
@@ -241,11 +246,11 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
       const w3 = createWaveAnimation(wave3Scale, wave3Opacity, 1200);
       const w4 = createWaveAnimation(wave4Scale, wave4Opacity, 1800);
 
-      // Glow pulsation
+      // Glow pulsation - using useNativeDriver: false to match color interpolation
       const glowAnimation = Animated.loop(
         Animated.sequence([
-          Animated.timing(glowAnim, { toValue: 1, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-          Animated.timing(glowAnim, { toValue: 0.3, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          Animated.timing(glowAnim, { toValue: 1, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
+          Animated.timing(glowAnim, { toValue: 0.3, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
         ])
       );
 
@@ -478,10 +483,14 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorStack = error instanceof Error ? error.stack || '' : '';
       logger.error(LogCategory.APP, 'Scan failed', error);
       setScanError(errorMessage);
       setScanStatus('idle');
-      Alert.alert('Scan Failed', errorMessage);
+      // Show error in modal for debugging
+      setErrorModalMessage(errorMessage);
+      setErrorModalStack(errorStack);
+      setErrorModalVisible(true);
     }
   }, [isConnected, selectedVehicle, addSavedReport]);
 
@@ -940,6 +949,36 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
         visible={showDebugModal}
         onClose={() => setShowDebugModal(false)}
       />
+
+      {/* Error Logging Modal */}
+      <Modal
+        visible={errorModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setErrorModalVisible(false)}
+      >
+        <View style={styles.errorModalOverlay}>
+          <View style={styles.errorModalContent}>
+            <Text style={styles.errorModalTitle}>Scan Error</Text>
+            <ScrollView style={styles.errorModalScrollView}>
+              <Text style={styles.errorModalLabel}>Error Message:</Text>
+              <Text style={styles.errorModalText}>{errorModalMessage}</Text>
+              {errorModalStack.length > 0 && (
+                <>
+                  <Text style={[styles.errorModalLabel, { marginTop: spacing.md }]}>Stack Trace:</Text>
+                  <Text style={styles.errorModalStackText}>{errorModalStack}</Text>
+                </>
+              )}
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.errorModalCloseButton}
+              onPress={() => setErrorModalVisible(false)}
+            >
+              <Text style={styles.errorModalCloseButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -1272,5 +1311,61 @@ const styles = StyleSheet.create({
     color: colors.status.success,
     marginTop: spacing.xs,
     fontWeight: '600' as const,
+  },
+  // Error Modal Styles
+  errorModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  errorModalContent: {
+    backgroundColor: colors.background.primary,
+    borderRadius: spacing.cardRadius,
+    padding: spacing.lg,
+    width: '100%',
+    maxHeight: '80%',
+  },
+  errorModalTitle: {
+    ...typography.styles.h3,
+    color: colors.status.error,
+    marginBottom: spacing.md,
+    textAlign: 'center',
+  },
+  errorModalScrollView: {
+    maxHeight: 300,
+  },
+  errorModalLabel: {
+    ...typography.styles.label,
+    color: colors.text.secondary,
+    marginBottom: spacing.xs,
+  },
+  errorModalText: {
+    ...typography.styles.body,
+    color: colors.text.primary,
+    backgroundColor: colors.background.secondary,
+    padding: spacing.sm,
+    borderRadius: spacing.inputRadius,
+  },
+  errorModalStackText: {
+    ...typography.styles.caption,
+    color: colors.text.muted,
+    backgroundColor: colors.background.secondary,
+    padding: spacing.sm,
+    borderRadius: spacing.inputRadius,
+    fontFamily: 'monospace',
+  },
+  errorModalCloseButton: {
+    backgroundColor: colors.primary.navy,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: spacing.inputRadius,
+    marginTop: spacing.lg,
+    alignItems: 'center',
+  },
+  errorModalCloseButtonText: {
+    ...typography.styles.button,
+    color: colors.text.inverse,
   },
 });

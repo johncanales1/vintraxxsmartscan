@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "701476871517",
+    "project_id": "vintraxx-smartscan",
+    "storage_bucket": "vintraxx-smartscan.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:701476871517:android:abcdef1234567890",
+        "android_client_info": {
+          "package_name": "com.vtsmartscan"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "701476871517-for6b5esr0itht4cltqh2vmfhb07mjac.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDx8nZ2Y3X4W5V6U7I8J9K0L1M2N3O4P5Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "701476871517-for6b5esr0itht4cltqh2vmfhb07mjac.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

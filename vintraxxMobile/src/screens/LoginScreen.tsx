@@ -39,6 +39,8 @@ import { GOOGLE_CONFIG } from '../config/api';
 // Configure Google Sign-In
 GoogleSignin.configure({
   webClientId: GOOGLE_CONFIG.WEB_CLIENT_ID,
+  iosClientId: GOOGLE_CONFIG.IOS_CLIENT_ID,
+  androidClientId: GOOGLE_CONFIG.ANDROID_CLIENT_ID,
   offlineAccess: false,
 });
 

@@ -38,7 +38,7 @@ export const AUTH_ENDPOINTS = {
 
 // Google OAuth configuration
 export const GOOGLE_CONFIG = {
-  WEB_CLIENT_ID: '701476871517-lv31geo71p9fbfbs7r7iqdbp7nbru98g.apps.googleusercontent.com',
+  WEB_CLIENT_ID: '701476871517-2h0qbn3hiovpp5mjlqu907op6rgktnf0.apps.googleusercontent.com',
   ANDROID_CLIENT_ID: '701476871517-for6b5esr0itht4cltqh2vmfhb07mjac.apps.googleusercontent.com',
   IOS_CLIENT_ID: '701476871517-2h0qbn3hiovpp5mjlqu907op6rgktnf0.apps.googleusercontent.com',
 };

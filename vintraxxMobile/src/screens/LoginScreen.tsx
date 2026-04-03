@@ -37,10 +37,10 @@ import { logger, LogCategory } from '../utils/Logger';
 import { GOOGLE_CONFIG } from '../config/api';
 
 // Configure Google Sign-In
+// Note: Android client ID is read automatically from google-services.json
 GoogleSignin.configure({
   webClientId: GOOGLE_CONFIG.WEB_CLIENT_ID,
   iosClientId: GOOGLE_CONFIG.IOS_CLIENT_ID,
-  androidClientId: GOOGLE_CONFIG.ANDROID_CLIENT_ID,
   offlineAccess: false,
 });
 

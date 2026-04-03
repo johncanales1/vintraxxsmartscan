@@ -69,6 +69,14 @@
 			<key>CFBundleURLName</key>
 			<string>com.vintraxx.smartscan</string>
 		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.701476871517-2h0qbn3hiovpp5mjlqu907op6rgktnf0</string>
+			</array>
+		</dict>
 	</array>
 </dict>
 </plist>

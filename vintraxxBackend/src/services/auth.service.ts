@@ -231,7 +231,14 @@ export async function resetPassword(token: string, newPassword: string): Promise
 }
 
 export async function googleAuth(idToken: string): Promise<{ user: { id: string; email: string; isDealer: boolean; pricePerLaborHour: number | null; logoUrl: string | null; originalLogoUrl: string | null; qrCodeUrl: string | null }; token: string }> {
-  if (!env.GOOGLE_CLIENT_ID) {
+  // Valid Google OAuth client IDs for this project (Web, iOS, Android)
+  const VALID_GOOGLE_CLIENT_IDS = [
+    env.GOOGLE_CLIENT_ID, // Backend/Web client ID from env
+    '701476871517-for6b5esr0itht4cltqh2vmfhb07mjac.apps.googleusercontent.com', // Web client ID (used as webClientId in mobile)
+    '701476871517-2h0qbn3hiovpp5mjlqu907op6rgktnf0.apps.googleusercontent.com', // iOS/Android client ID
+  ].filter(Boolean) as string[];
+
+  if (VALID_GOOGLE_CLIENT_IDS.length === 0) {
     throw new AppError('Google authentication is not configured.', 500);
   }
 
@@ -244,8 +251,10 @@ export async function googleAuth(idToken: string): Promise<{ user: { id: string;
     }
     payload = await response.json() as { sub: string; email: string; email_verified: boolean; aud: string };
 
-    // Verify audience matches our client ID
-    if ((payload as any).aud !== env.GOOGLE_CLIENT_ID) {
+    // Verify audience matches one of our valid client IDs
+    const tokenAud = (payload as any).aud;
+    if (!VALID_GOOGLE_CLIENT_IDS.includes(tokenAud)) {
+      logger.warn('Google token audience mismatch', { received: tokenAud, expected: VALID_GOOGLE_CLIENT_IDS });
       throw new Error('Token audience mismatch');
     }
   } catch (error) {

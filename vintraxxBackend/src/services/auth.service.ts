@@ -1,6 +1,8 @@
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import * as jwt from 'jsonwebtoken';
+import fs from 'fs';
+import path from 'path';
 import { env } from '../config/env';
 import { APP_CONSTANTS } from '../config/constants';
 import { JwtPayload } from '../types';
@@ -8,6 +10,18 @@ import { AppError } from '../middleware/errorHandler';
 import { generateOtpCode } from '../utils/helpers';
 import logger from '../utils/logger';
 import prisma from '../config/db';
+
+// Directories for dealer assets
+const LOGO_DIR = path.join(__dirname, '../assets/dealer-logos');
+const QR_CODE_DIR = path.join(__dirname, '../assets/dealer-qrcodes');
+
+// Ensure directories exist
+if (!fs.existsSync(LOGO_DIR)) {
+  fs.mkdirSync(LOGO_DIR, { recursive: true });
+}
+if (!fs.existsSync(QR_CODE_DIR)) {
+  fs.mkdirSync(QR_CODE_DIR, { recursive: true });
+}
 
 export async function checkEmail(email: string): Promise<boolean> {
   const user = await prisma.user.findUnique({ where: { email } });
@@ -101,11 +115,64 @@ export async function register(
 
   const dealer = isDealer === true;
   const laborHourPrice = dealer && pricePerLaborHour ? pricePerLaborHour : null;
-  const logo = dealer && logoUrl ? logoUrl : null;
-  const qrCode = dealer && qrCodeUrl ? qrCodeUrl : null;
+  
+  // Process base64 images into files (like dealer.controller.ts does)
+  const apiBase = env.NODE_ENV === 'production' 
+    ? 'https://api.vintraxx.com' 
+    : 'http://localhost:3000';
+  
+  let processedLogoUrl: string | null = null;
+  let processedQrCodeUrl: string | null = null;
+  
+  // Generate a temporary user ID for file naming (will use actual ID after creation)
+  const tempId = crypto.randomUUID();
+  
+  // Process logo image if provided as base64
+  if (dealer && logoUrl && typeof logoUrl === 'string' && logoUrl.startsWith('data:image/')) {
+    const matches = logoUrl.match(/^data:image\/(\w+);base64,(.+)$/);
+    if (matches) {
+      const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+      const base64Data = matches[2];
+      const filename = `${tempId}-${Date.now()}.${ext}`;
+      const filePath = path.join(LOGO_DIR, filename);
+      
+      try {
+        fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
+        processedLogoUrl = `${apiBase}/assets/dealer-logos/${filename}`;
+        logger.info(`Registration: Saved logo file: ${filename}`);
+      } catch (err) {
+        logger.error('Registration: Failed to save logo file', err);
+      }
+    }
+  } else if (dealer && logoUrl) {
+    // If it's already a URL, use it as-is
+    processedLogoUrl = logoUrl;
+  }
+  
+  // Process QR code image if provided as base64
+  if (dealer && qrCodeUrl && typeof qrCodeUrl === 'string' && qrCodeUrl.startsWith('data:image/')) {
+    const matches = qrCodeUrl.match(/^data:image\/(\w+);base64,(.+)$/);
+    if (matches) {
+      const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+      const base64Data = matches[2];
+      const filename = `qr-${tempId}-${Date.now()}.${ext}`;
+      const filePath = path.join(QR_CODE_DIR, filename);
+      
+      try {
+        fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
+        processedQrCodeUrl = `${apiBase}/assets/dealer-qrcodes/${filename}`;
+        logger.info(`Registration: Saved QR code file: ${filename}`);
+      } catch (err) {
+        logger.error('Registration: Failed to save QR code file', err);
+      }
+    }
+  } else if (dealer && qrCodeUrl) {
+    // If it's already a URL, use it as-is
+    processedQrCodeUrl = qrCodeUrl;
+  }
 
   const user = await prisma.user.create({
-    data: { email, passwordHash, isDealer: dealer, pricePerLaborHour: laborHourPrice, logoUrl: logo, qrCodeUrl: qrCode },
+    data: { email, passwordHash, isDealer: dealer, pricePerLaborHour: laborHourPrice, logoUrl: processedLogoUrl, qrCodeUrl: processedQrCodeUrl },
   });
 
   await prisma.otp.deleteMany({ where: { email } });

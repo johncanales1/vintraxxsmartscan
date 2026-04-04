@@ -33,6 +33,17 @@ export const OtpInput: React.FC<OtpInputProps> = ({
   const shakeAnim = useRef(new Animated.Value(0)).current;
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
 
+  // Auto-focus the first input when component mounts
+  useEffect(() => {
+    if (!disabled) {
+      // Small delay to ensure the component is fully rendered
+      const timer = setTimeout(() => {
+        inputRefs.current[0]?.focus();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [disabled]);
+
   // Shake animation on error
   useEffect(() => {
     if (error) {
@@ -135,6 +146,7 @@ export const OtpInput: React.FC<OtpInputProps> = ({
             editable={!disabled}
             selectTextOnFocus
             caretHidden
+            autoFocus={index === 0 && !disabled}
           />
         </View>
       ))}

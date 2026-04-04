@@ -9,6 +9,7 @@ import scanRoutes from './routes/scan.routes';
 import appraisalRoutes from './routes/appraisal.routes';
 import dealerRoutes from './routes/dealer.routes';
 import inspectionRoutes from './routes/inspection.routes';
+import adminRoutes from './routes/admin.routes';
 import logger from './utils/logger';
 
 const app = express();
@@ -31,8 +32,8 @@ app.use(helmet({
 // CORS configuration - must be before routes
 const corsOptions = {
   origin: env.NODE_ENV === 'production' 
-    ? ['https://app.vintraxx.com', 'https://vintraxx.com', 'https://dev.vintraxx.com']
-    : ['https://app.vintraxx.com', 'https://vintraxx.com', 'https://dev.vintraxx.com', 'http://localhost:3000', 'http://localhost:3001', 'capacitor://localhost', 'http://localhost'], 
+    ? ['https://app.vintraxx.com', 'https://vintraxx.com', 'https://dev.vintraxx.com', 'https://admin.vintraxx.com']
+    : ['https://app.vintraxx.com', 'https://vintraxx.com', 'https://dev.vintraxx.com', 'https://admin.vintraxx.com', 'http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002', 'capacitor://localhost', 'http://localhost'], 
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
@@ -64,6 +65,7 @@ app.use('/api/v1/scan', scanRoutes);
 app.use('/api/v1/appraisal', appraisalRoutes);
 app.use('/api/v1/dealer', dealerRoutes);
 app.use('/api/v1/inspection', inspectionRoutes);
+app.use('/api/v1/admin', adminRoutes);
 
 app.use(errorHandler);
 

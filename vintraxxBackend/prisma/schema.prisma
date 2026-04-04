@@ -148,6 +148,14 @@ enum ScanStatus {
   FAILED
 }
 
+model Admin {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 model Inspection {
   id          String   @id @default(uuid())
   userId      String

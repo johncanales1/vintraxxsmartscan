@@ -579,6 +579,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
           {/* Form Card */}
           <Animated.View
+            pointerEvents="auto"
             style={[
               styles.formSection,
               { opacity: fadeAnim, transform: [{ translateX: slideAnim }] },

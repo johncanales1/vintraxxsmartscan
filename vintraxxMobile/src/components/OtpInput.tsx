@@ -7,6 +7,8 @@ import {
   StyleSheet,
   Animated,
   Keyboard,
+  TouchableOpacity,
+  Platform,
 } from 'react-native';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
@@ -34,15 +36,22 @@ export const OtpInput: React.FC<OtpInputProps> = ({
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
 
   // Auto-focus the first input when component mounts
+  // Use longer delay to ensure parent animation completes (150ms fade out + 200ms fade in + buffer)
   useEffect(() => {
     if (!disabled) {
-      // Small delay to ensure the component is fully rendered
       const timer = setTimeout(() => {
         inputRefs.current[0]?.focus();
-      }, 100);
+      }, 400);
       return () => clearTimeout(timer);
     }
   }, [disabled]);
+
+  // Handle tap on box to focus the corresponding input
+  const handleBoxPress = (index: number) => {
+    if (!disabled) {
+      inputRefs.current[index]?.focus();
+    }
+  };
 
   // Shake animation on error
   useEffect(() => {
@@ -121,8 +130,11 @@ export const OtpInput: React.FC<OtpInputProps> = ({
   return (
     <Animated.View style={[styles.container, { transform: [{ translateX: shakeAnim }] }]}>
       {digits.map((digit, index) => (
-        <View
+        <TouchableOpacity
           key={index}
+          activeOpacity={0.8}
+          onPress={() => handleBoxPress(index)}
+          disabled={disabled}
           style={[
             styles.box,
             focusedIndex === index && styles.boxFocused,
@@ -145,10 +157,9 @@ export const OtpInput: React.FC<OtpInputProps> = ({
             maxLength={index === 0 ? length : 1}
             editable={!disabled}
             selectTextOnFocus
-            caretHidden
-            autoFocus={index === 0 && !disabled}
+            caretHidden={Platform.OS === 'ios'}
           />
-        </View>
+        </TouchableOpacity>
       ))}
     </Animated.View>
   );

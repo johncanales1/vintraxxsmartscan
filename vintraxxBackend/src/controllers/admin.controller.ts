@@ -1,0 +1,145 @@
+import { Request, Response, NextFunction } from 'express';
+import * as adminService from '../services/admin.service';
+import logger from '../utils/logger';
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+
+export async function login(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { email, password } = req.body;
+    const result = await adminService.adminLogin(email, password);
+    res.json({ success: true, ...result });
+  } catch (err) { next(err); }
+}
+
+export async function getProfile(req: Request, res: Response, next: NextFunction) {
+  try {
+    const profile = await adminService.getAdminProfile(req.admin!.adminId);
+    res.json({ success: true, admin: profile });
+  } catch (err) { next(err); }
+}
+
+export async function changePassword(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    await adminService.changeAdminPassword(req.admin!.adminId, currentPassword, newPassword);
+    res.json({ success: true, message: 'Password changed successfully' });
+  } catch (err) { next(err); }
+}
+
+export async function sendEmailChangeOtp(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { newEmail } = req.body;
+    await adminService.sendAdminEmailChangeOtp(req.admin!.adminId, newEmail);
+    res.json({ success: true, message: 'OTP sent to new email' });
+  } catch (err) { next(err); }
+}
+
+export async function verifyEmailChange(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { newEmail, otp } = req.body;
+    const result = await adminService.verifyAndChangeAdminEmail(req.admin!.adminId, newEmail, otp);
+    res.json({ success: true, ...result });
+  } catch (err) { next(err); }
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+
+export async function dashboardStats(req: Request, res: Response, next: NextFunction) {
+  try {
+    const stats = await adminService.getDashboardStats();
+    res.json({ success: true, stats });
+  } catch (err) { next(err); }
+}
+
+// ── Users ─────────────────────────────────────────────────────────────────────
+
+export async function listUsers(req: Request, res: Response, next: NextFunction) {
+  try {
+    const type = req.query.type as 'dealer' | 'regular' | undefined;
+    const users = await adminService.getUsers(type);
+    res.json({ success: true, users });
+  } catch (err) { next(err); }
+}
+
+export async function getUserDetail(req: Request, res: Response, next: NextFunction) {
+  try {
+    const user = await adminService.getUserDetail(req.params.id);
+    res.json({ success: true, user });
+  } catch (err) { next(err); }
+}
+
+export async function createUser(req: Request, res: Response, next: NextFunction) {
+  try {
+    const user = await adminService.createUser(req.body);
+    res.status(201).json({ success: true, user });
+  } catch (err) { next(err); }
+}
+
+export async function updateUser(req: Request, res: Response, next: NextFunction) {
+  try {
+    const user = await adminService.updateUser(req.params.id, req.body);
+    res.json({ success: true, user });
+  } catch (err) { next(err); }
+}
+
+export async function deleteUser(req: Request, res: Response, next: NextFunction) {
+  try {
+    await adminService.deleteUser(req.params.id);
+    res.json({ success: true, message: 'User deleted' });
+  } catch (err) { next(err); }
+}
+
+// ── Scans ─────────────────────────────────────────────────────────────────────
+
+export async function listScans(req: Request, res: Response, next: NextFunction) {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const result = await adminService.getScans(page, limit);
+    res.json({ success: true, ...result });
+  } catch (err) { next(err); }
+}
+
+export async function getScanDetail(req: Request, res: Response, next: NextFunction) {
+  try {
+    const scan = await adminService.getScanDetail(req.params.id);
+    res.json({ success: true, scan });
+  } catch (err) { next(err); }
+}
+
+export async function deleteScan(req: Request, res: Response, next: NextFunction) {
+  try {
+    await adminService.deleteScan(req.params.id);
+    res.json({ success: true, message: 'Scan deleted' });
+  } catch (err) { next(err); }
+}
+
+// ── Inspections ───────────────────────────────────────────────────────────────
+
+export async function listInspections(req: Request, res: Response, next: NextFunction) {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const result = await adminService.getInspections(page, limit);
+    res.json({ success: true, ...result });
+  } catch (err) { next(err); }
+}
+
+export async function deleteInspection(req: Request, res: Response, next: NextFunction) {
+  try {
+    await adminService.deleteInspection(req.params.id);
+    res.json({ success: true, message: 'Inspection deleted' });
+  } catch (err) { next(err); }
+}
+
+// ── Backup ────────────────────────────────────────────────────────────────────
+
+export async function backup(req: Request, res: Response, next: NextFunction) {
+  try {
+    const data = await adminService.getFullBackup();
+    res.setHeader('Content-Disposition', `attachment; filename=vintraxx-backup-${new Date().toISOString().split('T')[0]}.json`);
+    res.setHeader('Content-Type', 'application/json');
+    res.json(data);
+  } catch (err) { next(err); }
+}

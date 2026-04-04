@@ -20,6 +20,7 @@ if (!fs.existsSync(QR_CODE_DIR)) {
 export async function dealerLogin(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { email, password } = req.body;
+    logger.info('Dealer login attempt', { email, hasPassword: !!password, passwordLength: password?.length });
     const result = await authService.login(email, password);
 
     if (!result.user.isDealer) {

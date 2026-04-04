@@ -6,6 +6,9 @@
         "dev": "next dev --turbopack",
         "build": "next build",
         "start": "next start",
+        "start:prod": "NODE_ENV=production next start",
+        "build:prod": "next build",
+        "deploy": "npm run build:prod && npm run start:prod",
         "lint": "next lint",
         "type-check": "tsc --noEmit",
         "check": "tsc --noEmit"

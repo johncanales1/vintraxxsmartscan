@@ -6,6 +6,14 @@ import logger from '../utils/logger';
 
 export async function login(req: Request, res: Response, next: NextFunction) {
   try {
+    // Debug logging for CORS troubleshooting
+    logger.info('Admin login attempt', {
+      origin: req.headers.origin,
+      userAgent: req.headers['user-agent'],
+      method: req.method,
+      ip: req.ip
+    });
+    
     const { email, password } = req.body;
     const result = await adminService.adminLogin(email, password);
     res.json({ success: true, ...result });
@@ -64,7 +72,7 @@ export async function listUsers(req: Request, res: Response, next: NextFunction)
 
 export async function getUserDetail(req: Request, res: Response, next: NextFunction) {
   try {
-    const user = await adminService.getUserDetail(req.params.id);
+    const user = await adminService.getUserDetail(req.params.id as string);
     res.json({ success: true, user });
   } catch (err) { next(err); }
 }
@@ -78,14 +86,14 @@ export async function createUser(req: Request, res: Response, next: NextFunction
 
 export async function updateUser(req: Request, res: Response, next: NextFunction) {
   try {
-    const user = await adminService.updateUser(req.params.id, req.body);
+    const user = await adminService.updateUser(req.params.id as string, req.body);
     res.json({ success: true, user });
   } catch (err) { next(err); }
 }
 
 export async function deleteUser(req: Request, res: Response, next: NextFunction) {
   try {
-    await adminService.deleteUser(req.params.id);
+    await adminService.deleteUser(req.params.id as string);
     res.json({ success: true, message: 'User deleted' });
   } catch (err) { next(err); }
 }
@@ -103,14 +111,14 @@ export async function listScans(req: Request, res: Response, next: NextFunction)
 
 export async function getScanDetail(req: Request, res: Response, next: NextFunction) {
   try {
-    const scan = await adminService.getScanDetail(req.params.id);
+    const scan = await adminService.getScanDetail(req.params.id as string);
     res.json({ success: true, scan });
   } catch (err) { next(err); }
 }
 
 export async function deleteScan(req: Request, res: Response, next: NextFunction) {
   try {
-    await adminService.deleteScan(req.params.id);
+    await adminService.deleteScan(req.params.id as string);
     res.json({ success: true, message: 'Scan deleted' });
   } catch (err) { next(err); }
 }
@@ -128,7 +136,7 @@ export async function listInspections(req: Request, res: Response, next: NextFun
 
 export async function deleteInspection(req: Request, res: Response, next: NextFunction) {
   try {
-    await adminService.deleteInspection(req.params.id);
+    await adminService.deleteInspection(req.params.id as string);
     res.json({ success: true, message: 'Inspection deleted' });
   } catch (err) { next(err); }
 }

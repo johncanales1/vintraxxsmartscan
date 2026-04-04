@@ -17,6 +17,18 @@ const app = express();
 // Trust nginx reverse proxy headers for rate limiting
 app.set('trust proxy', 1);
 
+// Request logging middleware for debugging
+app.use((req, res, next) => {
+  logger.info('Incoming request', {
+    method: req.method,
+    url: req.url,
+    origin: req.headers.origin,
+    userAgent: req.headers['user-agent'],
+    ip: req.ip
+  });
+  next();
+});
+
 // Serve static assets BEFORE helmet to avoid CORP blocking
 // Add explicit CORS headers for cross-origin image loading
 app.use('/assets', (_req, res, next) => {
@@ -31,12 +43,41 @@ app.use(helmet({
 
 // CORS configuration - must be before routes
 const corsOptions = {
-  origin: env.NODE_ENV === 'production' 
-    ? ['https://app.vintraxx.com', 'https://vintraxx.com', 'https://dev.vintraxx.com', 'https://admin.vintraxx.com']
-    : ['https://app.vintraxx.com', 'https://vintraxx.com', 'https://dev.vintraxx.com', 'https://admin.vintraxx.com', 'http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002', 'capacitor://localhost', 'http://localhost'], 
+  origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+    // Allow requests with no origin (mobile apps, curl, etc.)
+    if (!origin) return callback(null, true);
+    
+    // List of allowed origins
+    const allowedOrigins = [
+      'https://app.vintraxx.com',
+      'https://vintraxx.com', 
+      'https://dev.vintraxx.com',
+      'https://admin.vintraxx.com',
+      'https://api.vintraxx.com'
+    ];
+    
+    // Add localhost origins for development
+    if (env.NODE_ENV === 'development') {
+      allowedOrigins.push(
+        'http://localhost:3000',
+        'http://localhost:3001', 
+        'http://localhost:3002',
+        'capacitor://localhost',
+        'http://localhost'
+      );
+    }
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
+  exposedHeaders: ['Set-Cookie']
 };
 app.use(cors(corsOptions));
 

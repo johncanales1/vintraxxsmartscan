@@ -70,13 +70,16 @@ export const OtpInput: React.FC<OtpInputProps> = ({
 
   const handleKeyPress = (index: number, key: string) => {
     if (key === 'Backspace') {
-      if (digits[index]) {
-        // Clear current digit
+      if (value.length > index) {
+        // Clear current digit and move focus back
         const newValue = value.slice(0, index) + value.slice(index + 1);
         onChange(newValue);
-      } else if (index > 0) {
-        // Move to previous and clear
-        const newValue = value.slice(0, index - 1) + value.slice(index);
+        if (index > 0) {
+          inputRefs.current[index - 1]?.focus();
+        }
+      } else if (index > 0 && value.length === index) {
+        // Move to previous and clear it
+        const newValue = value.slice(0, index - 1);
         onChange(newValue);
         inputRefs.current[index - 1]?.focus();
       }
@@ -102,20 +105,20 @@ export const OtpInput: React.FC<OtpInputProps> = ({
     }
 
     // Single digit input
-    const newDigits = [...digits];
-    newDigits[index] = digit;
-    const newValue = newDigits.join('').slice(0, length);
-    onChange(newValue);
+    const currentValue = value.padEnd(length, '0');
+    const newValue = currentValue.slice(0, index) + digit + currentValue.slice(index + 1);
+    const trimmedValue = newValue.slice(0, Math.min(index + 1, length));
+    onChange(trimmedValue);
 
     // Auto-advance to next input
-    if (index < length - 1) {
+    if (index < length - 1 && trimmedValue.length > index) {
       inputRefs.current[index + 1]?.focus();
     }
 
     // Check if complete
-    if (newValue.length === length) {
+    if (trimmedValue.length === length) {
       Keyboard.dismiss();
-      onComplete?.(newValue);
+      onComplete?.(trimmedValue);
     }
   };
 
@@ -154,7 +157,7 @@ export const OtpInput: React.FC<OtpInputProps> = ({
             onFocus={() => handleFocus(index)}
             onBlur={handleBlur}
             keyboardType="number-pad"
-            maxLength={index === 0 ? length : 1}
+            maxLength={1}
             editable={!disabled}
             selectTextOnFocus
             caretHidden={Platform.OS === 'ios'}

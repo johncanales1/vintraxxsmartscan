@@ -172,46 +172,13 @@ export async function generatePdf(report: FullReportData): Promise<string> {
       const logoY = y + (logoHeaderH - logoH) / 2;
       const vintraxxLogoPath = path.resolve(__dirname, '../assets/VinTraxxLOGO.jpeg');
 
-      // For OBD scan reports: Dealer QR code on left, Dealer logo on right
-      // If no dealer QR code, fall back to VinTraxx logo on left
-      let leftLogoLoaded = false;
-
-      // Try to load dealer QR code on the left
-      if (report.dealerQrCodeUrl) {
-        try {
-          if (report.dealerQrCodeUrl.startsWith('data:image/')) {
-            // Base64 image
-            const base64Match = report.dealerQrCodeUrl.match(/^data:image\/\w+;base64,(.+)$/);
-            if (base64Match) {
-              const imgBuffer = Buffer.from(base64Match[1], 'base64');
-              doc.image(imgBuffer, leftMargin + 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
-              leftLogoLoaded = true;
-            }
-          } else if (report.dealerQrCodeUrl.includes('/dealer-qrcodes/')) {
-            // File path - extract filename and load from disk
-            const filename = report.dealerQrCodeUrl.split('/dealer-qrcodes/').pop();
-            if (filename) {
-              const qrCodePath = path.resolve(__dirname, '../assets/dealer-qrcodes', filename);
-              if (fs.existsSync(qrCodePath)) {
-                doc.image(qrCodePath, leftMargin + 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
-                leftLogoLoaded = true;
-              }
-            }
-          }
-        } catch (qrErr) {
-          logger.warn('Failed to load dealer QR code for scan PDF', { error: (qrErr as Error).message });
+      // VinTraxx logo on the left
+      try {
+        if (fs.existsSync(vintraxxLogoPath)) {
+          doc.image(vintraxxLogoPath, leftMargin + 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
         }
-      }
-
-      // Fall back to VinTraxx logo on left if no dealer QR code
-      if (!leftLogoLoaded) {
-        try {
-          if (fs.existsSync(vintraxxLogoPath)) {
-            doc.image(vintraxxLogoPath, leftMargin + 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
-          }
-        } catch (logoErr) {
-          logger.warn('Failed to load VinTraxx logo for scan PDF', { error: (logoErr as Error).message });
-        }
+      } catch (logoErr) {
+        logger.warn('Failed to load VinTraxx logo for scan PDF', { error: (logoErr as Error).message });
       }
 
       // Load dealer logo on the right (or fall back to Motors logo)
@@ -219,7 +186,6 @@ export async function generatePdf(report: FullReportData): Promise<string> {
       if (report.dealerLogoUrl) {
         try {
           if (report.dealerLogoUrl.startsWith('data:image/')) {
-            // Base64 image
             const base64Match = report.dealerLogoUrl.match(/^data:image\/\w+;base64,(.+)$/);
             if (base64Match) {
               const imgBuffer = Buffer.from(base64Match[1], 'base64');
@@ -227,10 +193,9 @@ export async function generatePdf(report: FullReportData): Promise<string> {
               rightLogoLoaded = true;
             }
           } else if (report.dealerLogoUrl.includes('/dealer-logos/')) {
-            // File path - extract filename and load from disk
-            const filename = report.dealerLogoUrl.split('/dealer-logos/').pop();
-            if (filename) {
-              const logoPath = path.resolve(__dirname, '../assets/dealer-logos', filename);
+            const dlFilename = report.dealerLogoUrl.split('/dealer-logos/').pop();
+            if (dlFilename) {
+              const logoPath = path.resolve(__dirname, '../assets/dealer-logos', dlFilename);
               if (fs.existsSync(logoPath)) {
                 doc.image(logoPath, leftMargin + pageWidth - logoW - 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
                 rightLogoLoaded = true;
@@ -303,32 +268,31 @@ export async function generatePdf(report: FullReportData): Promise<string> {
       doc.strokeColor(C.darkGray).lineWidth(2).moveTo(leftMargin, y).lineTo(leftMargin + pageWidth, y).stroke();
       y += 10;
 
-      // Cost box on left
-      const costBoxW = 140;
-      const costBoxH = 60;
+      // Cost summary box (full width)
+      const costBoxH = 44;
       doc.save();
-      doc.strokeColor(C.tableBorder).lineWidth(1).rect(leftMargin, y, costBoxW, costBoxH).stroke();
-      doc.fontSize(8).font('Helvetica').fillColor(C.medGray)
-        .text('Reconditioning Cost', leftMargin, y + 8, { width: costBoxW, align: 'center' });
+      doc.rect(leftMargin, y, pageWidth, costBoxH).fill('#F8F8F8');
+      doc.strokeColor(C.tableBorder).lineWidth(1).rect(leftMargin, y, pageWidth, costBoxH).stroke();
+      doc.fontSize(9).font('Helvetica').fillColor(C.medGray)
+        .text('Estimated Reconditioning Cost', leftMargin + 14, y + 8, { width: 200 });
       doc.fontSize(22).font('Helvetica-Bold').fillColor(C.black)
-        .text(fmtCurrency(report.totalEstimatedRepairCost), leftMargin, y + 24, { width: costBoxW, align: 'center' });
+        .text(fmtCurrency(report.totalEstimatedRepairCost), leftMargin + 14, y + 20, { width: 200 });
       doc.restore();
+      y += costBoxH + 10;
 
-      // Repairs table on right
-      const tableX = leftMargin + costBoxW + 16;
-      const tableW = pageWidth - costBoxW - 16;
+      // Repairs table (full width)
       const repairHeaders = [
-        { label: 'Repairs', width: tableW - 140 },
+        { label: 'Repairs', width: pageWidth - 140 },
         { label: 'Parts', width: 70, align: 'right' },
         { label: 'Labor', width: 70, align: 'right' },
       ];
       const repairRows = report.repairRecommendations.map(r => [
-        r.description.length > 60 ? r.description.substring(0, 57) + '...' : r.description,
+        r.description.length > 70 ? r.description.substring(0, 67) + '...' : r.description,
         fmtCurrency(r.estimatedCost.parts),
         fmtCurrency(r.estimatedCost.labor),
       ]);
-      const tableEndY = drawTable(doc, tableX, y, tableW, repairHeaders, repairRows, 'No repairs needed');
-      y = Math.max(y + costBoxH, tableEndY) + 20;
+      const tableEndY = drawTable(doc, leftMargin, y, pageWidth, repairHeaders, repairRows, 'No repairs needed');
+      y = tableEndY + 20;
 
       // ============ DIAGNOSTIC TROUBLE CODES ============
       if (y + 60 > doc.page.height - 60) { doc.addPage(); y = 50; }
@@ -402,12 +366,70 @@ export async function generatePdf(report: FullReportData): Promise<string> {
           .text(`Additional Repairs Total: ${fmtCurrency(report.additionalRepairsTotalCost || 0)}`, leftMargin, y, { width: pageWidth, align: 'right' });
         y += 20;
 
-        // Grand total
+        // Grand total box
         if (report.grandTotalCost !== undefined) {
-          doc.fontSize(13).font('Helvetica-Bold').fillColor(C.black)
-            .text(`Grand Total (DTC Repairs + Additional): ${fmtCurrency(report.grandTotalCost)}`, leftMargin, y, { width: pageWidth, align: 'right' });
-          y += 20;
+          const grandTotalBoxH = 40;
+          doc.save();
+          doc.rect(leftMargin, y, pageWidth, grandTotalBoxH).fill('#1a1a2e');
+          doc.fontSize(14).font('Helvetica-Bold').fillColor('#FFFFFF')
+            .text(`Grand Total: ${fmtCurrency(report.grandTotalCost)}`, leftMargin + 14, y + 12, { width: pageWidth - 28, align: 'center' });
+          doc.restore();
+          y += grandTotalBoxH + 10;
         }
+      }
+
+      // ============ QR CODE & MARKETING CTA ============
+      if (report.dealerQrCodeUrl) {
+        // Ensure enough space for QR code section (QR 100px + text ~50px + padding)
+        if (y + 180 > doc.page.height - 60) { doc.addPage(); y = 50; }
+
+        const qrSize = 100;
+        const ctaSectionH = 160;
+        const ctaBoxY = y;
+
+        // Light background box for the CTA section
+        doc.save();
+        doc.rect(leftMargin, ctaBoxY, pageWidth, ctaSectionH).fill('#F0F4FF');
+        doc.strokeColor(C.blue).lineWidth(1.5).rect(leftMargin, ctaBoxY, pageWidth, ctaSectionH).stroke();
+        doc.restore();
+
+        // QR code centered
+        const qrX = leftMargin + (pageWidth - qrSize) / 2;
+        const qrY = ctaBoxY + 12;
+        let qrLoaded = false;
+
+        try {
+          if (report.dealerQrCodeUrl.startsWith('data:image/')) {
+            const base64Match = report.dealerQrCodeUrl.match(/^data:image\/\w+;base64,(.+)$/);
+            if (base64Match) {
+              const imgBuffer = Buffer.from(base64Match[1], 'base64');
+              doc.image(imgBuffer, qrX, qrY, { width: qrSize, height: qrSize, fit: [qrSize, qrSize] });
+              qrLoaded = true;
+            }
+          } else if (report.dealerQrCodeUrl.includes('/dealer-qrcodes/')) {
+            const qrFilename = report.dealerQrCodeUrl.split('/dealer-qrcodes/').pop();
+            if (qrFilename) {
+              const qrCodePath = path.resolve(__dirname, '../assets/dealer-qrcodes', qrFilename);
+              if (fs.existsSync(qrCodePath)) {
+                doc.image(qrCodePath, qrX, qrY, { width: qrSize, height: qrSize, fit: [qrSize, qrSize] });
+                qrLoaded = true;
+              }
+            }
+          }
+        } catch (qrErr) {
+          logger.warn('Failed to load dealer QR code for CTA section', { error: (qrErr as Error).message });
+        }
+
+        if (qrLoaded) {
+          // Marketing text below QR code
+          const textY = qrY + qrSize + 8;
+          doc.fontSize(12).font('Helvetica-Bold').fillColor('#1a1a2e')
+            .text('Scan Here for Instant Repair Approval', leftMargin + 14, textY, { width: pageWidth - 28, align: 'center' });
+          doc.fontSize(9).font('Helvetica').fillColor(C.gray)
+            .text('Get a fast, hassle-free approval for all recommended repairs. Scan the QR code above to get started.', leftMargin + 14, textY + 18, { width: pageWidth - 28, align: 'center' });
+        }
+
+        y += ctaSectionH + 10;
       }
       y += 10;
 
@@ -415,10 +437,11 @@ export async function generatePdf(report: FullReportData): Promise<string> {
       if (y + 30 > doc.page.height - 36) { doc.addPage(); y = doc.page.height - 70; }
       doc.strokeColor(C.border).lineWidth(0.5).moveTo(leftMargin, y).lineTo(leftMargin + pageWidth, y).stroke();
       y += 8;
+      const footerColW = Math.floor(pageWidth / 3);
       doc.fontSize(8).font('Helvetica').fillColor(C.lightGray);
-      doc.text(`User: ${report.reportMetadata.userEmail}`, leftMargin, y, { width: pageWidth / 3, align: 'left' });
-      doc.text(`${report.reportMetadata.reportId} v:${report.reportMetadata.reportVersion}`, leftMargin + pageWidth / 3, y, { width: pageWidth / 3, align: 'center' });
-      doc.text(`Date: ${generatedDate}`, leftMargin + (pageWidth / 3) * 2, y, { width: pageWidth / 3, align: 'right' });
+      doc.text(`User: ${report.reportMetadata.userEmail}`, leftMargin, y, { width: footerColW, align: 'left' });
+      doc.text(`${report.reportMetadata.reportId} v:${report.reportMetadata.reportVersion}`, leftMargin + footerColW, y, { width: footerColW, align: 'center' });
+      doc.text(`Date: ${generatedDate}`, leftMargin + footerColW * 2, y, { width: footerColW, align: 'right' });
 
       doc.end();
 

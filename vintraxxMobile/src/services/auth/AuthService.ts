@@ -491,6 +491,7 @@ class AuthService {
     try {
 
       logger.info(LogCategory.APP, `Checking email: ${email}`);
+      debugLogger.logEvent('Auth: check-email started', { email });
 
       const data = await this.apiCall<CheckEmailResponse>(AUTH_ENDPOINTS.CHECK_EMAIL, { email });
 
@@ -499,6 +500,7 @@ class AuthService {
       if (data.success) {
 
         logger.info(LogCategory.APP, `Email check: isRegistered=${data.isRegistered}`);
+        debugLogger.logEvent('Auth: check-email result', { email, isRegistered: data.isRegistered });
 
         return { success: true, isRegistered: data.isRegistered };
 
@@ -511,11 +513,13 @@ class AuthService {
         (Array.isArray(anyData?.details) ? anyData.details.join(', ') : '') ||
         'Failed to check email.';
 
+      debugLogger.logEvent('Auth: check-email failed', { email, message });
       return { success: false, isRegistered: false, message };
 
     } catch (error) {
 
       logger.error(LogCategory.APP, 'Check email error', error);
+      debugLogger.logEvent('Auth: check-email exception', { email, error: error instanceof Error ? error.message : 'Unknown' });
 
       const message = error instanceof Error ? error.message : 'Unknown error';
       return { success: false, isRegistered: false, message };
@@ -536,7 +540,9 @@ class AuthService {
 
     try {
 
+      const startMs = Date.now();
       logger.info(LogCategory.APP, `Sending OTP to: ${email}`);
+      debugLogger.logEvent('Auth: send-otp started', { email });
 
       const data = await this.apiCall<SendOtpResponse>(AUTH_ENDPOINTS.SEND_OTP, { email });
 
@@ -544,7 +550,9 @@ class AuthService {
 
       if (data.success) {
 
-        logger.info(LogCategory.APP, 'OTP sent successfully');
+        const durationMs = Date.now() - startMs;
+        logger.info(LogCategory.APP, `OTP sent successfully (${durationMs}ms)`);
+        debugLogger.logEvent('Auth: send-otp success', { email, durationMs, serverMessage: data.message });
 
         return { success: true, message: data.message || 'Verification code sent to your email.' };
 
@@ -557,11 +565,13 @@ class AuthService {
         (Array.isArray(anyData?.details) ? anyData.details.join(', ') : '') ||
         'Failed to send verification code.';
 
+      debugLogger.logEvent('Auth: send-otp failed', { email, message, durationMs: Date.now() - startMs });
       return { success: false, message };
 
     } catch (error) {
 
       logger.error(LogCategory.APP, 'Send OTP error', error);
+      debugLogger.logEvent('Auth: send-otp exception', { email, error: error instanceof Error ? error.message : 'Unknown' });
 
       const message = error instanceof Error ? error.message : 'Unknown error';
       return { success: false, message };
@@ -582,7 +592,9 @@ class AuthService {
 
     try {
 
+      const startMs = Date.now();
       logger.info(LogCategory.APP, `Verifying OTP for: ${email}`);
+      debugLogger.logEvent('Auth: verify-otp started', { email, otpLength: otp.length });
 
       const data = await this.apiCall<VerifyOtpResponse>(AUTH_ENDPOINTS.VERIFY_OTP, { email, otp });
 
@@ -590,7 +602,9 @@ class AuthService {
 
       if (data.success) {
 
-        logger.info(LogCategory.APP, 'OTP verified successfully');
+        const durationMs = Date.now() - startMs;
+        logger.info(LogCategory.APP, `OTP verified successfully (${durationMs}ms)`);
+        debugLogger.logEvent('Auth: verify-otp success', { email, durationMs });
 
         return { success: true, message: data.message || 'Email verified successfully.' };
 
@@ -603,11 +617,13 @@ class AuthService {
         (Array.isArray(anyData?.details) ? anyData.details.join(', ') : '') ||
         'Invalid or expired verification code.';
 
+      debugLogger.logEvent('Auth: verify-otp failed', { email, message, durationMs: Date.now() - startMs });
       return { success: false, message };
 
     } catch (error) {
 
       logger.error(LogCategory.APP, 'Verify OTP error', error);
+      debugLogger.logEvent('Auth: verify-otp exception', { email, error: error instanceof Error ? error.message : 'Unknown' });
 
       const message = error instanceof Error ? error.message : 'Unknown error';
       return { success: false, message };

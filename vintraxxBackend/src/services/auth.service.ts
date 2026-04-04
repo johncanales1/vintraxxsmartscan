@@ -15,21 +15,30 @@ export async function checkEmail(email: string): Promise<boolean> {
 }
 
 export async function sendOtp(email: string): Promise<void> {
+  const startMs = Date.now();
   const code = generateOtpCode(APP_CONSTANTS.OTP_LENGTH);
   const expiresAt = new Date(Date.now() + APP_CONSTANTS.OTP_TTL_MINUTES * 60 * 1000);
 
-  await prisma.otp.deleteMany({ where: { email } });
+  const deleted = await prisma.otp.deleteMany({ where: { email } });
+  logger.info('OTP: cleared previous codes', { email, deletedCount: deleted.count });
 
-  await prisma.otp.create({
+  const otpRecord = await prisma.otp.create({
     data: { email, code, expiresAt },
   });
+  logger.info('OTP: code created in DB', { email, otpId: otpRecord.id, expiresAt: expiresAt.toISOString() });
 
   try {
     if (env.NODE_ENV !== 'test') {
       const { sendOtpEmail } = await import('./email.service');
       await sendOtpEmail(email, code);
+      logger.info('OTP: email dispatch completed', { email, durationMs: Date.now() - startMs });
     }
   } catch (error) {
+    logger.error('OTP: email dispatch failed, rolling back DB record', {
+      email,
+      error: (error as Error).message,
+      durationMs: Date.now() - startMs,
+    });
     await prisma.otp.deleteMany({ where: { email, code } });
     throw new AppError('Failed to send verification code. Please try again later.', 502);
   }

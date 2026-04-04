@@ -660,6 +660,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
                   Enter the 6-digit code sent to
                 </Text>
                 <Text style={styles.emailHighlight}>{email}</Text>
+                <Text style={styles.spamHint}>
+                  Check your spam or junk folder if you don't see it within a minute.
+                </Text>
 
                 <View style={styles.otpContainer}>
                   <OtpInput
@@ -1080,7 +1083,14 @@ const styles = StyleSheet.create({
     ...typography.styles.body,
     color: colors.primary.navy,
     fontWeight: typography.fontWeight.semiBold,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.xs,
+  },
+  spamHint: {
+    fontSize: 12,
+    color: colors.text.muted,
+    textAlign: 'center' as const,
+    marginBottom: spacing.md,
+    lineHeight: 16,
   },
   inputContainer: {
     marginBottom: spacing.md,

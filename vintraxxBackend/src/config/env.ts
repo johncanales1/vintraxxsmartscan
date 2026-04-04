@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import dotenv from 'dotenv';
 
-dotenv.config();
+// Load .env file but don't override existing environment variables
+dotenv.config({ override: false });
 
 const optionalNonEmptyString = z.preprocess(
   value => (typeof value === 'string' && value.trim() === '' ? undefined : value),

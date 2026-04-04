@@ -121,17 +121,21 @@ export async function register(
 }
 
 export async function login(email: string, password: string, isDealer?: boolean, pricePerLaborHour?: number): Promise<{ user: { id: string; email: string; isDealer: boolean; pricePerLaborHour: number | null; logoUrl: string | null; originalLogoUrl: string | null; qrCodeUrl: string | null }; token: string }> {
+  logger.info('User login attempt', { email, hasPassword: !!password });
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
+    logger.warn('User login failed: email not found', { email });
     throw new AppError('Invalid email or password', 401);
   }
 
   if (!user.passwordHash) {
+    logger.warn('User login failed: no password hash (OAuth account)', { email });
     throw new AppError('This account uses social login. Please sign in with Google or Microsoft.', 401);
   }
 
   const passwordValid = await bcrypt.compare(password, user.passwordHash);
   if (!passwordValid) {
+    logger.warn('User login failed: wrong password', { email });
     throw new AppError('Invalid email or password', 401);
   }
 

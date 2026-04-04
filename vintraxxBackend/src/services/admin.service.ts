@@ -15,11 +15,18 @@ function generateAdminToken(payload: AdminJwtPayload): string {
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 export async function adminLogin(email: string, password: string) {
+  logger.info('Admin login attempt', { email, hasPassword: !!password });
   const admin = await prisma.admin.findUnique({ where: { email } });
-  if (!admin) throw new AppError('Invalid email or password', 401);
+  if (!admin) {
+    logger.warn('Admin login failed: email not found', { email });
+    throw new AppError('Invalid email or password', 401);
+  }
 
   const valid = await bcrypt.compare(password, admin.passwordHash);
-  if (!valid) throw new AppError('Invalid email or password', 401);
+  if (!valid) {
+    logger.warn('Admin login failed: wrong password', { email });
+    throw new AppError('Invalid email or password', 401);
+  }
 
   const token = generateAdminToken({ adminId: admin.id, email: admin.email, role: 'admin' });
   logger.info(`Admin logged in: ${admin.email}`);

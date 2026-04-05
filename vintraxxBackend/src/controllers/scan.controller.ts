@@ -12,8 +12,8 @@ import logger from '../utils/logger';
 import prisma from '../config/db';
 import fs from 'fs';
 
-const REGULAR_USER_MAX_SCANNER_DEVICES = 2;
-const REGULAR_USER_MAX_VINS = 5;
+const DEFAULT_MAX_SCANNER_DEVICES = 2;
+const DEFAULT_MAX_VINS = 5;
 const DEFAULT_LABOR_RATE = 199;
 
 export async function submitScan(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -38,11 +38,12 @@ export async function submitScan(req: Request, res: Response, next: NextFunction
         });
         if (!existingDevice) {
           const deviceCount = await prisma.userScannerDevice.count({ where: { userId } });
-          if (deviceCount >= REGULAR_USER_MAX_SCANNER_DEVICES) {
-            logger.warn('Regular user exceeded scanner device limit', { userId, deviceCount });
+          const maxDevices = user.maxScannerDevices ?? DEFAULT_MAX_SCANNER_DEVICES;
+          if (deviceCount >= maxDevices) {
+            logger.warn('Regular user exceeded scanner device limit', { userId, deviceCount, maxDevices });
             res.status(403).json({
               success: false,
-              error: `Regular users are limited to ${REGULAR_USER_MAX_SCANNER_DEVICES} scanner devices. Upgrade to Dealer for unlimited access.`,
+              error: `Regular users are limited to ${maxDevices} scanner devices. Upgrade to Dealer for unlimited access.`,
             });
             return;
           }
@@ -63,11 +64,12 @@ export async function submitScan(req: Request, res: Response, next: NextFunction
       });
       if (!existingVin) {
         const vinCount = await prisma.userVinUsage.count({ where: { userId } });
-        if (vinCount >= REGULAR_USER_MAX_VINS) {
-          logger.warn('Regular user exceeded VIN limit', { userId, vinCount });
+        const maxVins = user.maxVins ?? DEFAULT_MAX_VINS;
+        if (vinCount >= maxVins) {
+          logger.warn('Regular user exceeded VIN limit', { userId, vinCount, maxVins });
           res.status(403).json({
             success: false,
-            error: `Regular users are limited to ${REGULAR_USER_MAX_VINS} different vehicles. Upgrade to Dealer for unlimited access.`,
+            error: `Regular users are limited to ${maxVins} different vehicles. Upgrade to Dealer for unlimited access.`,
           });
           return;
         }

@@ -35,6 +35,13 @@ router.delete('/scans/:id', adminCtrl.deleteScan);
 router.get('/inspections', adminCtrl.listInspections);
 router.delete('/inspections/:id', adminCtrl.deleteInspection);
 
+// Appraisals
+router.get('/appraisals', adminCtrl.listAppraisals);
+router.delete('/appraisals/:id', adminCtrl.deleteAppraisal);
+
+// Verify Password
+router.post('/verify-password', adminCtrl.verifyPassword);
+
 // Backup
 router.get('/backup', adminCtrl.backup);
 

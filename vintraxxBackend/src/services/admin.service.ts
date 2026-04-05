@@ -1,5 +1,7 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import fs from 'fs';
+import path from 'path';
 import { env } from '../config/env';
 import { APP_CONSTANTS } from '../config/constants';
 import { AppError } from '../middleware/errorHandler';
@@ -7,6 +9,23 @@ import { AdminJwtPayload } from '../middleware/adminAuth';
 import { generateOtpCode } from '../utils/helpers';
 import prisma from '../config/db';
 import logger from '../utils/logger';
+
+const LOGO_DIR = path.join(__dirname, '../assets/dealer-logos');
+const QR_CODE_DIR = path.join(__dirname, '../assets/dealer-qrcodes');
+if (!fs.existsSync(LOGO_DIR)) fs.mkdirSync(LOGO_DIR, { recursive: true });
+if (!fs.existsSync(QR_CODE_DIR)) fs.mkdirSync(QR_CODE_DIR, { recursive: true });
+
+function processBase64Image(base64: string, dir: string, prefix: string): string | null {
+  const matches = base64.match(/^data:image\/(\w+);base64,(.+)$/);
+  if (!matches) return null;
+  const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+  const filename = `${prefix}-${Date.now()}.${ext}`;
+  const filePath = path.join(dir, filename);
+  fs.writeFileSync(filePath, Buffer.from(matches[2], 'base64'));
+  const apiBase = env.NODE_ENV === 'production' ? 'https://api.vintraxx.com' : 'http://localhost:3000';
+  const subdir = dir.includes('dealer-qrcodes') ? 'dealer-qrcodes' : 'dealer-logos';
+  return `${apiBase}/assets/${subdir}/${filename}`;
+}
 
 function generateAdminToken(payload: AdminJwtPayload): string {
   return jwt.sign(payload, env.JWT_SECRET, { expiresIn: '24h' } as jwt.SignOptions);
@@ -86,6 +105,14 @@ export async function verifyAndChangeAdminEmail(adminId: string, newEmail: strin
   return { admin: { id: admin.id, email: admin.email }, token };
 }
 
+export async function verifyAdminPassword(adminId: string, password: string) {
+  const admin = await prisma.admin.findUnique({ where: { id: adminId } });
+  if (!admin) throw new AppError('Admin not found', 404);
+  const valid = await bcrypt.compare(password, admin.passwordHash);
+  if (!valid) throw new AppError('Invalid password', 401);
+  return true;
+}
+
 // ── Users CRUD ────────────────────────────────────────────────────────────────
 
 export async function getUsers(type?: 'dealer' | 'regular') {
@@ -127,14 +154,30 @@ export async function createUser(data: {
   if (existing) throw new AppError('Email already exists', 409);
 
   const passwordHash = await bcrypt.hash(data.password, APP_CONSTANTS.BCRYPT_SALT_ROUNDS);
+
+  let processedLogoUrl: string | null = null;
+  let processedQrCodeUrl: string | null = null;
+
+  if (data.logoUrl && data.logoUrl.startsWith('data:image/')) {
+    processedLogoUrl = processBase64Image(data.logoUrl, LOGO_DIR, `admin-${Date.now()}`);
+  } else if (data.logoUrl) {
+    processedLogoUrl = data.logoUrl;
+  }
+
+  if (data.qrCodeUrl && data.qrCodeUrl.startsWith('data:image/')) {
+    processedQrCodeUrl = processBase64Image(data.qrCodeUrl, QR_CODE_DIR, `admin-qr-${Date.now()}`);
+  } else if (data.qrCodeUrl) {
+    processedQrCodeUrl = data.qrCodeUrl;
+  }
+
   return prisma.user.create({
     data: {
       email: data.email,
       passwordHash,
       isDealer: data.isDealer ?? false,
       pricePerLaborHour: data.pricePerLaborHour,
-      logoUrl: data.logoUrl,
-      qrCodeUrl: data.qrCodeUrl,
+      logoUrl: processedLogoUrl,
+      qrCodeUrl: processedQrCodeUrl,
     },
   });
 }
@@ -145,6 +188,8 @@ export async function updateUser(userId: string, data: {
   pricePerLaborHour?: number | null;
   logoUrl?: string | null;
   qrCodeUrl?: string | null;
+  maxScannerDevices?: number | null;
+  maxVins?: number | null;
 }) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new AppError('User not found', 404);
@@ -240,6 +285,24 @@ export async function getDashboardStats() {
     }),
   ]);
   return { totalUsers, totalDealers, totalRegular, totalScans, totalReports, totalInspections, recentScans };
+}
+
+// ── Appraisals ───────────────────────────────────────────────────────────────
+
+export async function getAppraisals(page = 1, limit = 50) {
+  const skip = (page - 1) * limit;
+  const [appraisals, total] = await Promise.all([
+    prisma.appraisal.findMany({ skip, take: limit, orderBy: { createdAt: 'desc' } }),
+    prisma.appraisal.count(),
+  ]);
+  return { appraisals, total, page, limit, totalPages: Math.ceil(total / limit) };
+}
+
+export async function deleteAppraisal(id: string) {
+  const appraisal = await prisma.appraisal.findUnique({ where: { id } });
+  if (!appraisal) throw new AppError('Appraisal not found', 404);
+  await prisma.appraisal.delete({ where: { id } });
+  logger.info(`Admin deleted appraisal: ${id}`);
 }
 
 // ── Backup ────────────────────────────────────────────────────────────────────

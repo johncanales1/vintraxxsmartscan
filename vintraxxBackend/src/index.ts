@@ -37,6 +37,13 @@ app.use('/assets', (_req, res, next) => {
   next();
 }, express.static(path.join(__dirname, 'assets')));
 
+// Serve PDF reports with CORS headers
+app.use('/reports', (_req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(path.join(__dirname, '../reports')));
+
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' }
 }));

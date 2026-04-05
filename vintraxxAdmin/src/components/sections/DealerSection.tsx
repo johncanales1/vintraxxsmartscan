@@ -5,6 +5,7 @@ import { api, User, UserDetail } from '@/lib/api';
 import { StatusBadge } from '@/components/Dashboard';
 import UserDetailModal from '@/components/modals/UserDetailModal';
 import CreateUserModal from '@/components/modals/CreateUserModal';
+import ConfirmDeleteModal from '@/components/modals/ConfirmDeleteModal';
 import {
   Search, Plus, Trash2, Eye, Edit2, UserCheck, Smartphone, Car, Mail, Calendar, DollarSign, RefreshCw
 } from 'lucide-react';
@@ -19,6 +20,7 @@ export default function DealerSection() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; email: string } | null>(null);
 
   useEffect(() => { loadDealers(); }, []);
 
@@ -46,11 +48,12 @@ export default function DealerSection() {
     finally { setDetailLoading(false); }
   };
 
-  const handleDelete = async (id: string, email: string) => {
-    if (!confirm(`Delete dealer "${email}" and all their data? This cannot be undone.`)) return;
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
     try {
-      await api.deleteUser(id);
+      await api.deleteUser(deleteTarget.id);
       toast.success('Dealer deleted');
+      setDeleteTarget(null);
       loadDealers();
     } catch { toast.error('Failed to delete dealer'); }
   };
@@ -116,7 +119,7 @@ export default function DealerSection() {
                   <button onClick={() => openDetail(dealer.id)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-blue-500 transition-all">
                     <Eye size={16} />
                   </button>
-                  <button onClick={() => handleDelete(dealer.id, dealer.email)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-red-500 transition-all">
+                  <button onClick={() => setDeleteTarget({ id: dealer.id, email: dealer.email })} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-red-500 transition-all">
                     <Trash2 size={16} />
                   </button>
                 </div>
@@ -166,6 +169,15 @@ export default function DealerSection() {
           isDealer={true}
           onClose={() => setShowCreateModal(false)}
           onCreated={loadDealers}
+        />
+      )}
+
+      {deleteTarget && (
+        <ConfirmDeleteModal
+          title="Delete Dealer"
+          message={`Delete dealer "${deleteTarget.email}" and all their data (scans, reports, devices)?`}
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
         />
       )}
     </div>

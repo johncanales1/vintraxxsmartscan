@@ -1,6 +1,6 @@
 cd /home/ec2-user/vintraxxsmartscan/vintraxxBackend : port 3001
 npm run build
-pm2 start dist/index.js --name "vintraxx-backend" --env production
+pm2 start ecosystem.config.js --only vintraxx-backend
 
 
 cd /home/ec2-user/vintraxxsmartscan/vintraxxFrontend : port 3000

@@ -1,11 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { api, UserDetail } from '@/lib/api';
+import { api, UserDetail, normalizePdfUrl } from '@/lib/api';
 import { StatusBadge } from '@/components/Dashboard';
+import ConfirmDeleteModal from '@/components/modals/ConfirmDeleteModal';
+import ScanActivityChart from '@/components/charts/ScanActivityChart';
 import {
   X, Mail, Calendar, Smartphone, Car, DollarSign, Globe, Edit2, Save, Trash2,
-  FileText, ExternalLink, Hash, AlertCircle, CheckCircle
+  FileText, ExternalLink, Hash, AlertCircle, CheckCircle, Image
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -22,8 +24,11 @@ export default function UserDetailModal({ user, loading, onClose, onRefresh }: P
     email: '',
     isDealer: false,
     pricePerLaborHour: '',
+    maxScannerDevices: '',
+    maxVins: '',
   });
   const [saving, setSaving] = useState(false);
+  const [scanDeleteTarget, setScanDeleteTarget] = useState<{ id: string; vin: string } | null>(null);
 
   const startEdit = () => {
     if (!user) return;
@@ -31,6 +36,8 @@ export default function UserDetailModal({ user, loading, onClose, onRefresh }: P
       email: user.email,
       isDealer: user.isDealer,
       pricePerLaborHour: user.pricePerLaborHour?.toString() || '',
+      maxScannerDevices: (user.maxScannerDevices ?? 2).toString(),
+      maxVins: (user.maxVins ?? 5).toString(),
     });
     setEditing(true);
   };
@@ -43,6 +50,8 @@ export default function UserDetailModal({ user, loading, onClose, onRefresh }: P
         email: editData.email,
         isDealer: editData.isDealer,
         pricePerLaborHour: editData.pricePerLaborHour ? parseFloat(editData.pricePerLaborHour) : undefined,
+        maxScannerDevices: editData.maxScannerDevices ? parseInt(editData.maxScannerDevices) : null,
+        maxVins: editData.maxVins ? parseInt(editData.maxVins) : null,
       });
       toast.success('User updated');
       setEditing(false);
@@ -55,11 +64,12 @@ export default function UserDetailModal({ user, loading, onClose, onRefresh }: P
     }
   };
 
-  const handleDeleteScan = async (scanId: string, vin: string) => {
-    if (!confirm(`Delete scan for VIN "${vin}"?`)) return;
+  const handleDeleteScan = async () => {
+    if (!scanDeleteTarget) return;
     try {
-      await api.deleteScan(scanId);
+      await api.deleteScan(scanDeleteTarget.id);
       toast.success('Scan deleted');
+      setScanDeleteTarget(null);
       onRefresh();
       onClose();
     } catch {
@@ -99,6 +109,34 @@ export default function UserDetailModal({ user, loading, onClose, onRefresh }: P
             <p className="text-gray-500 text-center py-8">User not found</p>
           ) : (
             <div className="space-y-6">
+              {/* Logo & QR Code */}
+              {!editing && (user.logoUrl || user.qrCodeUrl) && (
+                <div className="flex flex-wrap gap-4">
+                  {user.logoUrl && (
+                    <div className="flex flex-col items-center gap-1.5">
+                      <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Logo</p>
+                      <img
+                        src={user.logoUrl}
+                        alt="Dealer Logo"
+                        className="w-24 h-24 object-contain rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700/50 p-1"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                      />
+                    </div>
+                  )}
+                  {user.qrCodeUrl && (
+                    <div className="flex flex-col items-center gap-1.5">
+                      <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">QR Code</p>
+                      <img
+                        src={user.qrCodeUrl}
+                        alt="QR Code"
+                        className="w-24 h-24 object-contain rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700/50 p-1"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Profile */}
               {editing ? (
                 <div className="space-y-4">
@@ -134,6 +172,32 @@ export default function UserDetailModal({ user, loading, onClose, onRefresh }: P
                       />
                     </div>
                   )}
+                  {!editData.isDealer && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Max Scanner Devices</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={editData.maxScannerDevices}
+                          onChange={(e) => setEditData({ ...editData, maxScannerDevices: e.target.value })}
+                          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="2"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Max VINs</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={editData.maxVins}
+                          onChange={(e) => setEditData({ ...editData, maxVins: e.target.value })}
+                          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="5"
+                        />
+                      </div>
+                    </div>
+                  )}
                   <div className="flex gap-3">
                     <button onClick={() => setEditing(false)} className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
                       Cancel
@@ -157,7 +221,18 @@ export default function UserDetailModal({ user, loading, onClose, onRefresh }: P
                     valueClassName={user.isDealer ? 'text-emerald-600 dark:text-emerald-400' : 'text-violet-600 dark:text-violet-400'}
                   />
                   <InfoItem icon={<Hash size={14} />} label="ID" value={user.id.substring(0, 8) + '...'} />
+                  {!user.isDealer && (
+                    <>
+                      <InfoItem icon={<Smartphone size={14} />} label="Max Devices" value={`${user.maxScannerDevices ?? 2}`} />
+                      <InfoItem icon={<Car size={14} />} label="Max VINs" value={`${user.maxVins ?? 5}`} />
+                    </>
+                  )}
                 </div>
+              )}
+
+              {/* Scan Activity Graph */}
+              {user.scans.length > 0 && !editing && (
+                <ScanActivityChart scans={user.scans} />
               )}
 
               {/* Scanner Devices */}
@@ -228,8 +303,8 @@ export default function UserDetailModal({ user, loading, onClose, onRefresh }: P
                             {scan.fullReport && (
                               <div className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                                 Cost: ${(scan.fullReport.totalReconditioningCost + (scan.fullReport.additionalRepairsCost || 0)).toLocaleString()}
-                                {scan.fullReport.pdfUrl && (
-                                  <a href={scan.fullReport.pdfUrl} target="_blank" rel="noopener noreferrer" className="ml-2 text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1">
+                                {normalizePdfUrl(scan.fullReport.pdfUrl) && (
+                                  <a href={normalizePdfUrl(scan.fullReport.pdfUrl)!} target="_blank" rel="noopener noreferrer" className="ml-2 text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1">
                                     <FileText size={10} /> PDF
                                   </a>
                                 )}
@@ -237,7 +312,7 @@ export default function UserDetailModal({ user, loading, onClose, onRefresh }: P
                             )}
                           </div>
                           <button
-                            onClick={() => handleDeleteScan(scan.id, scan.vin)}
+                            onClick={() => setScanDeleteTarget({ id: scan.id, vin: scan.vin })}
                             className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-400 hover:text-red-500 transition-all flex-shrink-0"
                           >
                             <Trash2 size={14} />
@@ -252,6 +327,15 @@ export default function UserDetailModal({ user, loading, onClose, onRefresh }: P
           )}
         </div>
       </div>
+
+      {scanDeleteTarget && (
+        <ConfirmDeleteModal
+          title="Delete Scan"
+          message={`Delete scan for VIN "${scanDeleteTarget.vin}" and its report?`}
+          onConfirm={handleDeleteScan}
+          onCancel={() => setScanDeleteTarget(null)}
+        />
+      )}
     </div>
   );
 }

@@ -20,6 +20,8 @@ model User {
   logoUrl          String?
   originalLogoUrl  String?
   qrCodeUrl        String?
+  maxScannerDevices Int?
+  maxVins           Int?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   scans            Scan[]
@@ -154,6 +156,28 @@ model Admin {
   passwordHash String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+model Appraisal {
+  id            String   @id @default(uuid())
+  userId        String
+  vin           String
+  vehicleYear   Int?
+  vehicleMake   String?
+  vehicleModel  String?
+  vehicleTrim   String?
+  mileage       Int?
+  condition     String?
+  zipCode       String?
+  notes         String?
+  valuationData Json?
+  pdfUrl        String?
+  photoCount    Int      @default(0)
+  userEmail     String?
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+  @@index([vin])
 }
 
 model Inspection {

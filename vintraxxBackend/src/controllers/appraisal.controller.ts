@@ -7,6 +7,7 @@ import { sendAppraisalEmail } from '../services/appraisal-email.service';
 import { processPhotosForEmbedding } from '../utils/imageCompressor';
 import { env } from '../config/env';
 import logger from '../utils/logger';
+import prisma from '../config/db';
 import fs from 'fs';
 
 // In-memory store for appraisals (would be DB in production)
@@ -154,6 +155,30 @@ export async function valuateVehicle(req: Request, res: Response, next: NextFunc
 
     appraisalStore.set(appraisalId, appraisalData);
 
+    // Persist to database
+    try {
+      await prisma.appraisal.create({
+        data: {
+          id: appraisalId,
+          userId: req.user!.userId,
+          vin: input.vin,
+          vehicleYear: vehicleYear,
+          vehicleMake: vehicleMake,
+          vehicleModel: vehicleModel,
+          vehicleTrim: vehicleTrim,
+          mileage: input.mileage,
+          condition: input.condition,
+          zipCode: input.zipCode,
+          notes: input.notes,
+          valuationData: valuation as any,
+          photoCount: 0,
+          userEmail,
+        },
+      });
+    } catch (dbErr) {
+      logger.warn('Failed to persist appraisal to DB', { appraisalId, error: (dbErr as Error).message });
+    }
+
     logger.info('Appraisal valuation completed and stored', {
       appraisalId,
       vin: input.vin,
@@ -265,6 +290,16 @@ export async function pdfAppraisal(req: Request, res: Response, next: NextFuncti
       appraisalId: appraisalData.appraisalId,
       pdfPath,
     });
+
+    // Update DB record with pdfUrl
+    try {
+      await prisma.appraisal.update({
+        where: { id: appraisalData.appraisalId },
+        data: { pdfUrl: pdfPath, photoCount: appraisalData.photos?.length || 0 },
+      });
+    } catch (dbErr) {
+      logger.warn('Failed to update appraisal pdfUrl in DB', { error: (dbErr as Error).message });
+    }
 
     // Send email with PDF attachment
     await sendAppraisalEmail(toEmail, appraisalData, pdfPath);

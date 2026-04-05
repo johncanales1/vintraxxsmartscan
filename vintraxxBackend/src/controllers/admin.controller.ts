@@ -141,6 +141,34 @@ export async function deleteInspection(req: Request, res: Response, next: NextFu
   } catch (err) { next(err); }
 }
 
+// ── Appraisals ───────────────────────────────────────────────────────────────
+
+export async function listAppraisals(req: Request, res: Response, next: NextFunction) {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const result = await adminService.getAppraisals(page, limit);
+    res.json({ success: true, ...result });
+  } catch (err) { next(err); }
+}
+
+export async function deleteAppraisal(req: Request, res: Response, next: NextFunction) {
+  try {
+    await adminService.deleteAppraisal(req.params.id as string);
+    res.json({ success: true, message: 'Appraisal deleted' });
+  } catch (err) { next(err); }
+}
+
+// ── Verify Password ──────────────────────────────────────────────────────────
+
+export async function verifyPassword(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { password } = req.body;
+    await adminService.verifyAdminPassword(req.admin!.adminId, password);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+}
+
 // ── Backup ────────────────────────────────────────────────────────────────────
 
 export async function backup(req: Request, res: Response, next: NextFunction) {

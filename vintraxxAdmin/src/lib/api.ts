@@ -1,4 +1,13 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.vintraxx.com/api/v1/admin';
+const API_BASE = API_URL.replace(/\/api\/v1\/admin$/, '');
+
+export function normalizePdfUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+  const match = raw.match(/reports\/(.+)$/);
+  if (match) return `${API_BASE}/reports/${match[1]}`;
+  return raw;
+}
 
 function getToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -98,6 +107,22 @@ export const api = {
   deleteInspection: (id: string) =>
     request<{ success: boolean }>(`/inspections/${id}`, { method: 'DELETE' }),
 
+  // Appraisals
+  getAppraisals: (page = 1, limit = 50) =>
+    request<{ success: boolean; appraisals: Appraisal[]; total: number; page: number; totalPages: number }>(
+      `/appraisals?page=${page}&limit=${limit}`
+    ),
+
+  deleteAppraisal: (id: string) =>
+    request<{ success: boolean }>(`/appraisals/${id}`, { method: 'DELETE' }),
+
+  // Verify Password
+  verifyPassword: (password: string) =>
+    request<{ success: boolean }>('/verify-password', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    }),
+
   // Backup
   getBackupUrl: () => `${API_URL}/backup`,
 };
@@ -127,6 +152,8 @@ export interface User {
   pricePerLaborHour: number | null;
   logoUrl: string | null;
   qrCodeUrl: string | null;
+  maxScannerDevices: number | null;
+  maxVins: number | null;
   createdAt: string;
   updatedAt: string;
   _count: { scans: number; usedScannerDevices: number; usedVins: number };
@@ -241,6 +268,25 @@ export interface Inspection {
   updatedAt: string;
 }
 
+export interface Appraisal {
+  id: string;
+  userId: string;
+  vin: string;
+  vehicleYear: number | null;
+  vehicleMake: string | null;
+  vehicleModel: string | null;
+  vehicleTrim: string | null;
+  mileage: number | null;
+  condition: string | null;
+  zipCode: string | null;
+  notes: string | null;
+  valuationData: any;
+  pdfUrl: string | null;
+  photoCount: number;
+  userEmail: string | null;
+  createdAt: string;
+}
+
 export interface CreateUserData {
   email: string;
   password?: string;
@@ -248,4 +294,6 @@ export interface CreateUserData {
   pricePerLaborHour?: number;
   logoUrl?: string;
   qrCodeUrl?: string;
+  maxScannerDevices?: number | null;
+  maxVins?: number | null;
 }

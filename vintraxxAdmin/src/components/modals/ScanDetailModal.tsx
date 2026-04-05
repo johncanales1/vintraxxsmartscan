@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ScanDetail } from '@/lib/api';
+import { ScanDetail, normalizePdfUrl } from '@/lib/api';
 import { X, FileText, ExternalLink, AlertTriangle, CheckCircle, Clock, Car } from 'lucide-react';
 
 interface Props {
@@ -116,9 +116,9 @@ export default function ScanDetailModal({ scan, loading, onClose }: Props) {
                     <InfoRow label="Report Version" value={scan.fullReport.reportVersion} />
                     <InfoRow label="Generated" value={scan.fullReport.createdAt ? new Date(scan.fullReport.createdAt).toLocaleDateString() : 'N/A'} />
                   </div>
-                  {scan.fullReport.pdfUrl && (
+                  {normalizePdfUrl(scan.fullReport.pdfUrl) && (
                     <a
-                      href={scan.fullReport.pdfUrl}
+                      href={normalizePdfUrl(scan.fullReport.pdfUrl)!}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-sm font-medium hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-all"

@@ -8,6 +8,7 @@ import DealerSection from '@/components/sections/DealerSection';
 import RegularSection from '@/components/sections/RegularSection';
 import HistorySection from '@/components/sections/HistorySection';
 import SettingsSection from '@/components/sections/SettingsSection';
+import BackupModal from '@/components/modals/BackupModal';
 import {
   LayoutDashboard, Users, UserCheck, History, Settings, LogOut,
   Moon, Sun, Shield, Menu, X, ChevronDown,
@@ -24,6 +25,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showBackupModal, setShowBackupModal] = useState(false);
 
   useEffect(() => {
     loadStats();
@@ -48,24 +50,6 @@ export default function Dashboard() {
     { id: 'settings', label: 'Settings', icon: <Settings size={20} /> },
   ];
 
-  const handleBackup = async () => {
-    try {
-      const token = localStorage.getItem('admin_token');
-      const res = await fetch(api.getBackupUrl(), {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `vintraxx-backup-${new Date().toISOString().split('T')[0]}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success('Backup downloaded successfully');
-    } catch {
-      toast.error('Failed to download backup');
-    }
-  };
 
   return (
     <div className="min-h-screen flex bg-[rgb(var(--background))]">
@@ -107,7 +91,7 @@ export default function Dashboard() {
 
         <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
           <button
-            onClick={handleBackup}
+            onClick={() => setShowBackupModal(true)}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:text-gray-900 dark:hover:text-white transition-all"
           >
             <FileText size={20} />
@@ -160,6 +144,8 @@ export default function Dashboard() {
           {tab === 'settings' && <SettingsSection />}
         </div>
       </main>
+
+      {showBackupModal && <BackupModal onClose={() => setShowBackupModal(false)} />}
     </div>
   );
 }

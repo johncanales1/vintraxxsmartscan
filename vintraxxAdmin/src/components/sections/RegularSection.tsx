@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { api, User, UserDetail } from '@/lib/api';
 import UserDetailModal from '@/components/modals/UserDetailModal';
 import CreateUserModal from '@/components/modals/CreateUserModal';
+import ConfirmDeleteModal from '@/components/modals/ConfirmDeleteModal';
 import {
   Search, Plus, Trash2, Eye, Users, Smartphone, Car, Calendar, RefreshCw
 } from 'lucide-react';
@@ -18,6 +19,7 @@ export default function RegularSection() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; email: string } | null>(null);
 
   useEffect(() => { loadUsers(); }, []);
 
@@ -45,11 +47,12 @@ export default function RegularSection() {
     finally { setDetailLoading(false); }
   };
 
-  const handleDelete = async (id: string, email: string) => {
-    if (!confirm(`Delete user "${email}" and all their data? This cannot be undone.`)) return;
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
     try {
-      await api.deleteUser(id);
+      await api.deleteUser(deleteTarget.id);
       toast.success('User deleted');
+      setDeleteTarget(null);
       loadUsers();
     } catch { toast.error('Failed to delete user'); }
   };
@@ -113,7 +116,7 @@ export default function RegularSection() {
                   <button onClick={() => openDetail(user.id)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-blue-500 transition-all">
                     <Eye size={16} />
                   </button>
-                  <button onClick={() => handleDelete(user.id, user.email)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-red-500 transition-all">
+                  <button onClick={() => setDeleteTarget({ id: user.id, email: user.email })} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-red-500 transition-all">
                     <Trash2 size={16} />
                   </button>
                 </div>
@@ -159,6 +162,15 @@ export default function RegularSection() {
           isDealer={false}
           onClose={() => setShowCreateModal(false)}
           onCreated={loadUsers}
+        />
+      )}
+
+      {deleteTarget && (
+        <ConfirmDeleteModal
+          title="Delete User"
+          message={`Delete user "${deleteTarget.email}" and all their data (scans, reports, devices)?`}
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
         />
       )}
     </div>

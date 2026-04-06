@@ -38,4 +38,7 @@ router.get('/scan-history', authMiddleware, dealerController.getDealerScanHistor
 // Dashboard: single report detail
 router.get('/report/:scanId', authMiddleware, dealerController.getDealerReportDetail);
 
+// Schedule service appointment (sends email to john@vintraxx.com)
+router.post('/schedule-appointment', authMiddleware, dealerController.scheduleAppointment);
+
 export default router;

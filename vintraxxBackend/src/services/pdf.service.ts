@@ -434,14 +434,13 @@ export async function generatePdf(report: FullReportData): Promise<string> {
       y += 10;
 
       // ============ FOOTER ============
-      if (y + 30 > doc.page.height - 36) { doc.addPage(); y = doc.page.height - 70; }
-      doc.strokeColor(C.border).lineWidth(0.5).moveTo(leftMargin, y).lineTo(leftMargin + pageWidth, y).stroke();
-      y += 8;
+      const footerY = doc.page.height - doc.page.margins.bottom - 22;
+      doc.strokeColor(C.border).lineWidth(0.5).moveTo(leftMargin, footerY).lineTo(leftMargin + pageWidth, footerY).stroke();
       const footerColW = Math.floor(pageWidth / 3);
       doc.fontSize(8).font('Helvetica').fillColor(C.lightGray);
-      doc.text(`User: ${report.reportMetadata.userEmail}`, leftMargin, y, { width: footerColW, align: 'left' });
-      doc.text(`${report.reportMetadata.reportId} v:${report.reportMetadata.reportVersion}`, leftMargin + footerColW, y, { width: footerColW, align: 'center' });
-      doc.text(`Date: ${generatedDate}`, leftMargin + footerColW * 2, y, { width: footerColW, align: 'right' });
+      doc.text(`User: ${report.reportMetadata.userEmail}`, leftMargin, footerY + 8, { width: footerColW, align: 'left' });
+      doc.text(`${report.reportMetadata.reportId} v:${report.reportMetadata.reportVersion}`, leftMargin + footerColW, footerY + 8, { width: footerColW, align: 'center' });
+      doc.text(`Date: ${generatedDate}`, leftMargin + footerColW * 2, footerY + 8, { width: footerColW, align: 'right' });
 
       doc.end();
 

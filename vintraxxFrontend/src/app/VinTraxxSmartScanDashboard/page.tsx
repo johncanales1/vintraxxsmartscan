@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Search, Eye, Car, Scan, DollarSign, TrendingUp, ClipboardList, X, FileText, Wrench, Activity } from "lucide-react";
+import { Search, Eye, Car, Scan, DollarSign, TrendingUp, ClipboardList, X, FileText, Wrench, Activity, CalendarDays } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line, ResponsiveContainer } from "recharts";
 import { DealerNav } from "@/components/shared-assets/navigation/dealer-nav";
 
@@ -122,6 +122,24 @@ export default function DealerPortalPage() {
     // Scan Activity Period
     const [scanActivityPeriod, setScanActivityPeriod] = useState<'1w' | '1m' | '3m' | '6m' | '12m'>('12m');
 
+    // Schedule Service Appointment Modal
+    const [showScheduleModal, setShowScheduleModal] = useState(false);
+    const [scheduleForm, setScheduleForm] = useState({
+        name: '',
+        email: '',
+        phone: '',
+        dealership: '',
+        vehicle: '',
+        vin: '',
+        serviceType: '',
+        preferredDate: '',
+        preferredTime: '',
+        additionalNotes: '',
+    });
+    const [scheduleErrors, setScheduleErrors] = useState<Record<string, string>>({});
+    const [scheduleSubmitting, setScheduleSubmitting] = useState(false);
+    const [scheduleSuccess, setScheduleSuccess] = useState(false);
+
     const fetchDealerData = useCallback(async (token: string) => {
         try {
             const [profileRes, reportsRes, appraisalsRes] = await Promise.all([
@@ -212,6 +230,54 @@ export default function DealerPortalPage() {
     
     const closeAppraisalModal = () => {
         setSelectedAppraisal(null);
+    };
+
+    const closeScheduleModal = () => {
+        setShowScheduleModal(false);
+        setScheduleForm({ name: '', email: '', phone: '', dealership: '', vehicle: '', vin: '', serviceType: '', preferredDate: '', preferredTime: '', additionalNotes: '' });
+        setScheduleErrors({});
+        setScheduleSuccess(false);
+    };
+
+    const validateScheduleForm = () => {
+        const errors: Record<string, string> = {};
+        if (!scheduleForm.name.trim()) errors.name = 'Name is required';
+        if (!scheduleForm.email.trim()) errors.email = 'Email is required';
+        else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(scheduleForm.email)) errors.email = 'Enter a valid email';
+        if (!scheduleForm.phone.trim()) errors.phone = 'Phone is required';
+        if (!scheduleForm.dealership.trim()) errors.dealership = 'Dealership is required';
+        if (!scheduleForm.vehicle.trim()) errors.vehicle = 'Vehicle is required';
+        if (!scheduleForm.vin.trim()) errors.vin = 'VIN is required';
+        if (!scheduleForm.serviceType) errors.serviceType = 'Service type is required';
+        if (!scheduleForm.preferredDate) errors.preferredDate = 'Preferred date is required';
+        return errors;
+    };
+
+    const handleScheduleSubmit = async () => {
+        const errors = validateScheduleForm();
+        if (Object.keys(errors).length > 0) {
+            setScheduleErrors(errors);
+            return;
+        }
+        setScheduleErrors({});
+        setScheduleSubmitting(true);
+        try {
+            const token = localStorage.getItem("dealer_token");
+            const res = await fetch(`${API_BASE}/dealer/schedule-appointment`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify(scheduleForm),
+            });
+            if (res.ok) {
+                setScheduleSuccess(true);
+            } else {
+                setScheduleErrors({ submit: 'Failed to submit request. Please try again.' });
+            }
+        } catch {
+            setScheduleErrors({ submit: 'Network error. Please try again.' });
+        } finally {
+            setScheduleSubmitting(false);
+        }
     };
 
     useEffect(() => {
@@ -424,6 +490,13 @@ export default function DealerPortalPage() {
                                             <span className="hidden xs:inline">Multi-Point</span> Inspection
                                         </button>
                                     </Link>
+                                    <button
+                                        onClick={() => setShowScheduleModal(true)}
+                                        className="w-full sm:w-auto inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 shadow h-10 rounded-md px-4 sm:px-8 bg-[#8B2332] hover:bg-[#a12d3e] text-white gap-2"
+                                    >
+                                        <CalendarDays className="w-5 h-5" />
+                                        Schedule Service Appointment
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -747,10 +820,13 @@ export default function DealerPortalPage() {
                                                             <span className="text-[10px] sm:text-xs text-slate-400">Stock: {report.stockNumber}</span>
                                                         )}
                                                         {report.pdfUrl && (
-                                                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-100 text-blue-700 text-[10px] sm:text-xs font-medium">
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); window.open(report.pdfUrl!, '_blank'); }}
+                                                                className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-100 text-blue-700 text-[10px] sm:text-xs font-medium hover:bg-blue-200 transition-colors cursor-pointer"
+                                                            >
                                                                 <FileText className="w-3 h-3" />
-                                                                PDF
-                                                            </span>
+                                                                View PDF File
+                                                            </button>
                                                         )}
                                                     </div>
                                                 </div>
@@ -894,6 +970,198 @@ export default function DealerPortalPage() {
                 </div>
             )}
             
+            {/* Schedule Service Appointment Modal */}
+            {showScheduleModal && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-2 sm:p-4" onClick={closeScheduleModal}>
+                    <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-2xl w-full max-h-[95vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="bg-[#8B2332] px-5 sm:px-6 py-4 flex items-center justify-between flex-shrink-0">
+                            <div className="flex items-center gap-3">
+                                <CalendarDays className="w-5 h-5 text-white" />
+                                <h2 className="text-base sm:text-xl font-bold text-white">Schedule Service Appointment</h2>
+                            </div>
+                            <button onClick={closeScheduleModal} className="text-white/80 hover:text-white p-1">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {scheduleSuccess ? (
+                            <div className="flex flex-col items-center justify-center py-16 px-8 text-center">
+                                <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
+                                    <svg className="w-8 h-8 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                </div>
+                                <h3 className="text-xl font-bold text-slate-900 mb-2">Request Submitted!</h3>
+                                <p className="text-slate-500 text-sm mb-6">Your service appointment request has been sent successfully.</p>
+                                <button
+                                    onClick={closeScheduleModal}
+                                    className="px-6 py-2.5 rounded-lg bg-[#8B2332] hover:bg-[#a12d3e] text-white font-medium text-sm transition-colors"
+                                >
+                                    Close
+                                </button>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="overflow-y-auto flex-1 p-5 sm:p-6">
+                                    {/* Row 1: Name + Email */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-1">Name <span className="text-red-500">*</span></label>
+                                            <input
+                                                type="text"
+                                                placeholder="Full name"
+                                                value={scheduleForm.name}
+                                                onChange={e => setScheduleForm(f => ({ ...f, name: e.target.value }))}
+                                                className={`w-full h-10 rounded-lg border px-3 text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#8B2332] focus:border-transparent ${scheduleErrors.name ? 'border-red-400' : 'border-slate-300'}`}
+                                            />
+                                            {scheduleErrors.name && <p className="text-red-500 text-xs mt-1">{scheduleErrors.name}</p>}
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-1">Email <span className="text-red-500">*</span></label>
+                                            <input
+                                                type="email"
+                                                placeholder="email@example.com"
+                                                value={scheduleForm.email}
+                                                onChange={e => setScheduleForm(f => ({ ...f, email: e.target.value }))}
+                                                className={`w-full h-10 rounded-lg border px-3 text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#8B2332] focus:border-transparent ${scheduleErrors.email ? 'border-red-400' : 'border-slate-300'}`}
+                                            />
+                                            {scheduleErrors.email && <p className="text-red-500 text-xs mt-1">{scheduleErrors.email}</p>}
+                                        </div>
+                                    </div>
+                                    {/* Row 2: Phone + Dealership */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-1">Phone <span className="text-red-500">*</span></label>
+                                            <input
+                                                type="tel"
+                                                placeholder="(555) 000-0000"
+                                                value={scheduleForm.phone}
+                                                onChange={e => setScheduleForm(f => ({ ...f, phone: e.target.value }))}
+                                                className={`w-full h-10 rounded-lg border px-3 text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#8B2332] focus:border-transparent ${scheduleErrors.phone ? 'border-red-400' : 'border-slate-300'}`}
+                                            />
+                                            {scheduleErrors.phone && <p className="text-red-500 text-xs mt-1">{scheduleErrors.phone}</p>}
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-1">Dealership <span className="text-red-500">*</span></label>
+                                            <input
+                                                type="text"
+                                                placeholder="Dealership name"
+                                                value={scheduleForm.dealership}
+                                                onChange={e => setScheduleForm(f => ({ ...f, dealership: e.target.value }))}
+                                                className={`w-full h-10 rounded-lg border px-3 text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#8B2332] focus:border-transparent ${scheduleErrors.dealership ? 'border-red-400' : 'border-slate-300'}`}
+                                            />
+                                            {scheduleErrors.dealership && <p className="text-red-500 text-xs mt-1">{scheduleErrors.dealership}</p>}
+                                        </div>
+                                    </div>
+                                    {/* Row 3: Vehicle + VIN */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-1">Vehicle <span className="text-red-500">*</span></label>
+                                            <input
+                                                type="text"
+                                                placeholder="Year Make Model"
+                                                value={scheduleForm.vehicle}
+                                                onChange={e => setScheduleForm(f => ({ ...f, vehicle: e.target.value }))}
+                                                className={`w-full h-10 rounded-lg border px-3 text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#8B2332] focus:border-transparent ${scheduleErrors.vehicle ? 'border-red-400' : 'border-slate-300'}`}
+                                            />
+                                            {scheduleErrors.vehicle && <p className="text-red-500 text-xs mt-1">{scheduleErrors.vehicle}</p>}
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-1">VIN <span className="text-red-500">*</span></label>
+                                            <input
+                                                type="text"
+                                                placeholder="VIN number"
+                                                value={scheduleForm.vin}
+                                                onChange={e => setScheduleForm(f => ({ ...f, vin: e.target.value }))}
+                                                className={`w-full h-10 rounded-lg border px-3 text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#8B2332] focus:border-transparent ${scheduleErrors.vin ? 'border-red-400' : 'border-slate-300'}`}
+                                            />
+                                            {scheduleErrors.vin && <p className="text-red-500 text-xs mt-1">{scheduleErrors.vin}</p>}
+                                        </div>
+                                    </div>
+                                    {/* Service Type */}
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-semibold text-slate-700 mb-1">Service Type <span className="text-red-500">*</span></label>
+                                        <select
+                                            value={scheduleForm.serviceType}
+                                            onChange={e => setScheduleForm(f => ({ ...f, serviceType: e.target.value }))}
+                                            className={`w-full h-10 rounded-lg border px-3 text-sm bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#8B2332] focus:border-transparent ${scheduleErrors.serviceType ? 'border-red-400' : 'border-slate-300'} ${!scheduleForm.serviceType ? 'text-slate-400' : 'text-slate-900'}`}
+                                        >
+                                            <option value="" disabled>Select service type...</option>
+                                            <option value="Oil Change">Oil Change</option>
+                                            <option value="Tire Rotation / Alignment">Tire Rotation / Alignment</option>
+                                            <option value="Brake Service">Brake Service</option>
+                                            <option value="Diagnostic / Check Engine">Diagnostic / Check Engine</option>
+                                            <option value="Multi-Point Inspection">Multi-Point Inspection</option>
+                                            <option value="Transmission Service">Transmission Service</option>
+                                            <option value="AC / Heating Service">AC / Heating Service</option>
+                                            <option value="General Repair">General Repair</option>
+                                            <option value="Other">Other</option>
+                                        </select>
+                                        {scheduleErrors.serviceType && <p className="text-red-500 text-xs mt-1">{scheduleErrors.serviceType}</p>}
+                                    </div>
+                                    {/* Row 4: Preferred Date + Preferred Time */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-1">Preferred Date <span className="text-red-500">*</span></label>
+                                            <input
+                                                type="date"
+                                                value={scheduleForm.preferredDate}
+                                                onChange={e => setScheduleForm(f => ({ ...f, preferredDate: e.target.value }))}
+                                                className={`w-full h-10 rounded-lg border px-3 text-sm bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#8B2332] focus:border-transparent ${scheduleErrors.preferredDate ? 'border-red-400' : 'border-slate-300'}`}
+                                            />
+                                            {scheduleErrors.preferredDate && <p className="text-red-500 text-xs mt-1">{scheduleErrors.preferredDate}</p>}
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-1">Preferred Time</label>
+                                            <input
+                                                type="time"
+                                                value={scheduleForm.preferredTime}
+                                                onChange={e => setScheduleForm(f => ({ ...f, preferredTime: e.target.value }))}
+                                                className="w-full h-10 rounded-lg border border-slate-300 px-3 text-sm bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#8B2332] focus:border-transparent"
+                                            />
+                                        </div>
+                                    </div>
+                                    {/* Additional Notes */}
+                                    <div className="mb-2">
+                                        <label className="block text-sm font-semibold text-slate-700 mb-1">Additional Notes</label>
+                                        <textarea
+                                            rows={4}
+                                            placeholder="Describe any concerns or additional requests..."
+                                            value={scheduleForm.additionalNotes}
+                                            onChange={e => setScheduleForm(f => ({ ...f, additionalNotes: e.target.value }))}
+                                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#8B2332] focus:border-transparent resize-none"
+                                        />
+                                    </div>
+                                    {scheduleErrors.submit && (
+                                        <p className="text-red-500 text-xs mt-2">{scheduleErrors.submit}</p>
+                                    )}
+                                </div>
+                                {/* Footer Buttons */}
+                                <div className="flex justify-end gap-3 px-5 sm:px-6 py-4 border-t border-slate-200 flex-shrink-0 bg-white">
+                                    <button
+                                        onClick={closeScheduleModal}
+                                        disabled={scheduleSubmitting}
+                                        className="px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm transition-colors disabled:opacity-50"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleScheduleSubmit}
+                                        disabled={scheduleSubmitting}
+                                        className="px-5 py-2.5 rounded-lg bg-[#8B2332] hover:bg-[#a12d3e] text-white font-semibold text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+                                    >
+                                        {scheduleSubmitting && (
+                                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                        )}
+                                        Submit Request
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* Appraisal Detail Modal */}
             {selectedAppraisal && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-2 sm:p-4" onClick={closeAppraisalModal}>

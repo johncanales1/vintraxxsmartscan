@@ -345,9 +345,11 @@ export async function getDashboardAppraisal(req: Request, res: Response, next: N
       appraisalId,
     });
 
-    const appraisalData = appraisalStore.get(appraisalId);
+    const a = await prisma.appraisal.findFirst({
+      where: { id: appraisalId, userId: req.user!.userId },
+    });
 
-    if (!appraisalData) {
+    if (!a) {
       logger.warn('Dashboard appraisal not found', { appraisalId });
       res.status(404).json({
         success: false,
@@ -356,23 +358,29 @@ export async function getDashboardAppraisal(req: Request, res: Response, next: N
       return;
     }
 
-    // Verify the appraisal belongs to the requesting user
-    if (appraisalData.userEmail !== req.user!.email) {
-      logger.warn('Dashboard appraisal access denied - email mismatch', {
-        appraisalId,
-        requestingEmail: req.user!.email,
-        appraisalEmail: appraisalData.userEmail,
-      });
-      res.status(403).json({
-        success: false,
-        error: 'Access denied',
-      });
-      return;
-    }
+    const v = (a.valuationData ?? {}) as any;
+    const wholesale = Math.round(((v.estimatedWholesaleLow ?? 0) + (v.estimatedWholesaleHigh ?? 0)) / 2);
+    const retail = Math.round(((v.estimatedRetailLow ?? 0) + (v.estimatedRetailHigh ?? 0)) / 2);
+    const tradeIn = Math.round(((v.estimatedTradeInLow ?? 0) + (v.estimatedTradeInHigh ?? 0)) / 2);
+
+    const appraisalData = {
+      appraisalId: a.id,
+      vin: a.vin,
+      vehicle: {
+        year: a.vehicleYear ?? 0,
+        make: a.vehicleMake ?? '',
+        model: a.vehicleModel ?? '',
+        trim: a.vehicleTrim ?? undefined,
+        mileage: a.mileage ?? 0,
+      },
+      valuation: { wholesale, retail, tradeIn },
+      createdAt: a.createdAt.toISOString(),
+      userEmail: a.userEmail ?? req.user!.email,
+    };
 
     logger.info('Dashboard appraisal data returned', {
       appraisalId,
-      vin: appraisalData.vehicle.vin,
+      vin: a.vin,
     });
 
     res.json({
@@ -394,36 +402,42 @@ export async function getDashboardAppraisal(req: Request, res: Response, next: N
 // ================================================================
 export async function listDashboardAppraisals(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    const userId = req.user!.userId;
     const userEmail = req.user!.email;
 
-    logger.info('Dashboard appraisal list requested', {
-      userId: req.user!.userId,
-      userEmail,
+    logger.info('Dashboard appraisal list requested', { userId, userEmail });
+
+    const rows = await prisma.appraisal.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
     });
 
-    const userAppraisals: AppraisalSummaryData[] = [];
-    appraisalStore.forEach((data) => {
-      if (data.userEmail === userEmail) {
-        userAppraisals.push(data);
-      }
+    const data = rows.map((a) => {
+      const v = (a.valuationData ?? {}) as any;
+      const wholesale = Math.round(((v.estimatedWholesaleLow ?? 0) + (v.estimatedWholesaleHigh ?? 0)) / 2);
+      const retail = Math.round(((v.estimatedRetailLow ?? 0) + (v.estimatedRetailHigh ?? 0)) / 2);
+      const tradeIn = Math.round(((v.estimatedTradeInLow ?? 0) + (v.estimatedTradeInHigh ?? 0)) / 2);
+      return {
+        appraisalId: a.id,
+        vin: a.vin,
+        vehicle: {
+          year: a.vehicleYear ?? 0,
+          make: a.vehicleMake ?? '',
+          model: a.vehicleModel ?? '',
+          trim: a.vehicleTrim ?? undefined,
+          mileage: a.mileage ?? 0,
+        },
+        valuation: { wholesale, retail, tradeIn },
+        createdAt: a.createdAt.toISOString(),
+        userEmail: a.userEmail ?? userEmail,
+      };
     });
 
-    // Sort by createdAt descending
-    userAppraisals.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    logger.info('Dashboard appraisal list returned', { userId, count: data.length });
 
-    logger.info('Dashboard appraisal list returned', {
-      userEmail,
-      count: userAppraisals.length,
-    });
-
-    res.json({
-      success: true,
-      data: userAppraisals,
-    });
+    res.json({ success: true, data });
   } catch (error) {
-    logger.error('Dashboard appraisal list failed', {
-      error: (error as Error).message,
-    });
+    logger.error('Dashboard appraisal list failed', { error: (error as Error).message });
     next(error);
   }
 }

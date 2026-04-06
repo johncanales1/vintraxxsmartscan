@@ -5,6 +5,16 @@ import logger from '../utils/logger';
 import * as fs from 'fs';
 import * as path from 'path';
 import bcrypt from 'bcrypt';
+import nodemailer from 'nodemailer';
+import { env } from '../config/env';
+
+const API_BASE_URL = 'https://api.vintraxx.com';
+
+function toPublicPdfUrl(filePath: string | null | undefined): string | null {
+  if (!filePath) return null;
+  const filename = path.basename(filePath);
+  return `${API_BASE_URL}/reports/${filename}`;
+}
 
 const LOGO_DIR = path.join(__dirname, '..', 'assets', 'dealer-logos');
 const QR_CODE_DIR = path.join(__dirname, '..', 'assets', 'dealer-qrcodes');
@@ -258,7 +268,7 @@ export async function getDealerReports(req: Request, res: Response, next: NextFu
       additionalRepairs: scan.additionalRepairs,
       totalReconditioningCost: scan.fullReport?.totalReconditioningCost ?? null,
       additionalRepairsCost: scan.fullReport?.additionalRepairsCost ?? null,
-      pdfUrl: scan.fullReport?.pdfUrl ?? null,
+      pdfUrl: toPublicPdfUrl(scan.fullReport?.pdfUrl),
       emailSentAt: scan.fullReport?.emailSentAt?.toISOString() ?? null,
     }));
 
@@ -325,7 +335,7 @@ export async function getDealerScanHistory(req: Request, res: Response, next: Ne
         totalRepairCost: totalCost,
         dtcCount: scan.dtcCount,
         status: scan.status,
-        pdfUrl: fr?.pdfUrl ?? null,
+        pdfUrl: toPublicPdfUrl(fr?.pdfUrl),
       };
     });
 
@@ -451,13 +461,153 @@ export async function getDealerReportDetail(req: Request, res: Response, next: N
       additionalRepairsData: fr.additionalRepairsData || null,
       grandTotalCost: (fr.totalReconditioningCost || 0) + (fr.additionalRepairsCost || 0),
       aiSummary: aiRaw?.aiSummary || '',
-      pdfUrl: fr.pdfUrl,
+      pdfUrl: toPublicPdfUrl(fr.pdfUrl),
       createdAt: fr.createdAt.toISOString(),
     };
 
     res.json({ success: true, status: 'completed', report });
   } catch (error) {
     logger.error('Dealer report detail failed', { error: (error as Error).message });
+    next(error);
+  }
+}
+
+// ================================================================
+// POST /api/v1/dealer/schedule-appointment
+// Send service appointment request email to john@vintraxx.com
+// ================================================================
+export async function scheduleAppointment(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const {
+      name,
+      email,
+      phone,
+      dealership,
+      vehicle,
+      vin,
+      serviceType,
+      preferredDate,
+      preferredTime,
+      additionalNotes,
+    } = req.body;
+
+    const transporter = nodemailer.createTransport({
+      host: env.SMTP_HOST,
+      port: env.SMTP_PORT,
+      secure: false,
+      auth: {
+        user: env.SMTP_USER,
+        pass: env.SMTP_PASS,
+      },
+    });
+
+    const submittedAt = new Date().toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    const htmlBody = `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; color: #333; line-height: 1.6; margin: 0; padding: 0; background: #f4f4f4; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: #8B2332; color: #fff; padding: 24px; text-align: center; border-radius: 8px 8px 0 0; }
+    .header h1 { margin: 0; font-size: 22px; }
+    .header p { margin: 6px 0 0; font-size: 14px; opacity: 0.85; }
+    .content { background: #ffffff; padding: 28px; border: 1px solid #ddd; border-top: none; border-radius: 0 0 8px 8px; }
+    .field { margin-bottom: 16px; }
+    .label { font-size: 12px; text-transform: uppercase; color: #888; font-weight: bold; letter-spacing: 0.5px; }
+    .value { font-size: 15px; color: #1a1a2e; margin-top: 2px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .divider { border: none; border-top: 1px solid #eee; margin: 20px 0; }
+    .notes-box { background: #f9f9f9; border: 1px solid #eee; border-radius: 6px; padding: 12px; margin-top: 4px; font-size: 14px; color: #555; }
+    .footer { text-align: center; padding: 16px; color: #999; font-size: 12px; }
+    .badge { display: inline-block; background: #8B2332; color: #fff; padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>VinTraxx SmartScan</h1>
+      <p>New Service Appointment Request</p>
+    </div>
+    <div class="content">
+      <p style="margin-top:0;">A new service appointment has been submitted on <strong>${submittedAt}</strong>.</p>
+      <hr class="divider" />
+      <div class="grid">
+        <div class="field">
+          <div class="label">Name</div>
+          <div class="value">${name}</div>
+        </div>
+        <div class="field">
+          <div class="label">Email</div>
+          <div class="value"><a href="mailto:${email}" style="color:#8B2332;">${email}</a></div>
+        </div>
+        <div class="field">
+          <div class="label">Phone</div>
+          <div class="value">${phone || '—'}</div>
+        </div>
+        <div class="field">
+          <div class="label">Dealership</div>
+          <div class="value">${dealership || '—'}</div>
+        </div>
+        <div class="field">
+          <div class="label">Vehicle</div>
+          <div class="value">${vehicle || '—'}</div>
+        </div>
+        <div class="field">
+          <div class="label">VIN</div>
+          <div class="value" style="font-family: monospace;">${vin || '—'}</div>
+        </div>
+      </div>
+      <hr class="divider" />
+      <div class="field">
+        <div class="label">Service Type</div>
+        <div class="value"><span class="badge">${serviceType}</span></div>
+      </div>
+      <div class="grid" style="margin-top:16px;">
+        <div class="field">
+          <div class="label">Preferred Date</div>
+          <div class="value">${preferredDate}</div>
+        </div>
+        <div class="field">
+          <div class="label">Preferred Time</div>
+          <div class="value">${preferredTime || '—'}</div>
+        </div>
+      </div>
+      ${additionalNotes ? `
+      <hr class="divider" />
+      <div class="field">
+        <div class="label">Additional Notes</div>
+        <div class="notes-box">${additionalNotes}</div>
+      </div>
+      ` : ''}
+    </div>
+    <div class="footer">
+      <p>&copy; ${new Date().getFullYear()} VinTraxx SmartScan. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+    await transporter.sendMail({
+      from: `"${env.EMAIL_FROM_NAME}" <${env.EMAIL_FROM}>`,
+      to: 'john@vintraxx.com',
+      replyTo: email,
+      subject: `Service Appointment Request — ${name} — ${serviceType}`,
+      html: htmlBody,
+    });
+
+    logger.info('Schedule appointment email sent', { name, email, serviceType, preferredDate });
+
+    res.json({ success: true, message: 'Appointment request submitted successfully.' });
+  } catch (error) {
+    logger.error('Schedule appointment email failed', { error: (error as Error).message });
     next(error);
   }
 }

@@ -143,7 +143,7 @@ export const LoginSimple = ({ resetToken }: { resetToken: string | null }) => {
             }
             localStorage.setItem("dealer_token", data.token);
             localStorage.setItem("dealer_user", JSON.stringify(data.user));
-            router.push("/VinLaneIMS");
+            router.push("/VinTraxxSmartScanDashboard");
         } catch {
             setError("Microsoft login failed. Please try again.");
         } finally {
@@ -175,7 +175,7 @@ export const LoginSimple = ({ resetToken }: { resetToken: string | null }) => {
             }
             localStorage.setItem("dealer_token", data.token);
             localStorage.setItem("dealer_user", JSON.stringify(data.user));
-            router.push("/VinLaneIMS");
+            router.push("/VinTraxxSmartScanDashboard");
         } catch {
             setError("Network error. Please try again.");
         } finally {
@@ -383,7 +383,7 @@ export const LoginSimple = ({ resetToken }: { resetToken: string | null }) => {
             }
             localStorage.setItem("dealer_token", data.token);
             localStorage.setItem("dealer_user", JSON.stringify(data.user));
-            router.push("/VinLaneIMS");
+            router.push("/VinTraxxSmartScanDashboard");
         } catch {
             setError("Network error. Please try again.");
         } finally {
@@ -583,7 +583,7 @@ export const LoginSimple = ({ resetToken }: { resetToken: string | null }) => {
                                         <GoogleLoginButton 
                                             onError={setError}
                                             setLoading={setGoogleLoading}
-                                            onSuccess={() => router.push("/VinLaneIMS")}
+                                            onSuccess={() => router.push("/VinTraxxSmartScanDashboard")}
                                         />
                                     </GoogleOAuthProvider>
                                 </div>

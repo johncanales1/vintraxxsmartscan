@@ -23,6 +23,8 @@ import { logger, LogCategory } from '../utils/Logger';
 import { apiService } from '../services/api/ApiService';
 import { useAppStore } from '../store/appStore';
 
+const PLACEHOLDER_COLOR = '#B0B8C4';
+
 const SERVICE_TYPES = [
   'Select service type...',
   'Oil Change',
@@ -188,7 +190,8 @@ export const ScheduleScreen: React.FC = () => {
   };
 
   const handleGoBack = () => {
-    navigation.goBack();
+    // Navigate to Scan tab since this is a tab screen (goBack may not work)
+    (navigation as any).navigate('Scan');
   };
 
   const handleCancel = () => {
@@ -278,7 +281,7 @@ export const ScheduleScreen: React.FC = () => {
             hasError && styles.inputError,
           ]}
           placeholder={placeholder}
-          placeholderTextColor={colors.primary.red + '80'}
+          placeholderTextColor={PLACEHOLDER_COLOR}
           value={formData[field] as string}
           onChangeText={(text) => updateField(field, text)}
           keyboardType={keyboardType}
@@ -304,190 +307,213 @@ export const ScheduleScreen: React.FC = () => {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>Schedule Service Appointment</Text>
-          </View>
-
-          {/* Row: Name / Email */}
-          <View style={styles.row}>
-            <View style={styles.halfColumn}>
-              {renderInput('Name', 'name', 'Full name')}
-            </View>
-            <View style={styles.halfColumn}>
-              {renderInput('Email', 'email', 'email@example.com', {
-                keyboardType: 'email-address',
-                autoCapitalize: 'none',
-              })}
-            </View>
-          </View>
-
-          {/* Row: Phone / Dealership */}
-          <View style={styles.row}>
-            <View style={styles.halfColumn}>
-              {renderInput('Phone', 'phone', '(555) 000-0000', {
-                keyboardType: 'phone-pad',
-              })}
-            </View>
-            <View style={styles.halfColumn}>
-              {renderInput('Dealership', 'dealership', 'Dealership name')}
-            </View>
-          </View>
-
-          {/* Row: Vehicle / VIN */}
-          <View style={styles.row}>
-            <View style={styles.halfColumn}>
-              {renderInput('Vehicle', 'vehicle', 'Year Make Model')}
-            </View>
-            <View style={styles.halfColumn}>
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>
-                  VIN<Text style={styles.requiredStar}> *</Text>
-                </Text>
-                <View style={styles.vinInputRow}>
-                  <TextInput
-                    style={[
-                      styles.input,
-                      styles.vinInput,
-                      errors.vin && styles.inputError,
-                    ]}
-                    placeholder="VIN number"
-                    placeholderTextColor={colors.primary.red + '80'}
-                    value={formData.vin}
-                    onChangeText={(text) => updateField('vin', text.toUpperCase())}
-                    autoCapitalize="characters"
-                    autoCorrect={false}
-                    maxLength={17}
-                  />
-                  <TouchableOpacity
-                    style={styles.vinCameraButton}
-                    onPress={handleScanVin}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.vinCameraIcon}>📷</Text>
-                  </TouchableOpacity>
-                </View>
-                {errors.vin && <Text style={styles.errorText}>{errors.vin}</Text>}
-              </View>
-            </View>
-          </View>
-
-          {/* Service Type Dropdown */}
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>
-              Service Type<Text style={styles.requiredStar}> *</Text>
-            </Text>
+          {/* Back button + Header */}
+          <View style={styles.headerRow}>
             <TouchableOpacity
-              style={[styles.input, styles.dropdown, errors.serviceType && styles.inputError]}
-              onPress={() => setShowServiceTypePicker(!showServiceTypePicker)}
+              style={styles.backButton}
+              onPress={handleGoBack}
+              activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Text
-                style={[
-                  styles.dropdownText,
-                  !formData.serviceType && styles.dropdownPlaceholder,
-                ]}
-              >
-                {formData.serviceType || 'Select service type...'}
-              </Text>
-              <Text style={styles.dropdownArrow}>▼</Text>
+              <Text style={styles.backArrow}>{'‹'}</Text>
             </TouchableOpacity>
-            {errors.serviceType && <Text style={styles.errorText}>{errors.serviceType}</Text>}
+            <View style={styles.headerTextWrap}>
+              <Text style={styles.headerTitle}>Schedule Service</Text>
+              <Text style={styles.headerSubtitle}>Book your appointment</Text>
+            </View>
+          </View>
 
-            {showServiceTypePicker && (
-              <View style={styles.pickerContainer}>
-                {SERVICE_TYPES.map((type, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={[
-                      styles.pickerItem,
-                      formData.serviceType === type && styles.pickerItemSelected,
-                    ]}
-                    onPress={() => {
-                      if (index !== 0) {
-                        updateField('serviceType', type);
-                      }
-                      setShowServiceTypePicker(false);
-                    }}
-                  >
-                    <Text
+          {/* Card wrapper for form */}
+          <View style={styles.formCard}>
+            {/* Section: Contact Info */}
+            <Text style={styles.sectionTitle}>Contact Information</Text>
+
+            {/* Row: Name / Email */}
+            <View style={styles.row}>
+              <View style={styles.halfColumn}>
+                {renderInput('Name', 'name', 'Full name')}
+              </View>
+              <View style={styles.halfColumn}>
+                {renderInput('Email', 'email', 'email@example.com', {
+                  keyboardType: 'email-address',
+                  autoCapitalize: 'none',
+                })}
+              </View>
+            </View>
+
+            {/* Row: Phone / Dealership */}
+            <View style={styles.row}>
+              <View style={styles.halfColumn}>
+                {renderInput('Phone', 'phone', '(555) 000-0000', {
+                  keyboardType: 'phone-pad',
+                })}
+              </View>
+              <View style={styles.halfColumn}>
+                {renderInput('Dealership', 'dealership', 'Dealership name')}
+              </View>
+            </View>
+
+            {/* Divider */}
+            <View style={styles.sectionDivider} />
+
+            {/* Section: Vehicle Info */}
+            <Text style={styles.sectionTitle}>Vehicle Details</Text>
+
+            {/* Row: Vehicle / VIN */}
+            <View style={styles.row}>
+              <View style={styles.halfColumn}>
+                {renderInput('Vehicle', 'vehicle', 'Year Make Model')}
+              </View>
+              <View style={styles.halfColumn}>
+                <View style={styles.inputContainer}>
+                  <Text style={styles.inputLabel}>
+                    VIN<Text style={styles.requiredStar}> *</Text>
+                  </Text>
+                  <View style={styles.vinInputRow}>
+                    <TextInput
                       style={[
-                        styles.pickerItemText,
-                        index === 0 && styles.pickerItemPlaceholder,
-                        formData.serviceType === type && styles.pickerItemTextSelected,
+                        styles.input,
+                        styles.vinInput,
+                        errors.vin && styles.inputError,
                       ]}
+                      placeholder="VIN number"
+                      placeholderTextColor={PLACEHOLDER_COLOR}
+                      value={formData.vin}
+                      onChangeText={(text) => updateField('vin', text.toUpperCase())}
+                      autoCapitalize="characters"
+                      autoCorrect={false}
+                      maxLength={17}
+                    />
+                    <TouchableOpacity
+                      style={styles.vinCameraButton}
+                      onPress={handleScanVin}
+                      activeOpacity={0.7}
                     >
-                      {index === 0 ? '✓ ' : ''}{type}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-          </View>
-
-          {/* Row: Preferred Date / Preferred Time */}
-          <View style={styles.row}>
-            <View style={styles.halfColumn}>
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>
-                  Preferred Date<Text style={styles.requiredStar}> *</Text>
-                </Text>
-                <TextInput
-                  style={[styles.input, errors.preferredDate && styles.inputError]}
-                  placeholder="MM/DD/YYYY"
-                  placeholderTextColor={colors.primary.red + '80'}
-                  value={formData.preferredDate}
-                  onChangeText={handleDateChange}
-                />
-                {errors.preferredDate && <Text style={styles.errorText}>{errors.preferredDate}</Text>}
+                      <Text style={styles.vinCameraIcon}>📷</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {errors.vin && <Text style={styles.errorText}>{errors.vin}</Text>}
+                </View>
               </View>
             </View>
-            <View style={styles.halfColumn}>
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>
-                  Preferred Time<Text style={styles.requiredStar}> *</Text>
+
+            {/* Divider */}
+            <View style={styles.sectionDivider} />
+
+            {/* Section: Service Info */}
+            <Text style={styles.sectionTitle}>Service Information</Text>
+
+            {/* Service Type Dropdown */}
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>
+                Service Type<Text style={styles.requiredStar}> *</Text>
+              </Text>
+              <TouchableOpacity
+                style={[styles.input, styles.dropdown, errors.serviceType && styles.inputError]}
+                onPress={() => setShowServiceTypePicker(!showServiceTypePicker)}
+              >
+                <Text
+                  style={[
+                    styles.dropdownText,
+                    !formData.serviceType && styles.dropdownPlaceholder,
+                  ]}
+                >
+                  {formData.serviceType || 'Select service type...'}
                 </Text>
-                <TextInput
-                  style={[styles.input, errors.preferredTime && styles.inputError]}
-                  placeholder="HH:MM AM/PM"
-                  placeholderTextColor={colors.primary.red + '80'}
-                  value={formData.preferredTime}
-                  onChangeText={handleTimeChange}
-                />
-                {errors.preferredTime && <Text style={styles.errorText}>{errors.preferredTime}</Text>}
+                <Text style={styles.dropdownArrow}>{showServiceTypePicker ? '▲' : '▼'}</Text>
+              </TouchableOpacity>
+              {errors.serviceType && <Text style={styles.errorText}>{errors.serviceType}</Text>}
+
+              {showServiceTypePicker && (
+                <View style={styles.pickerContainer}>
+                  {SERVICE_TYPES.map((type, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={[
+                        styles.pickerItem,
+                        formData.serviceType === type && styles.pickerItemSelected,
+                      ]}
+                      onPress={() => {
+                        if (index !== 0) {
+                          updateField('serviceType', type);
+                        }
+                        setShowServiceTypePicker(false);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.pickerItemText,
+                          index === 0 && styles.pickerItemPlaceholder,
+                          formData.serviceType === type && styles.pickerItemTextSelected,
+                        ]}
+                      >
+                        {index === 0 ? '✓ ' : ''}{type}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            {/* Row: Preferred Date / Preferred Time */}
+            <View style={styles.row}>
+              <View style={styles.halfColumn}>
+                <View style={styles.inputContainer}>
+                  <Text style={styles.inputLabel}>
+                    Preferred Date<Text style={styles.requiredStar}> *</Text>
+                  </Text>
+                  <TextInput
+                    style={[styles.input, errors.preferredDate && styles.inputError]}
+                    placeholder="MM/DD/YYYY"
+                    placeholderTextColor={PLACEHOLDER_COLOR}
+                    value={formData.preferredDate}
+                    onChangeText={handleDateChange}
+                  />
+                  {errors.preferredDate && <Text style={styles.errorText}>{errors.preferredDate}</Text>}
+                </View>
+              </View>
+              <View style={styles.halfColumn}>
+                <View style={styles.inputContainer}>
+                  <Text style={styles.inputLabel}>
+                    Preferred Time<Text style={styles.requiredStar}> *</Text>
+                  </Text>
+                  <TextInput
+                    style={[styles.input, errors.preferredTime && styles.inputError]}
+                    placeholder="HH:MM AM/PM"
+                    placeholderTextColor={PLACEHOLDER_COLOR}
+                    value={formData.preferredTime}
+                    onChangeText={handleTimeChange}
+                  />
+                  {errors.preferredTime && <Text style={styles.errorText}>{errors.preferredTime}</Text>}
+                </View>
               </View>
             </View>
-          </View>
 
-          {/* Using simple text inputs instead of DateTimePicker */}
+            {/* Using simple text inputs instead of DateTimePicker */}
 
-          {/* Additional Notes */}
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>Additional Notes</Text>
-            <TextInput
-              style={[styles.input, styles.inputMultiline]}
-              placeholder="Describe any concerns or additional requests..."
-              placeholderTextColor={colors.primary.red + '80'}
-              value={formData.additionalNotes}
-              onChangeText={(text) => updateField('additionalNotes', text)}
-              multiline
-              numberOfLines={4}
-              textAlignVertical="top"
-            />
+            {/* Additional Notes */}
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Additional Notes</Text>
+              <TextInput
+                style={[styles.input, styles.inputMultiline]}
+                placeholder="Describe any concerns or additional requests..."
+                placeholderTextColor={PLACEHOLDER_COLOR}
+                value={formData.additionalNotes}
+                onChangeText={(text) => updateField('additionalNotes', text)}
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+              />
+            </View>
           </View>
 
           {/* Buttons */}
           <View style={styles.buttonRow}>
             <TouchableOpacity
-              style={[styles.button, styles.goBackButton]}
-              onPress={handleGoBack}
-            >
-              <Text style={styles.goBackButtonText}>Go Back</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
               style={[styles.button, styles.cancelButton]}
               onPress={handleCancel}
             >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
+              <Text style={styles.cancelButtonText}>Clear</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.button, styles.submitButton, isSubmitting && styles.buttonDisabled]}
@@ -502,7 +528,7 @@ export const ScheduleScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
 
-          {/* Bottom spacing for tab bar */}
+          {/* Bottom spacing for floating tab bar */}
           <View style={styles.bottomSpacer} />
         </ScrollView>
       </KeyboardAvoidingView>
@@ -525,13 +551,76 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.screenHorizontal,
     paddingBottom: spacing['3xl'],
   },
-  header: {
-    paddingVertical: spacing.lg,
+
+  // ── Header with back button ─────────────────────────────────────────
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
+  },
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primary.navy,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  backArrow: {
+    fontSize: 24,
+    color: '#FFFFFF',
+    fontWeight: '300',
+    marginTop: -2,
+  },
+  headerTextWrap: {
+    flex: 1,
   },
   headerTitle: {
-    ...typography.styles.h2,
+    fontSize: 22,
+    fontWeight: '700',
     color: colors.primary.navy,
+    letterSpacing: -0.3,
   },
+  headerSubtitle: {
+    fontSize: 13,
+    color: colors.text.muted,
+    marginTop: 2,
+    fontWeight: '400',
+  },
+
+  // ── Form card ───────────────────────────────────────────────────────
+  formCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.lg,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.primary.navy,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: spacing.md,
+  },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: colors.border.light,
+    marginVertical: spacing.md,
+  },
+
   row: {
     flexDirection: 'row',
     marginHorizontal: -spacing.xs,
@@ -544,35 +633,37 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   inputLabel: {
-    ...typography.styles.caption,
-    color: colors.primary.navy,
-    marginBottom: spacing.xs,
-    fontWeight: typography.fontWeight.medium,
+    fontSize: 12,
+    color: colors.text.secondary,
+    marginBottom: 6,
+    fontWeight: '500',
   },
   requiredStar: {
     color: colors.primary.red,
   },
   input: {
-    backgroundColor: colors.background.secondary,
+    backgroundColor: '#F8FAFC',
     borderWidth: 1,
     borderColor: colors.border.light,
-    borderRadius: spacing.inputRadius,
-    paddingHorizontal: spacing.inputPadding,
-    paddingVertical: spacing.md,
-    fontSize: typography.fontSize.base,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: Platform.OS === 'ios' ? 13 : 10,
+    fontSize: 14,
     color: colors.text.primary,
   },
   inputMultiline: {
-    minHeight: 100,
-    paddingTop: spacing.md,
+    minHeight: 90,
+    paddingTop: 12,
   },
   inputError: {
     borderColor: colors.primary.red,
+    borderWidth: 1.5,
   },
   errorText: {
-    ...typography.styles.caption,
+    fontSize: 11,
     color: colors.primary.red,
-    marginTop: spacing.xs,
+    marginTop: 4,
+    fontWeight: '500',
   },
   dropdown: {
     flexDirection: 'row',
@@ -580,59 +671,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   dropdownText: {
-    fontSize: typography.fontSize.base,
+    fontSize: 14,
     color: colors.text.primary,
     flex: 1,
   },
   dropdownPlaceholder: {
-    color: colors.text.muted,
+    color: PLACEHOLDER_COLOR,
   },
   dropdownArrow: {
-    fontSize: 12,
+    fontSize: 10,
     color: colors.text.muted,
     marginLeft: spacing.sm,
   },
   pickerContainer: {
     backgroundColor: colors.primary.navy,
-    borderRadius: spacing.cardRadius,
-    marginTop: spacing.xs,
+    borderRadius: 12,
+    marginTop: 6,
     overflow: 'hidden',
   },
   pickerItem: {
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.primary.navyLight + '30',
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.12)',
   },
   pickerItemSelected: {
     backgroundColor: colors.primary.navyLight,
   },
   pickerItemText: {
-    fontSize: typography.fontSize.base,
+    fontSize: 14,
     color: colors.text.inverse,
   },
   pickerItemPlaceholder: {
-    color: colors.text.light,
+    color: 'rgba(255,255,255,0.45)',
   },
   pickerItemTextSelected: {
-    fontWeight: typography.fontWeight.semiBold,
-  },
-  dateTimeInput: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  dateTimeText: {
-    fontSize: typography.fontSize.base,
-    color: colors.text.primary,
-    flex: 1,
-  },
-  dateTimePlaceholder: {
-    color: colors.text.muted,
-  },
-  dateTimeIcon: {
-    fontSize: 18,
-    marginLeft: spacing.sm,
+    fontWeight: '600',
   },
   vinInputRow: {
     flexDirection: 'row',
@@ -646,61 +720,59 @@ const styles = StyleSheet.create({
   },
   vinCameraButton: {
     backgroundColor: colors.primary.navy,
-    borderWidth: 1,
-    borderColor: colors.primary.navy,
-    borderTopRightRadius: spacing.inputRadius,
-    borderBottomRightRadius: spacing.inputRadius,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.md,
+    borderTopRightRadius: 10,
+    borderBottomRightRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: Platform.OS === 'ios' ? 13 : 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   vinCameraIcon: {
     fontSize: 18,
   },
+
+  // ── Buttons ─────────────────────────────────────────────────────────
   buttonRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: spacing.sm,
+    gap: 10,
     marginTop: spacing.lg,
   },
   button: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: spacing.buttonRadius,
+    paddingHorizontal: 22,
+    paddingVertical: 14,
+    borderRadius: 24,
     minWidth: 80,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  goBackButton: {
-    backgroundColor: colors.background.secondary,
-    borderWidth: 1,
-    borderColor: colors.border.medium,
-  },
-  goBackButtonText: {
-    ...typography.styles.button,
-    color: colors.text.secondary,
-  },
   cancelButton: {
-    backgroundColor: colors.background.secondary,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: colors.border.medium,
   },
   cancelButtonText: {
-    ...typography.styles.button,
+    fontSize: 15,
+    fontWeight: '600',
     color: colors.text.secondary,
   },
   submitButton: {
     backgroundColor: colors.primary.navy,
+    shadowColor: colors.primary.navy,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   submitButtonText: {
-    ...typography.styles.button,
-    color: colors.text.inverse,
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   buttonDisabled: {
     opacity: 0.6,
   },
   bottomSpacer: {
-    height: 100,
+    height: 80,
   },
 });

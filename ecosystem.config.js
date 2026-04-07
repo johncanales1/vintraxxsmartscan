@@ -20,12 +20,12 @@ module.exports = {
     },
     {
       name: 'vintraxx-frontend',
-      script: 'npm run start',
+      script: 'node_modules/.bin/next',
+      args: 'start -p 3002',
       cwd: '/home/ec2-user/vintraxxsmartscan/vintraxxFrontend',
-      interpreter: 'bash',
+      interpreter: 'node',
       env: {
-        NODE_ENV: 'production',
-        PORT: 3000
+        NODE_ENV: 'production'
       },
       instances: 1,
       autorestart: true,

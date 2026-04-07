@@ -1,731 +1,481 @@
 "use client";
 
-import { type ComponentProps, type ComponentPropsWithRef, type FC, type ReactNode, useState } from "react";
-import { ArrowLeft, ArrowRight, ArrowUpRight, PlayCircle } from "@untitledui/icons";
-import { Carousel } from "@/components/application/carousel/carousel-base";
-import { BadgeGroup } from "@/components/base/badges/badge-groups";
-import { Badge, type BadgeColor } from "@/components/base/badges/badges";
-import { Button } from "@/components/base/buttons/button";
-import { VideoPlayer } from "@/components/base/video-player/video-player";
-import { UntitledLogo } from "@/components/foundations/logo/untitledui-logo";
-import { Header } from "@/components/marketing/header-navigation/header";
-import { SectionDivider } from "@/components/shared-assets/section-divider";
-import { cx } from "@/utils/cx";
-import { isReactComponent } from "@/utils/is-react-component";
+/* ─── VinTraxx Landing Page — exact match of https://vintraxx.com/ ─── */
+
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import videoThumbnail from "@/assets/videos/thumbnail.png";
-import acquisitionLogo from "@/assets/logo/brands/acquisition.png";
-import smartscanLogo from "@/assets/logo/brands/smartscan.png";
-import vinclipsLogo from "@/assets/logo/brands/vinclips.png";
-import vinlaneLogo from "@/assets/logo/brands/vinlane.png";
-import capitalLogo from "@/assets/logo/brands/capital.png";
-import writingImage1 from "@/assets/images/writings/image1.png";
-import writingImage2 from "@/assets/images/writings/image2.png";
-import writingImage3 from "@/assets/images/writings/image3.png";
-import writingImage4 from "@/assets/images/writings/image4.png";
-import dashboardImage from "@/assets/images/dashboard.png";
-import macBookImageDark from "@/assets/images/macbook/mackbook-pro-screen-mockup-dark.png";
-import macBookImageLight from "@/assets/images/macbook/mackbook-pro-screen-mockup-light.png";
+import { Scan, Zap, DollarSign, ChevronDown, ChevronRight, Phone, Mail, X } from "lucide-react";
 
-const HeaderPrimary = (props: ComponentProps<typeof Header>) => {
-    return (
-        <Header
-            {...props}
-            className="bg-utility-brand-50_alt [&_nav>ul>li>a]:text-brand-primary [&_nav>ul>li>a]:hover:text-brand-primary [&_nav>ul>li>button]:text-brand-primary [&_nav>ul>li>button]:hover:text-brand-primary [&_nav>ul>li>button>svg]:text-fg-brand-secondary_alt"
-        />
-    );
-};
+const LOGO_URL = "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695cac8c2981bc8a1da18bbf/7fd883e0e_Vintraxxcomlogo1.png";
 
-export const BackgroundStripes = () => {
-    return (
-        <div className="absolute top-0 h-108 w-full overflow-hidden pt-[152px] md:pt-[94px] 2xl:h-128 2xl:pt-[136px]">
-            <div className="-skew-y-[7deg] [--column-width:minmax(0,calc(1280px/var(--content-columns)))] [--content-columns:12] [--gutter-columns:4] [--stripe-height:34px] sm:[--stripe-height:48px] lg:[--stripe-height:72px]">
-                {/* BG MASK */}
-                <div className="absolute bottom-[var(--stripe-height)] h-110 w-full bg-utility-brand-50_alt"></div>
-                {/* STRIPES */}
-                <div
-                    className="relative grid h-full"
-                    style={{
-                        gridTemplateRows: "repeat(3,var(--stripe-height))",
-                        gridTemplateColumns:
-                            "[viewport-start] 1fr [left-gutter-start] repeat(var(--gutter-columns),var(--column-width)) [left-gutter-end content-start] repeat(var(--content-columns),var(--column-width)) [content-end right-gutter-start] repeat(var(--gutter-columns),var(--column-width)) [right-gutter-end] 1fr [viewport-end]",
-                    }}
-                >
-                    <div style={{ gridArea: "2 / left-gutter-start / auto / span 5" }} className="bg-utility-brand-100_alt"></div>
-                    <div style={{ gridArea: "3 / viewport-start / auto / span 4" }} className="bg-utility-brand-400_alt"></div>
-                    <div style={{ gridArea: "1 / span 7 / auto / viewport-end" }} className="bg-utility-brand-400_alt"></div>
-                    <div style={{ gridArea: "2 / span 8 / auto / right-gutter-end" }} className="bg-utility-brand-200_alt"></div>
-                    <div style={{ gridArea: "3 / span 3 / auto / viewport-end" }} className="bg-utility-brand-100_alt"></div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const HeroAbstractAngles01 = () => {
-    return (
-        <div className="bg-primary">
-            <HeaderPrimary />
-            <section>
-                <div className="relative flex flex-col items-center overflow-hidden pt-16 md:pt-24 min-h-[800px] md:min-h-[900px]">
-                    <video
-                        autoPlay
-                        muted
-                        loop
-                        playsInline
-                        className="absolute inset-0 z-0 size-full object-cover"
-                        src="/assets/videos/intro.mp4"
-                    />
-                    <div className="absolute inset-0 z-0 bg-black/50" />
-
-                    <div className="relative z-10 mx-auto flex w-full max-w-container flex-col px-4 md:px-8">
-                        <div className="flex flex-col items-start sm:items-center sm:text-center">
-                            <a href="#" className="rounded-full outline-focus-ring focus-visible:outline-2 focus-visible:outline-offset-2">
-                                <BadgeGroup className="hidden md:flex" size="lg" addonText="New feature" iconTrailing={ArrowRight} theme="light" color="brand">
-                                    AI-Powered Vehicle Consignment
-                                </BadgeGroup>
-                                <BadgeGroup className="md:hidden" size="md" addonText="New feature" iconTrailing={ArrowRight} theme="light" color="brand">
-                                    AI-Powered Vehicle Consignment
-                                </BadgeGroup>
-                            </a>
-
-                            <h1 className="mt-4 text-display-md font-semibold text-white md:text-display-lg lg:text-display-xl">
-                                The Smarter Way to Stock a Dealership
-                            </h1>
-                            <p className="mt-4 max-w-3xl text-lg text-white/80 md:mt-6 md:text-xl">
-                                A modern approach to choosing the right vehicles—using real demand data, faster sourcing, and smarter pricing - so you sell more, reduce aging inventory, and improve profit.
-                            </p>
-                            <div className="relative z-1 mt-8 flex w-full flex-col-reverse items-stretch gap-3 sm:w-auto sm:flex-row sm:items-start md:mt-12">
-                                <Button iconLeading={PlayCircle} color="secondary" size="xl">
-                                    Request a Demo
-                                </Button>
-                                {/* <Button size="xl">Sign up</Button> */}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="relative z-10 mt-auto w-full px-4 pb-8 md:px-8 md:pb-12">
-                        <div className="mx-auto max-w-5xl rounded-2xl bg-white/10 px-6 py-6 ring-1 ring-white/20 backdrop-blur-xl ring-inset md:px-10 md:py-8">
-                            <p className="mb-5 text-center text-md font-medium text-white/70">Our AI-Powered Products</p>
-                            <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-6 xl:gap-x-8">
-                                <img alt="Capital" src={capitalLogo.src} className="h-10 brightness-0 invert opacity-80 md:h-14" />
-                                <img alt="SmartScan" src={smartscanLogo.src} className="h-10 brightness-0 invert opacity-80 md:h-14" />
-                                <img alt="VinLane" src={vinlaneLogo.src} className="h-10 brightness-0 invert opacity-80 md:h-14" />
-                                <img alt="VinClips" src={vinclipsLogo.src} className="h-10 brightness-0 invert opacity-80 md:h-14" />
-                                <img alt="Acquisition" src={acquisitionLogo.src} className="h-10 brightness-0 invert opacity-80 md:h-14" />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-        </div>
-    );
-};
-
-const SocialProofFullWidth = () => {
-    return (
-        <section className="bg-primary pb-16 md:pb-24">
-            <div className="mx-auto max-w-container px-4 md:px-8">
-                <div className="flex flex-col gap-8">
-                    <p className="text-center text-md mt-16 font-medium text-tertiary">Our AI-Powered Products</p>
-                    <div className="flex flex-wrap justify-center gap-x-10 gap-y-6 xl:gap-x-8">
-                        <img alt="Capital" src={capitalLogo.src} className="h-12 md:h-16" />
-                        <img alt="SmartScan" src={smartscanLogo.src} className="h-12 md:h-16" />
-                        <img alt="VinLane" src={vinlaneLogo.src} className="h-12 md:h-16" />
-                        <img alt="VinClips" src={vinclipsLogo.src} className="h-12 md:h-16" />
-                        <img alt="Acquisition" src={acquisitionLogo.src} className="h-12 md:h-16" />
-                    </div>
-                </div>
-            </div>
-        </section>
-    );
-};
-
-interface FeatureTabProps {
-    title: string;
-    subtitle: string;
-    footer?: ReactNode;
-    isCurrent?: boolean;
+/* ─── Animated section hook ─── */
+function useScrollReveal() {
+    const ref = useRef<HTMLDivElement>(null);
+    const [visible, setVisible] = useState(false);
+    useEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        const obs = new IntersectionObserver(([entry]) => { if (entry.isIntersecting) setVisible(true); }, { threshold: 0.15 });
+        obs.observe(el);
+        return () => obs.disconnect();
+    }, []);
+    return { ref, visible };
 }
 
-const FeatureTabHorizontal = ({ title, subtitle, footer, isCurrent }: FeatureTabProps) => (
-    <div
-        className={cx(
-            "relative flex cursor-pointer flex-col items-start gap-4 border-l-4 border-tertiary py-4 pl-5 transition duration-100 ease-linear hover:border-brand",
-            isCurrent && "border-brand",
-        )}
-    >
-        <div>
-            <h3 className="text-lg font-semibold text-primary">{title}</h3>
-            <p className="mt-1 text-md text-tertiary">{subtitle}</p>
-        </div>
+/* ─── About Modal ─── */
+const TEAM_IMAGE_URL = "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695cac8c2981bc8a1da18bbf/about-team.jpg";
 
-        {footer}
-    </div>
-);
+const AboutModal = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
+    useEffect(() => {
+        if (open) document.body.style.overflow = "hidden";
+        else document.body.style.overflow = "";
+        return () => { document.body.style.overflow = ""; };
+    }, [open]);
 
-const FeaturesTabsMockup07 = () => {
-    const [currentTab, setCurrentTab] = useState(0);
+    if (!open) return null;
 
     return (
-        <section className="overflow-hidden bg-primary py-16 md:py-24">
-            <div className="mx-auto w-full max-w-container px-4 md:px-8">
-                <div className="flex w-full flex-col lg:max-w-3xl">
-                    <span className="text-sm font-semibold text-brand-secondary md:text-md">Full Suite of Tools</span>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+            <dialog
+                open
+                className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[85vh] overflow-y-auto p-0 z-10"
+                aria-label="About VinTraxx Automotive LLC"
+            >
+                <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-8 pt-8 pb-4 border-b border-slate-100">
+                    <h2 className="text-2xl font-bold text-[#1B3A5F]">About VinTraxx Automotive LLC</h2>
+                    <button
+                        onClick={onClose}
+                        className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors"
+                    >
+                        <X className="w-5 h-5 text-slate-500" />
+                        <span className="sr-only">Close</span>
+                    </button>
+                </div>
+                <div className="px-8 py-6 space-y-5 text-slate-700 text-[15px] leading-relaxed">
+                    <div>
+                        <h3 className="text-xl font-bold text-[#1B3A5F] mb-1">Driving the Future of Automotive</h3>
+                        <p className="text-sm text-slate-500 font-medium">VinTraxx Automotive Holdings, LLC</p>
+                    </div>
+                    <p className="italic text-slate-600">
+                        &ldquo;VinTraxx was founded with a clear mission: give dealerships and businesses the technology to scan, appraise, finance, and close — faster and smarter than ever before.&rdquo;
+                    </p>
+                    <p>
+                        At the core of our platform is <strong>SmartScan</strong> — an AI-powered vehicle diagnostic and appraisal tool that connects to any vehicle via OBD-II in seconds. SmartScan reads every system, generates a professional condition report, estimates reconditioning costs, and delivers data-driven pricing recommendations. Know exactly what you&apos;re buying before you make an offer.
+                    </p>
+                    <p>
+                        <strong>SmartScan + Capital</strong> takes it further by combining vehicle diagnostics with instant consumer financing in a single, seamless workflow. Appraise the vehicle, present financing options, and close the deal — all without switching tools or losing momentum. It&apos;s the most efficient path from lot to funded deal in the industry.
+                    </p>
+                    <p>
+                        <strong>VinTraxx Capital</strong> is our standalone consumer financing program, built for any business that sells products or services. Offer $1,000–$25,000 in flexible consumer loans with terms up to 72 months, high approval rates, and same-day funding — at no cost to get started. Whether you&apos;re a dealership, medspa, roofing company, or tire shop, VinTraxx Capital helps you close more deals.
+                    </p>
+                    <p>
+                        We don&apos;t just sell software — we build partnerships. Every product we offer is designed to eliminate friction, increase profitability, and give your team the tools to compete and win.
+                    </p>
+                    <p>
+                        Headquartered in Texas and trusted by dealerships and businesses nationwide, VinTraxx is led by a team with deep roots in automotive retail, fintech, and enterprise software. We move fast, listen to our customers, and ship technology that actually works.
+                    </p>
+                    <img src={TEAM_IMAGE_URL} alt="VinTraxx Leadership Team" className="w-full rounded-xl mt-4" />
+                    <p className="text-center text-xs text-slate-400 mt-4 pb-2">
+                        © 2026 VinTraxx Automotive Holdings, LLC — All Rights Reserved.
+                    </p>
+                </div>
+            </dialog>
+        </div>
+    );
+};
 
-                    <h2 className="mt-3 text-display-sm font-semibold text-primary md:text-display-md">Everything You Need, All in One Platform</h2>
-                    <p className="mt-4 text-lg text-tertiary md:mt-5 md:text-xl">
-                        Stop jumping between tools. VinTraxx brings together inventory management, reconditioning, diagnostics, and media production in one seamless ecosystem.
+/* ─── Nav ─── */
+const Nav = () => {
+    const [aboutOpen, setAboutOpen] = useState(false);
+
+    return (
+        <>
+            <nav className="bg-white/80 backdrop-blur-xl border-b border-slate-200/50 sticky top-0 z-50">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="flex items-center justify-between h-20">
+                        <div className="flex items-center gap-3">
+                            <Link href="/">
+                                <img src={LOGO_URL} alt="VinTraxx" className="h-16 transition-transform hover:scale-105" />
+                            </Link>
+                        </div>
+                        <div className="hidden lg:flex items-center gap-8">
+                            {[
+                                { label: "SmartScan", href: "/VehicleAppraisal", color: "#1B3A5F" },
+                                { label: "SmartScan + Capital", href: "/login", color: "#8B2332" },
+                                { label: "VinTraxx Capital", href: "/VinTraxxCapital", color: "#8B2332" },
+                            ].map(({ label, href, color }) => (
+                                <Link
+                                    key={label}
+                                    href={href}
+                                    className="text-slate-700 font-medium transition-colors relative group"
+                                    style={{ "--hover-color": color } as React.CSSProperties}
+                                >
+                                    <span className="hover:text-[#1B3A5F] transition-colors">{label}</span>
+                                    <span
+                                        className="absolute bottom-0 left-0 w-0 h-0.5 group-hover:w-full transition-all duration-300"
+                                        style={{ backgroundColor: color }}
+                                    />
+                                </Link>
+                            ))}
+                            <button
+                                onClick={() => setAboutOpen(true)}
+                                className="text-slate-600 font-medium transition-colors relative group cursor-pointer"
+                            >
+                                <span className="hover:text-[#1B3A5F] transition-colors">About</span>
+                                <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-[#1B3A5F] group-hover:w-full transition-all duration-300" />
+                            </button>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <Link href="/login">
+                                <button className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium border bg-white shadow-sm h-9 px-4 py-2 border-slate-300 text-slate-900 hover:bg-slate-50 hover:border-[#1B3A5F] transition-all">
+                                    Client Login
+                                </button>
+                            </Link>
+                            <a href="mailto:admin@vintraxx.com">
+                                <button className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm h-9 px-4 py-2 bg-[#8B2332] hover:bg-[#6d1c27] text-white font-semibold shadow-lg hover:shadow-xl transition-all hover:scale-105">
+                                    Request a Demo
+                                </button>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </nav>
+            <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
+        </>
+    );
+};
+
+/* ─── Hero ─── */
+const Hero = () => (
+    <section className="relative bg-white overflow-hidden py-20 px-4 sm:px-6 lg:px-8">
+        {/* Grid overlay */}
+        <div
+            className="absolute inset-0 opacity-[0.03] pointer-events-none"
+            style={{ backgroundImage: "linear-gradient(rgb(27, 58, 95) 1px, transparent 1px), linear-gradient(90deg, rgb(27, 58, 95) 1px, transparent 1px)", backgroundSize: "50px 50px" }}
+        />
+        {/* Blur orbs */}
+        <div className="absolute top-0 left-0 w-96 h-96 bg-[#1B3A5F] opacity-5 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
+        <div className="absolute bottom-0 right-0 w-96 h-96 bg-[#8B2332] opacity-5 rounded-full blur-3xl translate-x-1/2 translate-y-1/2 pointer-events-none" />
+
+        <div className="relative max-w-6xl mx-auto text-center">
+            {/* Badge */}
+            <div className="inline-flex items-center gap-2 bg-[#1B3A5F]/[0.08] border border-[#1B3A5F]/[0.15] rounded-full px-5 py-2 text-sm font-semibold text-[#1B3A5F] mb-8">
+                <span className="w-2 h-2 rounded-full bg-[#8B2332] animate-pulse" />
+                Powered by AI · Built for Dealers
+            </div>
+
+            {/* Headline */}
+            <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold text-[#1B3A5F] leading-[1.05] tracking-tight mb-6">
+                Scan. Appraise.<br />
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#8B2332] to-[#e53e3e]">Finance. Close.</span>
+            </h1>
+
+            <p className="text-lg sm:text-xl text-slate-500 max-w-2xl mx-auto mb-14 leading-relaxed">
+                VinTraxx gives dealerships and businesses the tools to diagnose vehicles, generate professional appraisals, and offer instant consumer financing — all in one platform.
+            </p>
+
+            {/* Product cards */}
+            <div className="grid sm:grid-cols-3 gap-6 max-w-5xl mx-auto">
+                {/* SmartScan */}
+                <Link href="/VehicleAppraisal" className="relative group block rounded-2xl p-7 text-left shadow-lg hover:shadow-2xl transition-all ring-1 ring-slate-200 bg-white overflow-hidden">
+                    <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#1B3A5F] to-[#2d5278]" />
+                    <span className="inline-block text-xs font-bold px-3 py-1 rounded-full mb-4 bg-[#1B3A5F]/10 text-[#1B3A5F]">Diagnostics</span>
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#1B3A5F] to-[#2d5278] flex items-center justify-center mb-4 shadow-md">
+                        <Scan className="w-6 h-6 text-white" />
+                    </div>
+                    <h3 className="text-lg font-extrabold text-[#1B3A5F] mb-1">SmartScan</h3>
+                    <p className="text-xs font-semibold text-[#8B2332] mb-3">AI Diagnostics &amp; Appraisals</p>
+                    <p className="text-sm text-slate-500 leading-relaxed mb-5">Comprehensive vehicle health scans with instant reports and AI-powered pricing.</p>
+                    <span className="inline-flex items-center gap-1 text-sm font-semibold text-[#1B3A5F] group-hover:gap-2 transition-all">
+                        Learn More <ChevronRight className="w-4 h-4" />
+                    </span>
+                </Link>
+
+                {/* SmartScan + Capital */}
+                <Link href="/login" className="relative group block rounded-2xl p-7 text-left shadow-lg hover:shadow-2xl transition-all ring-2 ring-[#8B2332] ring-offset-2 bg-white overflow-hidden">
+                    <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#8B2332] to-[#c0392b]" />
+                    <span className="inline-block text-xs font-bold px-3 py-1 rounded-full mb-4 bg-[#8B2332] text-white">Most Popular</span>
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#8B2332] to-[#c0392b] flex items-center justify-center mb-4 shadow-md">
+                        <Zap className="w-6 h-6 text-white" />
+                    </div>
+                    <h3 className="text-lg font-extrabold text-[#1B3A5F] mb-1">SmartScan + Capital</h3>
+                    <p className="text-xs font-semibold text-[#8B2332] mb-3">Diagnose. Finance. Close.</p>
+                    <p className="text-sm text-slate-500 leading-relaxed mb-5">Combine vehicle appraisals with instant consumer financing — all in one workflow.</p>
+                    <span className="inline-flex items-center gap-1 text-sm font-semibold text-[#1B3A5F] group-hover:gap-2 transition-all">
+                        Learn More <ChevronRight className="w-4 h-4" />
+                    </span>
+                </Link>
+
+                {/* VinTraxx Capital */}
+                <Link href="/VinTraxxCapital" className="relative group block rounded-2xl p-7 text-left shadow-lg hover:shadow-2xl transition-all ring-1 ring-slate-200 bg-white overflow-hidden">
+                    <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#1B3A5F] to-[#8B2332]" />
+                    <span className="inline-block text-xs font-bold px-3 py-1 rounded-full mb-4 bg-[#1B3A5F]/10 text-[#1B3A5F]">Financing</span>
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#1B3A5F] to-[#8B2332] flex items-center justify-center mb-4 shadow-md">
+                        <DollarSign className="w-6 h-6 text-white" />
+                    </div>
+                    <h3 className="text-lg font-extrabold text-[#1B3A5F] mb-1">VinTraxx Capital</h3>
+                    <p className="text-xs font-semibold text-[#8B2332] mb-3">Consumer Financing for Any Business</p>
+                    <p className="text-sm text-slate-500 leading-relaxed mb-5">Offer $1K–$25K loans with same-day funding. No cost to get started.</p>
+                    <span className="inline-flex items-center gap-1 text-sm font-semibold text-[#1B3A5F] group-hover:gap-2 transition-all">
+                        Learn More <ChevronRight className="w-4 h-4" />
+                    </span>
+                </Link>
+            </div>
+
+            <p className="mt-12 text-sm text-slate-400 font-medium">
+                Trusted by dealerships nationwide · Same-day funding available · No cost to get started
+            </p>
+        </div>
+    </section>
+);
+
+/* ─── Animated bars section (reused for both scroll sections) ─── */
+const AnimatedBarsSection = ({ heading, text }: { heading: string; text: string }) => {
+    const { ref, visible } = useScrollReveal();
+    return (
+        <section className="relative py-32 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-white to-slate-50 overflow-hidden">
+            <div className="absolute inset-0 overflow-hidden">
+                <div
+                    className="absolute -top-40 left-1/2 -translate-x-1/2 w-80 h-80 bg-blue-400 rounded-full blur-3xl transition-all duration-1000"
+                    style={{ opacity: visible ? 0.1 : 0, transform: visible ? "translateY(0)" : "translateY(100px)" }}
+                />
+            </div>
+            <div className="max-w-4xl mx-auto relative z-10" ref={ref}>
+                {/* Animated bars */}
+                <div className="flex justify-center gap-2 mb-12">
+                    {[
+                        "bg-gradient-to-b from-[#1B3A5F] to-slate-300",
+                        "bg-gradient-to-b from-[#1B3A5F] to-slate-300",
+                        "bg-gradient-to-b from-[#1B3A5F] to-[#8B2332]",
+                        "bg-gradient-to-b from-slate-300 to-slate-100",
+                        "bg-gradient-to-b from-slate-300 to-slate-100",
+                    ].map((cls, i) => (
+                        <div
+                            key={i}
+                            className={`w-1 rounded-full ${cls} transition-all duration-700`}
+                            style={{
+                                height: visible ? `${60 + i * 20}px` : "0px",
+                                opacity: visible ? 1 : 0,
+                                transitionDelay: `${i * 80}ms`,
+                            }}
+                        />
+                    ))}
+                </div>
+
+                {/* Text */}
+                <div
+                    className="text-center mb-12 transition-all duration-700"
+                    style={{ opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(30px)" }}
+                >
+                    <h2 className="text-4xl md:text-5xl font-bold text-[#1B3A5F] mb-6 leading-tight">{heading}</h2>
+                    <p
+                        className="text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed transition-all duration-700 delay-150"
+                        style={{ opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(20px)" }}
+                    >
+                        {text}
                     </p>
                 </div>
 
-                <div className="mt-12 grid grid-cols-1 gap-12 md:mt-16 md:gap-16 lg:grid-cols-2 lg:items-center">
-                    <ul className="flex flex-col">
-                        {[
-                            {
-                                title: "VinLane IMS - Master Your Inventory",
-                                subtitle: "Real-time inventory tracking across multiple lots, floorplan optimization, and one-click syncing to marketplaces.",
-                            },
-                            {
-                                title: "SmartScan - Appraise with Confidence",
-                                subtitle: "Advanced OBD scanning for comprehensive vehicle health assessments, professional reports, and AI-powered pricing recommendations.",
-                            },
-                            {
-                                title: "VinTraxx Capital - Finance Your Customers",
-                                subtitle: "Offer short-term financing at checkout so your customers can pay for accessories, repairs, tires, and more over time.",
-                            },
-                        ].map((item, index) => (
-                            <li key={item.title} onClick={() => setCurrentTab(index)}>
-                                <FeatureTabHorizontal
-                                    title={item.title}
-                                    subtitle={item.subtitle}
-                                    isCurrent={index === currentTab}
-                                    footer={
-                                        <Button color="link-color" size="lg" href="#" iconTrailing={ArrowRight}>
-                                            Learn more
-                                        </Button>
-                                    }
-                                />
-                            </li>
-                        ))}
-                    </ul>
-
-                    <div className="relative -ml-4 w-screen md:w-full lg:h-140">
-                        <div className="-mx-4 flex items-center justify-center lg:absolute lg:mr-9.5 lg:-ml-0 lg:h-140 lg:w-[50vw] lg:justify-start">
-                            {/* Light mode image (hidden in dark mode) testing */}
-                            <img
-                                src={macBookImageLight.src}
-                                alt="MacBook Pro displaying a professional application interface with modern design and functionality"
-                                className="h-full object-contain lg:max-w-none dark:hidden"
-                            />
-                            {/* Dark mode image (hidden in light mode) */}
-                            <img
-                                src={macBookImageDark.src}
-                                alt="MacBook Pro displaying a professional application interface with modern design and functionality"
-                                className="h-full object-contain not-dark:hidden lg:max-w-none"
-                            />
-                        </div>
-                    </div>
+                {/* Bouncing chevron */}
+                <div className="flex justify-center animate-bounce">
+                    <ChevronDown className="w-8 h-8 text-[#1B3A5F]" />
                 </div>
             </div>
         </section>
     );
 };
 
-const studies = [
-    {
-        company: "VinTraxx Capital",
-        quote: "Offering financing at checkout increased our average ticket size and helped us close more service customers.",
-        background: "bg-[#1e3a5f]",
-        logo: capitalLogo.src,
-        href: "#",
-    },
-    {
-        company: "SmartScan",
-        quote: "AI-powered vehicle inspections have reduced our reconditioning costs significantly.",
-        background: "bg-[#33B87F]",
-        logo: smartscanLogo.src,
-        href: "#",
-    },
-    {
-        company: "VinLane",
-        quote: "VinLane streamlined our vehicle sourcing process, cutting acquisition time by 40%.",
-        background: "bg-[#52A0BF]",
-        logo: vinlaneLogo.src,
-        href: "#",
-    },
-    {
-        company: "VinClips",
-        quote: "Video marketing with VinClips increased our online engagement by 60%.",
-        background: "bg-[#A645ED]",
-        logo: vinclipsLogo.src,
-        href: "#",
-    },
-    {
-        company: "Acquisition",
-        quote: "Smarter pricing and faster sourcing helped us maximize profit on every vehicle.",
-        background: "bg-[#6A65F7]",
-        logo: acquisitionLogo.src,
-        href: "#",
-    },
-];
-
-interface RoundButtonProps extends ComponentPropsWithRef<"button"> {
-    icon?: FC<{ className?: string }>;
-}
-
-const RoundButton = ({ icon: Icon, ...props }: RoundButtonProps) => {
+/* ─── Three Powerful Products (dark section) ─── */
+const ThreePowerfulProducts = () => {
+    const { ref, visible } = useScrollReveal();
     return (
-        <Button
-            {...props}
-            color="link-gray"
-            className={cx(
-                "group flex size-12 items-center justify-center rounded-full bg-primary ring-1 ring-secondary backdrop-blur transition duration-100 ease-linear ring-inset hover:bg-secondary md:size-14",
-                props.className,
-            )}
-        >
-            {props.children ??
-                (isReactComponent(Icon) ? (
-                    <Icon className="size-5 text-fg-quaternary transition-inherit-all group-hover:text-fg-quaternary_hover md:size-6" />
-                ) : null)}
-        </Button>
-    );
-};
+        <section className="relative py-32 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-[#1B3A5F] via-[#1e3f6a] to-[#152d4a] overflow-hidden">
+            <div className="absolute top-0 left-0 w-96 h-96 bg-[#1B3A5F] opacity-20 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute top-0 right-0 w-96 h-96 bg-[#8B2332] opacity-10 rounded-full blur-3xl pointer-events-none" />
 
-const TestimonialCaseStudyCards = () => {
-    return (
-        <section className="overflow-hidden bg-primary py-16 md:py-24">
-            <div className="mx-auto max-w-container px-4 md:px-8">
-                <div className="flex flex-col justify-between gap-8 lg:flex-row lg:gap-0">
-                    <div className="flex max-w-3xl flex-col gap-4 md:gap-5">
-                        <h2 className="text-display-sm font-semibold text-primary md:text-display-md">AI-Powered Products for Modern Dealerships</h2>
-                        <p className="text-lg text-tertiary md:text-xl">Discover how our suite of tools helps dealerships streamline operations and maximize profits.</p>
-                    </div>
-
-                    <div className="flex flex-col-reverse gap-3 self-stretch sm:flex-row sm:self-start">
-                        <Button color="secondary" size="xl">
-                            Explore Products
-                        </Button>
-                        <Button size="xl">Request a Demo</Button>
-                    </div>
+            <div className="max-w-7xl mx-auto relative z-10" ref={ref}>
+                <div
+                    className="text-center mb-16 transition-all duration-700"
+                    style={{ opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(20px)" }}
+                >
+                    <h2 className="text-4xl md:text-5xl font-bold text-white mb-4">Three Powerful Products. One Platform.</h2>
+                    <p className="text-xl text-blue-200 max-w-2xl mx-auto">
+                        Everything your dealership or business needs to scan, appraise, and finance — seamlessly connected.
+                    </p>
                 </div>
 
-                <Carousel.Root className="mt-12 md:mt-16" opts={{ align: "start" }}>
-                    <Carousel.Content overflowHidden={false} className="gap-6 pr-4 md:gap-8 md:pr-8">
-                        {studies.map((study) => (
-                            <Carousel.Item
-                                key={study.company}
-                                className={cx(
-                                    "relative flex h-118 max-w-76 shrink-0 cursor-grab items-end p-6 md:h-126 md:w-full md:max-w-sm md:p-5",
-                                    study.background,
-                                )}
-                            >
-                                <img src={study.logo} alt={study.company} className="absolute top-6 left-6 h-14 object-contain md:top-8 md:left-8 md:h-22" />
-
-                                <div className="flex cursor-auto flex-col bg-alpha-white/30 px-4 py-5 ring-1 ring-alpha-white/30 backdrop-blur-md ring-inset md:p-5 md:px-6 md:py-8">
-                                    <p className="text-display-xs font-semibold text-white md:text-display-sm">{study.company}</p>
-                                    <q className="mt-3 text-lg font-medium text-balance text-white md:mt-4">{study.quote}</q>
-
-                                    <Button color="link-gray" size="lg" href={study.href} className="mt-8 text-white" iconTrailing={ArrowUpRight}>
-                                        Read case study
-                                    </Button>
-                                </div>
-                            </Carousel.Item>
-                        ))}
-                    </Carousel.Content>
-                    <div className="mt-8 flex gap-4 md:gap-8">
-                        <Carousel.PrevTrigger asChild>
-                            <RoundButton icon={ArrowLeft} />
-                        </Carousel.PrevTrigger>
-                        <Carousel.NextTrigger asChild>
-                            <RoundButton icon={ArrowRight} />
-                        </Carousel.NextTrigger>
-                    </div>
-                </Carousel.Root>
-            </div>
-        </section>
-    );
-};
-
-const CTAScreenMockup03 = () => {
-    return (
-        <section className="overflow-hidden bg-primary py-16 md:pt-24 md:pb-0">
-            <div className="mx-auto max-w-container px-4 md:px-8">
-                <div className="flex flex-col justify-center text-center">
-                    <h2 className="text-display-sm font-semibold text-primary md:text-display-md">
-                        <span className="hidden md:inline">Ready to Transform Your Dealership?</span>
-                        <span className="md:hidden">Transform Your Dealership</span>
-                    </h2>
-                    <p className="mt-4 text-lg text-tertiary md:mt-5 md:text-xl">Join dealerships already maximizing profits with VinTraxx.</p>
-                    <div className="mt-8 flex flex-col-reverse gap-3 self-stretch md:flex-row md:self-center">
-                        <Button color="secondary" size="xl">
-                            Learn more
-                        </Button>
-                        <Button size="xl">Request a Demo</Button>
-                    </div>
-                </div>
-            </div>
-            <div className="mx-auto mt-16 w-full max-w-container px-4 md:max-h-100 md:overflow-hidden md:px-8">
-                <div className="size-full rounded-[9.03px] bg-primary p-[0.9px] shadow-lg ring-[0.56px] ring-utility-gray-300 ring-inset md:rounded-[32px] md:p-1 md:ring-[2px]">
-                    <div className="size-full rounded-[7.9px] bg-primary p-0.5 shadow-modern-mockup-inner-md md:rounded-[28px] md:p-[5.4px] md:shadow-modern-mockup-inner-lg">
-                        <div className="relative size-full overflow-hidden rounded-[6.77px] bg-utility-gray-50 ring-[0.56px] ring-utility-gray-200 md:rounded-[24px] md:ring-[2px]">
-                            {/* Light mode image (hidden in dark mode) */}
-                            <img
-                                src={dashboardImage.src}
-                                className="size-full object-cover dark:hidden"
-                                alt="Dashboard mockup showing application interface"
-                            />
-                            {/* Dark mode image (hidden in light mode) */}
-                            <img
-                                src={dashboardImage.src}
-                                className="size-full object-cover not-dark:hidden"
-                                alt="Dashboard mockup showing application interface"
-                            />
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-    );
-};
-
-type Article = {
-    id: string;
-    href: string;
-    thumbnailUrl: string;
-    title: string;
-    summary: string;
-    category: {
-        href: string;
-        name: string;
-    };
-    author: {
-        href: string;
-        name: string;
-        avatarUrl: string;
-    };
-    publishedAt: string;
-    readingTime: string;
-    tags: Array<{ name: string; color: BadgeColor<"color">; href: string }>;
-    isFeatured?: boolean;
-};
-
-const articles: Article[] = [
-    {
-        id: "article-1",
-        title: "Maximizing Dealership Profits with AI-Powered Inventory",
-        summary: "Learn how AI-driven insights can optimize your vehicle sourcing and reduce aging inventory by up to 40%.",
-        href: "#",
-        category: { name: "Inventory", href: "#" },
-        thumbnailUrl: writingImage1.src,
-        publishedAt: "28 Jan 2026",
-        readingTime: "6 min read",
-        author: { name: "VinTraxx Team", href: "#", avatarUrl: "" },
-        tags: [
-            { name: "AI", color: "brand", href: "#" },
-            { name: "Inventory", color: "blue-light", href: "#" },
-        ],
-        isFeatured: true,
-    },
-    {
-        id: "article-2",
-        title: "Streamlining Vehicle Reconditioning Workflows",
-        summary: "Discover how digital task management and vendor coordination can reduce recon time by 32%.",
-        href: "#",
-        category: { name: "Recon", href: "#" },
-        thumbnailUrl: writingImage2.src,
-        publishedAt: "25 Jan 2026",
-        readingTime: "5 min read",
-        author: { name: "VinTraxx Team", href: "#", avatarUrl: "" },
-        tags: [
-            { name: "Recon", color: "orange", href: "#" },
-            { name: "Efficiency", color: "success", href: "#" },
-        ],
-    },
-    {
-        id: "article-3",
-        title: "The Power of Video Marketing for Dealerships",
-        summary: "How VinClips helps dealers reach millions of potential buyers on TikTok with daily automated video content.",
-        href: "#",
-        category: { name: "Marketing", href: "#" },
-        thumbnailUrl: writingImage3.src,
-        publishedAt: "22 Jan 2026",
-        readingTime: "7 min read",
-        author: { name: "VinTraxx Team", href: "#", avatarUrl: "" },
-        tags: [
-            { name: "VinClips", color: "pink", href: "#" },
-            { name: "Social Media", color: "indigo", href: "#" },
-        ],
-    },
-    {
-        id: "article-4",
-        title: "SmartScan: Revolutionizing Vehicle Appraisals",
-        summary: "Advanced OBD diagnostics and AI-powered pricing recommendations for confident vehicle acquisitions.",
-        href: "#",
-        category: { name: "Diagnostics", href: "#" },
-        thumbnailUrl: writingImage4.src,
-        publishedAt: "18 Jan 2026",
-        readingTime: "5 min read",
-        author: { name: "VinTraxx Team", href: "#", avatarUrl: "" },
-        tags: [
-            { name: "SmartScan", color: "success", href: "#" },
-            { name: "Appraisal", color: "gray-blue", href: "#" },
-        ],
-    },
-];
-
-const Simple03Vertical = ({
-    article,
-    imageClassName,
-    titleClassName,
-    className,
-}: {
-    article: Article;
-    imageClassName?: string;
-    titleClassName?: string;
-    className?: string;
-}) => (
-    <article className={cx("flex flex-col gap-4", className)}>
-        <a href={article.href} className="overflow-hidden rounded-2xl" tabIndex={-1}>
-            <img src={article.thumbnailUrl} alt={article.title} className={cx("aspect-[1.5] w-full object-cover", imageClassName)} />
-        </a>
-
-        <div className="flex flex-col gap-6">
-            <div className="flex flex-col items-start gap-2">
-                <p className="text-sm font-semibold text-brand-secondary">
-                    {article.author.name} • <time>{article.publishedAt}</time>
-                </p>
-                <div className="flex w-full flex-col gap-1">
-                    <a
-                        href={article.category.href}
-                        className={cx(
-                            "flex justify-between gap-x-4 rounded-md text-lg font-semibold text-primary outline-focus-ring focus-visible:outline-2 focus-visible:outline-offset-2",
-                            titleClassName,
-                        )}
+                <div className="grid md:grid-cols-3 gap-8">
+                    {/* SmartScan */}
+                    <Link
+                        href="/VehicleAppraisal"
+                        className="block rounded-2xl p-8 bg-white/10 backdrop-blur border border-white/20 hover:bg-white/15 transition-all cursor-pointer"
+                        style={{ opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(30px)", transitionDelay: "100ms" }}
                     >
-                        {article.title}
-                        <ArrowUpRight className="mt-0.5 size-6 shrink-0 text-fg-quaternary" aria-hidden="true" />
-                    </a>
-                    <p className="line-clamp-2 text-md text-tertiary">{article.summary}</p>
+                        <span className="inline-block text-xs font-bold px-3 py-1 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 text-white mb-4">
+                            AI Diagnostics &amp; Appraisals
+                        </span>
+                        <h3 className="text-xl font-bold text-white mb-3">VinTraxx SmartScan</h3>
+                        <p className="text-blue-200 text-sm leading-relaxed mb-6">
+                            Scan any vehicle in seconds. Get professional appraisal reports, DTC codes, recon cost estimates, and AI-powered pricing — all from a mobile device.
+                        </p>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="bg-white/10 rounded-xl p-3 text-center">
+                                <div className="text-2xl font-bold text-white">25%</div>
+                                <div className="text-xs text-blue-300 mt-1">Appraisals Up</div>
+                            </div>
+                            <div className="bg-white/10 rounded-xl p-3 text-center">
+                                <div className="text-2xl font-bold text-white">$850</div>
+                                <div className="text-xs text-blue-300 mt-1">More Profit/Trade</div>
+                            </div>
+                        </div>
+                    </Link>
+
+                    {/* SmartScan + Capital */}
+                    <Link
+                        href="/login"
+                        className="block rounded-2xl p-8 bg-white/10 backdrop-blur border border-[#8B2332] ring-2 ring-[#8B2332]/50 hover:bg-white/15 transition-all cursor-pointer"
+                        style={{ opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(30px)", transitionDelay: "200ms" }}
+                    >
+                        <span className="inline-block text-xs font-bold px-3 py-1 rounded-full bg-gradient-to-r from-[#8B2332] to-rose-500 text-white mb-4">
+                            Diagnose. Finance. Close.
+                        </span>
+                        <h3 className="text-xl font-bold text-white mb-3">SmartScan + Capital</h3>
+                        <p className="text-blue-200 text-sm leading-relaxed mb-6">
+                            Combine instant vehicle diagnostics with same-day consumer financing. The fastest path from appraisal to funded deal.
+                        </p>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="bg-white/10 rounded-xl p-3 text-center">
+                                <div className="text-2xl font-bold text-white">65%+</div>
+                                <div className="text-xs text-blue-300 mt-1">Conversion Rate</div>
+                            </div>
+                            <div className="bg-white/10 rounded-xl p-3 text-center">
+                                <div className="text-2xl font-bold text-white">✓</div>
+                                <div className="text-xs text-blue-300 mt-1">Same-Day Funding</div>
+                            </div>
+                        </div>
+                    </Link>
+
+                    {/* VinTraxx Capital */}
+                    <Link
+                        href="/VinTraxxCapital"
+                        className="block rounded-2xl p-8 bg-white/10 backdrop-blur border border-white/20 hover:bg-white/15 transition-all cursor-pointer"
+                        style={{ opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(30px)", transitionDelay: "300ms" }}
+                    >
+                        <span className="inline-block text-xs font-bold px-3 py-1 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 text-white mb-4">
+                            Consumer Financing for Any Business
+                        </span>
+                        <h3 className="text-xl font-bold text-white mb-3">VinTraxx Capital</h3>
+                        <p className="text-blue-200 text-sm leading-relaxed mb-6">
+                            Offer $1K–$25K loans with 24–72 month terms to your customers. High approval rates, competitive APR, zero cost to get started.
+                        </p>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="bg-white/10 rounded-xl p-3 text-center">
+                                <div className="text-2xl font-bold text-white">$25K</div>
+                                <div className="text-xs text-blue-300 mt-1">Max Loan</div>
+                            </div>
+                            <div className="bg-white/10 rounded-xl p-3 text-center">
+                                <div className="text-2xl font-bold text-white">72 Mo.</div>
+                                <div className="text-xs text-blue-300 mt-1">Max Term</div>
+                            </div>
+                        </div>
+                    </Link>
                 </div>
             </div>
+        </section>
+    );
+};
 
-            <div className="flex gap-2">
-                {article.tags.map((tag) => (
-                    <a key={tag.name} href={tag.href} className="rounded-xl outline-focus-ring focus-visible:outline-2 focus-visible:outline-offset-2">
-                        <Badge color={tag.color} size="md">
-                            {tag.name}
-                        </Badge>
-                    </a>
-                ))}
+/* ─── CTA ─── */
+const CTA = () => {
+    const { ref, visible } = useScrollReveal();
+    return (
+        <section className="py-24 px-4 sm:px-6 lg:px-8 bg-white">
+            <div className="max-w-5xl mx-auto" ref={ref}>
+                <div
+                    className="bg-gradient-to-br from-[#1B3A5F] to-[#234A6F] rounded-3xl p-12 sm:p-16 text-center shadow-2xl border border-[#1B3A5F]/20 transition-all duration-700"
+                    style={{ opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(30px)" }}
+                >
+                    <h2 className="text-4xl sm:text-5xl font-bold text-white mb-6 leading-tight">Ready to Drive Your Success?</h2>
+                    <p className="text-xl text-blue-100 mb-10 max-w-2xl mx-auto">
+                        Join dealerships nationwide using VinTraxx to streamline operations and boost profitability
+                    </p>
+                    <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                        <button className="h-10 rounded-md bg-white hover:bg-slate-50 text-[#1B3A5F] text-lg px-10 py-6 font-bold shadow-lg hover:shadow-xl transition-all hover:scale-105 inline-flex items-center justify-center">
+                            Get Started Free
+                        </button>
+                        <a href="mailto:admin@vintraxx.com">
+                            <button className="h-10 rounded-md bg-[#8B2332] hover:bg-[#6d1c27] text-white text-lg px-10 py-6 font-bold shadow-lg hover:shadow-xl transition-all hover:scale-105 inline-flex items-center justify-center">
+                                Request Demo
+                            </button>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </section>
+    );
+};
+
+/* ─── Footer ─── */
+const Footer = () => (
+    <footer className="bg-slate-900 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+            <div className="grid md:grid-cols-4 gap-8 mb-8">
+                <div className="col-span-2">
+                    <div className="flex items-center gap-2 mb-4">
+                        <img src={LOGO_URL} alt="VinTraxx" className="h-16 brightness-0 invert" />
+                    </div>
+                    <p className="text-slate-400 text-sm">The complete automotive platform for modern dealerships</p>
+                </div>
+                <div>
+                    <h4 className="text-white font-semibold mb-4">Products</h4>
+                    <ul className="space-y-2 text-sm text-slate-400">
+                        <li className="hover:text-white cursor-pointer transition-colors">VinLane IMS</li>
+                        <li className="hover:text-white cursor-pointer transition-colors">VinTraxx CRM</li>
+                        <li className="hover:text-white cursor-pointer transition-colors">VinTraxx Recon</li>
+                        <li className="hover:text-white cursor-pointer transition-colors">View All</li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 className="text-white font-semibold mb-4">Company</h4>
+                    <ul className="space-y-2 text-sm text-slate-400">
+                        <li className="hover:text-white cursor-pointer transition-colors">About Us</li>
+                        <li><a href="mailto:admin@vintraxx.com" className="hover:text-white transition-colors">Contact</a></li>
+                        <li><a href="mailto:admin@vintraxx.com" className="hover:text-white transition-colors">Support</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div className="border-t border-slate-800 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <p className="text-sm text-slate-500">© 2026 VinTraxx Automotive. All rights reserved.</p>
+                <div className="flex items-center gap-4 text-sm text-slate-500">
+                    <span className="flex items-center gap-2 hover:text-slate-400 transition-colors">
+                        <Phone className="w-4 h-4" />888-555-1234
+                    </span>
+                    <span>•</span>
+                    <span className="hover:text-slate-400 transition-colors">admin@vintraxx.com</span>
+                </div>
             </div>
         </div>
-    </article>
+    </footer>
 );
 
-const BlogSectionCarouselLayout02 = () => {
-    return (
-        <section className="overflow-hidden bg-primary py-16 md:py-24">
-            <div className="mx-auto max-w-container px-4 md:px-8">
-                <div className="flex flex-col items-start justify-between lg:flex-row">
-                    <div className="max-w-3xl">
-                        <h2 className="text-display-sm font-semibold text-primary md:text-display-md">Latest writings</h2>
-                        <p className="mt-4 text-lg text-tertiary md:mt-5 md:text-xl">The latest news, technologies, and resources from our team.</p>
-                    </div>
-
-                    <div className="hidden gap-3 lg:flex">
-                        <Button size="xl">View all posts</Button>
-                    </div>
-                </div>
-
-                <Carousel.Root className="mt-12 md:mt-16" opts={{ align: "start" }}>
-                    <Carousel.Content overflowHidden={false} className="gap-6 pr-4 md:gap-8 md:pr-8">
-                        {articles.slice(0, 4).map((article) => (
-                            <Carousel.Item key={article.id} className="max-w-xs md:max-w-96">
-                                <Simple03Vertical article={article} />
-                            </Carousel.Item>
-                        ))}
-                    </Carousel.Content>
-                    <div className="mt-8 flex gap-4 md:gap-8">
-                        <Carousel.PrevTrigger asChild>
-                            <RoundButton icon={ArrowLeft} />
-                        </Carousel.PrevTrigger>
-                        <Carousel.NextTrigger asChild>
-                            <RoundButton icon={ArrowRight} />
-                        </Carousel.NextTrigger>
-                    </div>
-                </Carousel.Root>
-
-                <div className="mt-12 flex flex-col gap-3 lg:hidden">
-                    <Button size="xl">View all posts</Button>
-                </div>
-            </div>
-        </section>
-    );
-};
-
-const CTASimpleLogos02 = () => {
-    return (
-        <section className="bg-primary py-16 md:py-24">
-            <div className="mx-auto max-w-container px-4 md:px-8">
-                <div className="grid grid-cols-1 items-start lg:grid-cols-2 lg:gap-16">
-                    <div className="flex flex-col">
-                        <div className="max-w-3xl">
-                            <h2 className="text-display-sm font-semibold text-primary md:text-display-md">Transform Your Dealership with VinTraxx</h2>
-                            <p className="mt-4 text-lg text-tertiary md:mt-5 md:text-xl">7 AI-powered products working together to maximize your profit.</p>
-                        </div>
-
-                        <div className="mt-8 flex flex-col gap-3 self-stretch sm:flex-row sm:self-start md:mt-12 lg:flex-row-reverse">
-                            <Button size="xl">Request a Demo</Button>
-                            <Button color="secondary" size="xl">
-                                Learn more
-                            </Button>
-                        </div>
-                    </div>
-                    <div className="mt-12 flex flex-wrap justify-center gap-x-8 gap-y-6 lg:mt-0">
-                        <img alt="Capital" src={capitalLogo.src} className="h-10 md:h-12" />
-                        <img alt="SmartScan" src={smartscanLogo.src} className="h-10 md:h-12" />
-                        <img alt="VinLane" src={vinlaneLogo.src} className="h-10 md:h-12" />
-                        <img alt="VinClips" src={vinclipsLogo.src} className="h-10 md:h-12" />
-                        <img alt="Acquisition" src={acquisitionLogo.src} className="h-10 md:h-12" />
-                    </div>
-                </div>
-            </div>
-        </section>
-    );
-};
-
-const footerNavList = [
-    {
-        label: "Products",
-        items: [
-            { label: "VinTraxx Capital", href: "/products/capital" },
-            { label: "SmartScan", href: "/products/smartscan" },
-            { label: "VinLane IMS", href: "/products/vinlane" },
-            { label: "VinClips", href: "/products/vinclips" },
-            { label: "Acquisition.io", href: "/products/acquisition" },
-        ],
-    },
-    {
-        label: "Company",
-        items: [
-            { label: "About us", href: "/about" },
-            { label: "Careers", href: "/careers" },
-            { label: "Press", href: "/press" },
-            { label: "News", href: "/news" },
-            { label: "Contact", href: "/contact" },
-        ],
-    },
-    {
-        label: "Resources",
-        items: [
-            { label: "Blog", href: "/blog" },
-            { label: "Help Center", href: "/help" },
-            { label: "Documentation", href: "/docs" },
-            { label: "Training", href: "/training" },
-            { label: "Support", href: "/support" },
-        ],
-    },
-    {
-        label: "For Dealers",
-        items: [
-            { label: "Independent Dealers", href: "/dealers/independent" },
-            { label: "Franchise Dealers", href: "/dealers/franchise" },
-            { label: "Dealer Groups", href: "/dealers/groups" },
-            { label: "Success Stories", href: "/success-stories" },
-        ],
-    },
-    {
-        label: "Social",
-        items: [
-            { label: "Twitter", href: "#" },
-            { label: "LinkedIn", href: "#" },
-            { label: "Facebook", href: "#" },
-            { label: "TikTok", href: "#" },
-            { label: "YouTube", href: "#" },
-        ],
-    },
-    {
-        label: "Legal",
-        items: [
-            { label: "Terms", href: "/terms" },
-            { label: "Privacy", href: "/privacy" },
-            { label: "Cookies", href: "/cookies" },
-            { label: "Settings", href: "/settings" },
-        ],
-    },
-];
-
-const FooterLarge09 = () => {
-    return (
-        <footer className="dark-mode bg-primary py-12 md:pt-16">
-            <div className="mx-auto max-w-container px-4 md:px-8">
-                <div className="flex flex-col justify-center text-center">
-                    <h2 className="text-display-xs font-semibold text-primary md:text-display-sm">Let's Revolutionize Your Dealership Together</h2>
-                    <p className="mt-2 text-md text-tertiary md:mt-4 md:text-xl">Get in touch to see how VinTraxx can boost your operations and profits.</p>
-                    <div className="mt-8 flex flex-col-reverse gap-3 self-stretch md:mt-12 md:flex-row md:self-center">
-                        <Button color="secondary" size="xl">
-                            Contact Us
-                        </Button>
-                        <Button size="xl">Request a Demo</Button>
-                    </div>
-                </div>
-
-                <nav className="mt-12 md:mt-16">
-                    <ul className="grid grid-cols-2 gap-8 md:grid-cols-3 lg:grid-cols-6">
-                        {footerNavList.map((category) => (
-                            <li key={category.label}>
-                                <h4 className="text-sm font-semibold text-quaternary">{category.label}</h4>
-                                <ul className="mt-4 flex flex-col gap-3">
-                                    {category.items.map((item) => (
-                                        <li key={item.label}>
-                                            <Button color="link-gray" size="lg" href={item.href}>
-                                                {item.label}
-                                            </Button>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </li>
-                        ))}
-                    </ul>
-                </nav>
-                <div className="mt-12 flex flex-col justify-between gap-6 border-t border-secondary pt-8 md:mt-16 md:flex-row md:items-center">
-                    <Link href="/">
-                    <UntitledLogo className="h-10" />
-                </Link>
-                    <p className="text-md text-quaternary">© 2025 Vintraxx. All rights reserved.</p>
-                </div>
-            </div>
-        </footer>
-    );
-};
-
-const LandingPage = () => {
-    return (
-        <div className="bg-primary">
-            <HeroAbstractAngles01 />
-
-            <SocialProofFullWidth />
-
-            <SectionDivider />
-
-            <FeaturesTabsMockup07 />
-
-            <SectionDivider />
-
-            <TestimonialCaseStudyCards />
-
-            <SectionDivider />
-
-            <CTAScreenMockup03 />
-
-            <BlogSectionCarouselLayout02 />
-
-            <CTASimpleLogos02 />
-
-            <FooterLarge09 />
-        </div>
-    );
-};
+/* ─── Page export ─── */
+const LandingPage = () => (
+    <div className="min-h-screen bg-white">
+        <Nav />
+        <Hero />
+        <AnimatedBarsSection
+            heading="Unlock Intelligent Features"
+            text="Beyond smart sourcing, VinTraxx leverages cutting-edge artificial intelligence throughout your dealership operations—from predictive analytics to automated workflows that save you time and money."
+        />
+        <ThreePowerfulProducts />
+        <AnimatedBarsSection
+            heading="Scan, Finance &amp; Close — All in One Place"
+            text="Stop juggling disconnected tools. VinTraxx SmartScan, SmartScan + Capital, and VinTraxx Capital work together to take you from vehicle appraisal to funded deal faster than ever before."
+        />
+        <CTA />
+        <Footer />
+    </div>
+);
 
 export default LandingPage;

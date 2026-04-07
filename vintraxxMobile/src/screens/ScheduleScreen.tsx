@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+// Using simple text inputs instead of DateTimePicker to avoid dependency issues
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
@@ -43,8 +43,8 @@ interface FormData {
   vehicle: string;
   vin: string;
   serviceType: string;
-  preferredDate: Date | null;
-  preferredTime: Date | null;
+  preferredDate: string;
+  preferredTime: string;
   additionalNotes: string;
 }
 
@@ -63,8 +63,6 @@ interface FormErrors {
 export const ScheduleScreen: React.FC = () => {
   const navigation = useNavigation();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
   const [showServiceTypePicker, setShowServiceTypePicker] = useState(false);
   const [formData, setFormData] = useState<FormData>({
     name: '',
@@ -74,8 +72,8 @@ export const ScheduleScreen: React.FC = () => {
     vehicle: '',
     vin: '',
     serviceType: '',
-    preferredDate: null,
-    preferredTime: null,
+    preferredDate: '',
+    preferredTime: '',
     additionalNotes: '',
   });
   const [errors, setErrors] = useState<FormErrors>({});
@@ -84,7 +82,7 @@ export const ScheduleScreen: React.FC = () => {
     logger.info(LogCategory.APP, 'ScheduleScreen: Screen opened');
   }, []);
 
-  const updateField = (field: keyof FormData, value: string | Date | null) => {
+  const updateField = (field: keyof FormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     if (errors[field as keyof FormErrors]) {
       setErrors(prev => ({ ...prev, [field]: undefined }));
@@ -209,36 +207,15 @@ export const ScheduleScreen: React.FC = () => {
     }
   };
 
-  const formatDate = (date: Date | null): string => {
-    if (!date) return '';
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
+  // Using simple text inputs, no need for date/time formatting functions
+
+  // Simple text input handlers for date and time
+  const handleDateChange = (text: string) => {
+    updateField('preferredDate', text);
   };
 
-  const formatTime = (time: Date | null): string => {
-    if (!time) return '';
-    return time.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    });
-  };
-
-  const handleDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
-    setShowDatePicker(Platform.OS === 'ios');
-    if (selectedDate) {
-      updateField('preferredDate', selectedDate);
-    }
-  };
-
-  const handleTimeChange = (event: DateTimePickerEvent, selectedTime?: Date) => {
-    setShowTimePicker(Platform.OS === 'ios');
-    if (selectedTime) {
-      updateField('preferredTime', selectedTime);
-    }
+  const handleTimeChange = (text: string) => {
+    updateField('preferredTime', text);
   };
 
   const renderInput = (
@@ -395,20 +372,13 @@ export const ScheduleScreen: React.FC = () => {
                 <Text style={styles.inputLabel}>
                   Preferred Date<Text style={styles.requiredStar}> *</Text>
                 </Text>
-                <TouchableOpacity
-                  style={[styles.input, styles.dateTimeInput, errors.preferredDate && styles.inputError]}
-                  onPress={() => setShowDatePicker(true)}
-                >
-                  <Text
-                    style={[
-                      styles.dateTimeText,
-                      !formData.preferredDate && styles.dateTimePlaceholder,
-                    ]}
-                  >
-                    {formData.preferredDate ? formatDate(formData.preferredDate) : 'Select date'}
-                  </Text>
-                  <Text style={styles.dateTimeIcon}>📅</Text>
-                </TouchableOpacity>
+                <TextInput
+                  style={[styles.input, errors.preferredDate && styles.inputError]}
+                  placeholder="MM/DD/YYYY"
+                  placeholderTextColor={colors.primary.red + '80'}
+                  value={formData.preferredDate}
+                  onChangeText={handleDateChange}
+                />
                 {errors.preferredDate && <Text style={styles.errorText}>{errors.preferredDate}</Text>}
               </View>
             </View>
@@ -417,43 +387,19 @@ export const ScheduleScreen: React.FC = () => {
                 <Text style={styles.inputLabel}>
                   Preferred Time<Text style={styles.requiredStar}> *</Text>
                 </Text>
-                <TouchableOpacity
-                  style={[styles.input, styles.dateTimeInput, errors.preferredTime && styles.inputError]}
-                  onPress={() => setShowTimePicker(true)}
-                >
-                  <Text
-                    style={[
-                      styles.dateTimeText,
-                      !formData.preferredTime && styles.dateTimePlaceholder,
-                    ]}
-                  >
-                    {formData.preferredTime ? formatTime(formData.preferredTime) : 'Select time'}
-                  </Text>
-                  <Text style={styles.dateTimeIcon}>🕐</Text>
-                </TouchableOpacity>
+                <TextInput
+                  style={[styles.input, errors.preferredTime && styles.inputError]}
+                  placeholder="HH:MM AM/PM"
+                  placeholderTextColor={colors.primary.red + '80'}
+                  value={formData.preferredTime}
+                  onChangeText={handleTimeChange}
+                />
                 {errors.preferredTime && <Text style={styles.errorText}>{errors.preferredTime}</Text>}
               </View>
             </View>
           </View>
 
-          {/* Date/Time Pickers */}
-          {showDatePicker && (
-            <DateTimePicker
-              value={formData.preferredDate || new Date()}
-              mode="date"
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-              onChange={handleDateChange}
-              minimumDate={new Date()}
-            />
-          )}
-          {showTimePicker && (
-            <DateTimePicker
-              value={formData.preferredTime || new Date()}
-              mode="time"
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-              onChange={handleTimeChange}
-            />
-          )}
+          {/* Using simple text inputs instead of DateTimePicker */}
 
           {/* Additional Notes */}
           <View style={styles.inputContainer}>

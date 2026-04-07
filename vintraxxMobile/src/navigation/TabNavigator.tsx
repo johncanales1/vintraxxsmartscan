@@ -7,6 +7,7 @@ import { ConnectScreen } from '../screens/ConnectScreen';
 import { ScanScreen } from '../screens/ScanScreen';
 import { AppraisalTabScreen } from '../screens/AppraisalTabScreen';
 import { HistoryScreen } from '../screens/HistoryScreen';
+import { ScheduleScreen } from '../screens/ScheduleScreen';
 import { useAppStore } from '../store/appStore';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -18,6 +19,7 @@ import ConnectIcon from '../assets/icons/connect.svg';
 import ScanIcon from '../assets/icons/scan.svg';
 import WalletIcon from '../assets/icons/wallet.svg';
 import HistoryIcon from '../assets/icons/history.svg';
+import CalendarIcon from '../assets/icons/calendar.svg';
 
 const Tab = createBottomTabNavigator<TabParamList>();
 
@@ -108,6 +110,15 @@ export const TabNavigator: React.FC = () => {
         options={{
           tabBarIcon: ({ focused }) => (
             <TabIcon focused={focused} Icon={HistoryIcon} label="History" />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Schedule"
+        component={ScheduleScreen}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabIcon focused={focused} Icon={CalendarIcon} label="Schedule" />
           ),
         }}
       />

@@ -10,6 +10,7 @@ export type TabParamList = {
   Scan: { vehicle?: Vehicle; autoStart?: boolean } | undefined;
   AppraisalTab: undefined;
   History: undefined;
+  Schedule: undefined;
 };
 
 // Root Stack Navigator param list (includes tabs + modal screens)

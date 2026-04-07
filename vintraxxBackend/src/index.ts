@@ -10,6 +10,7 @@ import appraisalRoutes from './routes/appraisal.routes';
 import dealerRoutes from './routes/dealer.routes';
 import inspectionRoutes from './routes/inspection.routes';
 import adminRoutes from './routes/admin.routes';
+import scheduleRoutes from './routes/schedule.routes';
 import logger from './utils/logger';
 
 const app = express();
@@ -114,6 +115,7 @@ app.use('/api/v1/appraisal', appraisalRoutes);
 app.use('/api/v1/dealer', dealerRoutes);
 app.use('/api/v1/inspection', inspectionRoutes);
 app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/schedule', scheduleRoutes);
 
 app.use(errorHandler);
 

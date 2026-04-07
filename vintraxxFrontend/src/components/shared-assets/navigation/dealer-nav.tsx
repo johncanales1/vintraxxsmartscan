@@ -4,7 +4,6 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Search, Menu, ChevronDown, User, LogOut, UserCircle, X, Upload, Calendar, DollarSign, Mail, Hash, ZoomIn, ZoomOut, Move, Check, Pencil } from "lucide-react";
 import { Button as AriaButton, Dialog as AriaDialog, DialogTrigger as AriaDialogTrigger, Popover as AriaPopover } from "react-aria-components";
-import { ProductsDropdownMenu } from "@/components/marketing/header-navigation/products-dropdown-menu";
 import { cx } from "@/utils/cx";
 
 interface DealerNavProps {
@@ -656,7 +655,6 @@ const UserDropdownMenu = ({ className, userEmail, onProfileClick, onClose }: { c
 
 export const DealerNav = ({ dealerLogo, originalLogoUrl, dealerName, userEmail, userId, pricePerLaborHour, qrCodeUrl, createdAt, onProfileUpdate }: DealerNavProps) => {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-    const [isProductsDropdownOpen, setIsProductsDropdownOpen] = useState(false);
     const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
     const [isUserPopoverOpen, setIsUserPopoverOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -836,39 +834,19 @@ export const DealerNav = ({ dealerLogo, originalLogoUrl, dealerName, userEmail, 
                     </Link>
 
                     {/* Desktop Navigation */}
-                    <div className="hidden lg:flex items-center gap-1">
-                        <AriaDialogTrigger>
-                            <AriaButton className="flex cursor-pointer items-center gap-0.5 rounded-lg px-1.5 py-1 text-md font-semibold text-secondary outline-focus-ring transition duration-100 ease-linear hover:text-secondary_hover focus-visible:outline-2 focus-visible:outline-offset-2">
-                                <span className="px-0.5">Products</span>
-                                <ChevronDown className="size-4 rotate-0 stroke-[2.625px] text-fg-quaternary transition duration-100 ease-linear in-aria-expanded:-rotate-180" />
-                            </AriaButton>
-
-                            <AriaPopover
-                                className={({ isEntering, isExiting }) =>
-                                    cx(
-                                        "hidden origin-top will-change-transform md:block",
-                                        isEntering && "duration-200 ease-out animate-in fade-in slide-in-from-top-1",
-                                        isExiting && "duration-150 ease-in animate-out fade-out slide-out-to-top-1",
-                                    )
-                                }
-                                offset={8}
-                                containerPadding={0}
-                            >
-                                {({ isEntering, isExiting }) => (
-                                    <AriaDialog
-                                        className={cx(
-                                            "mx-auto origin-top outline-hidden",
-                                            // Have to use the scale animation inside the popover to avoid
-                                            // miscalculating the popover's position when opening.
-                                            isEntering && "duration-200 ease-out animate-in zoom-in-95",
-                                            isExiting && "duration-150 ease-in animate-out zoom-out-95",
-                                        )}
-                                    >
-                                        <ProductsDropdownMenu />
-                                    </AriaDialog>
-                                )}
-                            </AriaPopover>
-                        </AriaDialogTrigger>
+                    <div className="hidden lg:flex items-center gap-6">
+                        <Link
+                            href="/VinTraxxSmartScanDashboard"
+                            className="text-sm font-semibold text-[#1B3A5F] hover:text-blue-600 transition-colors duration-150"
+                        >
+                            VinTraxx Smart Scan
+                        </Link>
+                        <Link
+                            href="/CapitalDealerPortal"
+                            className="text-sm font-semibold text-[#1B3A5F] hover:text-blue-600 transition-colors duration-150"
+                        >
+                            VinTraxx Capital Portal
+                        </Link>
                     </div>
 
                     {/* Right side actions */}
@@ -966,19 +944,21 @@ export const DealerNav = ({ dealerLogo, originalLogoUrl, dealerName, userEmail, 
                 {isMobileMenuOpen && (
                     <div className="lg:hidden border-t border-slate-200 bg-white">
                         <div className="px-4 py-3 space-y-1">
-                            {/* Products Dropdown */}
-                            <div className="flex flex-col gap-0.5">
-                                <button
-                                    onClick={() => setIsProductsDropdownOpen(!isProductsDropdownOpen)}
-                                    className="flex w-full items-center justify-between px-3 py-2 text-md font-semibold text-primary hover:bg-primary_hover rounded-lg"
-                                >
-                                    Products
-                                    <ChevronDown
-                                        className={cx("size-4 stroke-[2.625px] text-fg-quaternary transition duration-100 ease-linear", isProductsDropdownOpen ? "-rotate-180" : "rotate-0")}
-                                    />
-                                </button>
-                                {isProductsDropdownOpen && <div className="mt-1"><ProductsDropdownMenu /></div>}
-                            </div>
+                            {/* Navigation Links */}
+                            <Link
+                                href="/VinTraxxSmartScanDashboard"
+                                onClick={() => setIsMobileMenuOpen(false)}
+                                className="block px-3 py-2 text-md font-semibold text-[#1B3A5F] hover:bg-slate-100 rounded-lg"
+                            >
+                                VinTraxx Smart Scan
+                            </Link>
+                            <Link
+                                href="/CapitalDealerPortal"
+                                onClick={() => setIsMobileMenuOpen(false)}
+                                className="block px-3 py-2 text-md font-semibold text-[#1B3A5F] hover:bg-slate-100 rounded-lg"
+                            >
+                                VinTraxx Capital Portal
+                            </Link>
                             
                             {/* User Dropdown */}
                             <div className="flex flex-col gap-0.5">

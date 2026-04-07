@@ -1,6 +1,6 @@
 // ScheduleScreen for VinTraxx SmartScan
 // Schedule Service Appointment form
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,7 @@ import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
 import { logger, LogCategory } from '../utils/Logger';
 import { apiService } from '../services/api/ApiService';
+import { useAppStore } from '../store/appStore';
 
 const SERVICE_TYPES = [
   'Select service type...',
@@ -62,6 +63,7 @@ interface FormErrors {
 
 export const ScheduleScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { selectedVehicle } = useAppStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showServiceTypePicker, setShowServiceTypePicker] = useState(false);
   const [formData, setFormData] = useState<FormData>({
@@ -81,6 +83,41 @@ export const ScheduleScreen: React.FC = () => {
   useEffect(() => {
     logger.info(LogCategory.APP, 'ScheduleScreen: Screen opened');
   }, []);
+
+  useEffect(() => {
+    if (selectedVehicle) {
+      if (selectedVehicle.vin && selectedVehicle.vin.length === 17) {
+        setFormData(prev => ({
+          ...prev,
+          vin: prev.vin || selectedVehicle.vin,
+        }));
+      }
+      const vehicleLabel = [
+        selectedVehicle.year,
+        selectedVehicle.make,
+        selectedVehicle.model,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      if (vehicleLabel) {
+        setFormData(prev => ({
+          ...prev,
+          vehicle: prev.vehicle || vehicleLabel,
+        }));
+      }
+    }
+  }, [selectedVehicle]);
+
+  const handleScanVin = useCallback(() => {
+    logger.info(LogCategory.APP, 'ScheduleScreen: Camera VIN scan initiated');
+    (navigation as any).navigate('VinScanner', {
+      onVinScanned: (vin: string) => {
+        logger.info(LogCategory.APP, 'ScheduleScreen: VIN received from camera', { vin });
+        updateField('vin', vin);
+      },
+    });
+  }, [navigation]);
 
   const updateField = (field: keyof FormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -143,8 +180,8 @@ export const ScheduleScreen: React.FC = () => {
       vehicle: '',
       vin: '',
       serviceType: '',
-      preferredDate: null,
-      preferredTime: null,
+      preferredDate: '',
+      preferredTime: '',
       additionalNotes: '',
     });
     setErrors({});
@@ -179,12 +216,8 @@ export const ScheduleScreen: React.FC = () => {
         vehicle: formData.vehicle.trim(),
         vin: formData.vin.trim(),
         serviceType: formData.serviceType,
-        preferredDate: formData.preferredDate!.toISOString(),
-        preferredTime: formData.preferredTime!.toLocaleTimeString('en-US', {
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: true,
-        }),
+        preferredDate: formData.preferredDate,
+        preferredTime: formData.preferredTime,
         additionalNotes: formData.additionalNotes.trim() || undefined,
       });
 
@@ -307,9 +340,35 @@ export const ScheduleScreen: React.FC = () => {
               {renderInput('Vehicle', 'vehicle', 'Year Make Model')}
             </View>
             <View style={styles.halfColumn}>
-              {renderInput('VIN', 'vin', 'VIN number', {
-                autoCapitalize: 'none',
-              })}
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>
+                  VIN<Text style={styles.requiredStar}> *</Text>
+                </Text>
+                <View style={styles.vinInputRow}>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      styles.vinInput,
+                      errors.vin && styles.inputError,
+                    ]}
+                    placeholder="VIN number"
+                    placeholderTextColor={colors.primary.red + '80'}
+                    value={formData.vin}
+                    onChangeText={(text) => updateField('vin', text.toUpperCase())}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    maxLength={17}
+                  />
+                  <TouchableOpacity
+                    style={styles.vinCameraButton}
+                    onPress={handleScanVin}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.vinCameraIcon}>📷</Text>
+                  </TouchableOpacity>
+                </View>
+                {errors.vin && <Text style={styles.errorText}>{errors.vin}</Text>}
+              </View>
             </View>
           </View>
 
@@ -574,6 +633,30 @@ const styles = StyleSheet.create({
   dateTimeIcon: {
     fontSize: 18,
     marginLeft: spacing.sm,
+  },
+  vinInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  vinInput: {
+    flex: 1,
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
+    borderRightWidth: 0,
+  },
+  vinCameraButton: {
+    backgroundColor: colors.primary.navy,
+    borderWidth: 1,
+    borderColor: colors.primary.navy,
+    borderTopRightRadius: spacing.inputRadius,
+    borderBottomRightRadius: spacing.inputRadius,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vinCameraIcon: {
+    fontSize: 18,
   },
   buttonRow: {
     flexDirection: 'row',

@@ -223,7 +223,7 @@ async function sendConfirmationEmailToUser(data: ScheduleRequestData): Promise<v
 
 export async function submitScheduleRequest(req: Request, res: Response): Promise<void> {
   try {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.userId;
     if (!userId) {
       res.status(401).json({ success: false, message: 'Authentication required' });
       return;

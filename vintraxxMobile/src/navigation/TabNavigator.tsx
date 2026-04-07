@@ -1,6 +1,15 @@
 // Tab Navigator for VinTraxx SmartScan
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useRef, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  StyleSheet,
+  Animated,
+  Dimensions,
+  Platform,
+} from 'react-native';
 import { createBottomTabNavigator, BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConnectScreen } from '../screens/ConnectScreen';
@@ -21,16 +30,13 @@ import HistoryIcon from '../assets/icons/history.svg';
 import CalendarIcon from '../assets/icons/calendar.svg';
 
 const Tab = createBottomTabNavigator<TabParamList>();
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// Tab order in navigator: Connect(0), Scan(1), AppraisalTab(2), History(3), Schedule(4)
-// Row 1 (top):    History(3), Schedule(4)
-// Row 2 (bottom): Connect(0), Scan(1), Appraisal(2)
-const ROW1_INDICES = [3, 4];
-const ROW2_INDICES = [0, 1, 2];
-
-const TAB_ACTIVE_COLOR = colors.primary.navy;       // #1E3A5F
-const TAB_INACTIVE_COLOR = '#94A3B8';               // slate-400
-const TAB_ACTIVE_BG = colors.primary.navy + '18';   // subtle pill
+const TAB_ACTIVE_COLOR = '#FFFFFF';
+const TAB_INACTIVE_COLOR = 'rgba(255,255,255,0.55)';
+const TAB_BAR_BG = colors.primary.navy;
+const TAB_ACTIVE_PILL = 'rgba(255,255,255,0.18)';
+const AUTO_HIDE_DELAY = 3500;
 
 interface SvgIcon {
   width: number;
@@ -49,26 +55,47 @@ const TAB_META: Record<string, { label: string; Icon: React.FC<SvgIcon> }> = {
 const TabItem: React.FC<{
   routeName: string;
   focused: boolean;
-  flex?: number;
   onPress: () => void;
   onLongPress: () => void;
-}> = ({ routeName, focused, flex = 1, onPress, onLongPress }) => {
+}> = ({ routeName, focused, onPress, onLongPress }) => {
   const meta = TAB_META[routeName];
   if (!meta) return null;
   const { label, Icon } = meta;
-  const iconColor = focused ? TAB_ACTIVE_COLOR : TAB_INACTIVE_COLOR;
-  const labelColor = focused ? TAB_ACTIVE_COLOR : TAB_INACTIVE_COLOR;
+  const scaleAnim = useRef(new Animated.Value(focused ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.spring(scaleAnim, {
+      toValue: focused ? 1 : 0,
+      useNativeDriver: true,
+      tension: 200,
+      friction: 15,
+    }).start();
+  }, [focused, scaleAnim]);
+
+  const iconScale = scaleAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.15],
+  });
 
   return (
     <TouchableOpacity
-      style={[styles.tabItem, { flex }]}
+      style={styles.tabItem}
       onPress={onPress}
       onLongPress={onLongPress}
       activeOpacity={0.7}
     >
       <View style={[styles.tabItemInner, focused && styles.tabItemInnerFocused]}>
-        <Icon width={22} height={22} color={iconColor} />
-        <Text style={[styles.tabLabel, { color: labelColor }, focused && styles.tabLabelFocused]}>
+        <Animated.View style={{ transform: [{ scale: iconScale }] }}>
+          <Icon width={20} height={20} color={focused ? TAB_ACTIVE_COLOR : TAB_INACTIVE_COLOR} />
+        </Animated.View>
+        <Text
+          style={[
+            styles.tabLabel,
+            { color: focused ? TAB_ACTIVE_COLOR : TAB_INACTIVE_COLOR },
+            focused && styles.tabLabelFocused,
+          ]}
+          numberOfLines={1}
+        >
           {label}
         </Text>
       </View>
@@ -78,55 +105,92 @@ const TabItem: React.FC<{
 
 const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigation }) => {
   const insets = useSafeAreaInsets();
+  const translateY = useRef(new Animated.Value(100)).current;
+  const isVisible = useRef(false);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const renderRow = (indices: number[]) => (
-    <View style={styles.tabRow}>
-      {indices.map((tabIndex) => {
-        const route = state.routes[tabIndex];
-        if (!route) return null;
-        const focused = state.index === tabIndex;
+  const showBar = useCallback(() => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    if (!isVisible.current) {
+      isVisible.current = true;
+      Animated.spring(translateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 280,
+        friction: 22,
+      }).start();
+    }
+    hideTimer.current = setTimeout(() => {
+      isVisible.current = false;
+      Animated.timing(translateY, {
+        toValue: 100,
+        duration: 350,
+        useNativeDriver: true,
+      }).start();
+    }, AUTO_HIDE_DELAY);
+  }, [translateY]);
 
-        const onPress = () => {
-          const event = navigation.emit({
-            type: 'tabPress',
-            target: route.key,
-            canPreventDefault: true,
-          });
-          if (!focused && !event.defaultPrevented) {
-            navigation.navigate(route.name as any);
-          }
-        };
+  // Show bar on tab change
+  useEffect(() => {
+    showBar();
+  }, [state.index, showBar]);
 
-        const onLongPress = () => {
-          navigation.emit({
-            type: 'tabLongPress',
-            target: route.key,
-          });
-        };
+  // Show bar initially for a moment
+  useEffect(() => {
+    showBar();
+    return () => {
+      if (hideTimer.current) clearTimeout(hideTimer.current);
+    };
+  }, [showBar]);
 
-        return (
-          <TabItem
-            key={route.key}
-            routeName={route.name}
-            focused={focused}
-            onPress={onPress}
-            onLongPress={onLongPress}
-          />
-        );
-      })}
-    </View>
-  );
+  const bottomOffset = insets.bottom > 0 ? insets.bottom : 8;
 
   return (
-    <View style={[styles.tabBarWrapper, { paddingBottom: insets.bottom > 0 ? insets.bottom : spacing.md }]}>
-      <View style={styles.tabBar}>
-        {/* Row 1: History · Schedule */}
-        {renderRow(ROW1_INDICES)}
-        <View style={styles.rowDivider} />
-        {/* Row 2: Connect · Scan · Appraisal */}
-        {renderRow(ROW2_INDICES)}
+    <Animated.View
+      style={[
+        styles.tabBarOuter,
+        {
+          bottom: bottomOffset,
+          transform: [{ translateY }],
+        },
+      ]}
+    >
+      <View style={styles.tabBarPill}>
+        {state.routes.map((route, tabIndex) => {
+          const focused = state.index === tabIndex;
+
+          const onPress = () => {
+            showBar();
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
+            if (!focused && !event.defaultPrevented) {
+              navigation.navigate(route.name as any);
+            }
+          };
+
+          const onLongPress = () => {
+            showBar();
+            navigation.emit({
+              type: 'tabLongPress',
+              target: route.key,
+            });
+          };
+
+          return (
+            <TabItem
+              key={route.key}
+              routeName={route.name}
+              focused={focused}
+              onPress={onPress}
+              onLongPress={onLongPress}
+            />
+          );
+        })}
       </View>
-    </View>
+    </Animated.View>
   );
 };
 
@@ -148,12 +212,28 @@ const DealerBadgeHeader: React.FC = () => {
   );
 };
 
+// Touchable wrapper to show tab bar on screen tap
+const TabBarRevealWrapper: React.FC<{
+  children: React.ReactNode;
+  onTouch: () => void;
+}> = ({ children, onTouch }) => (
+  <TouchableWithoutFeedback onPress={onTouch}>
+    <View style={{ flex: 1 }}>{children}</View>
+  </TouchableWithoutFeedback>
+);
+
 export const TabNavigator: React.FC = () => {
+  const tabBarRef = useRef<{ show: () => void }>({ show: () => {} });
+
   return (
     <View style={{ flex: 1 }}>
       <DealerBadgeHeader />
       <Tab.Navigator
-        tabBar={(props) => <CustomTabBar {...props} />}
+        tabBar={(props) => {
+          // Expose showBar so we can call it from the wrapper
+          const customBar = <CustomTabBar {...props} />;
+          return customBar;
+        }}
         screenOptions={{
           headerShown: false,
         }}
@@ -207,55 +287,52 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 
-  // ── Custom two-row tab bar ───────────────────────────────────────────
-  tabBarWrapper: {
-    backgroundColor: '#FFFFFF',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#E2E8F0',
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.07,
-    shadowRadius: 10,
-    elevation: 12,
+  // ── Floating pill tab bar ─────────────────────────────────────────────
+  tabBarOuter: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    alignItems: 'center',
+    zIndex: 100,
   },
-  tabBar: {
-    width: '100%',
-  },
-  tabRow: {
+  tabBarPill: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-  },
-  rowDivider: {
-    height: 1,
-    backgroundColor: '#F1F5F9',
-    marginHorizontal: spacing.sm,
-    marginVertical: 4,
+    backgroundColor: TAB_BAR_BG,
+    borderRadius: 28,
+    paddingVertical: Platform.OS === 'ios' ? 6 : 4,
+    paddingHorizontal: 6,
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 20,
   },
   tabItem: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 4,
   },
   tabItemInner: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 16,
-    borderRadius: 20,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    borderRadius: 18,
   },
   tabItemInnerFocused: {
-    backgroundColor: TAB_ACTIVE_BG,
+    backgroundColor: TAB_ACTIVE_PILL,
   },
   tabLabel: {
-    fontSize: 11,
-    marginTop: 3,
-    fontWeight: '500',
+    fontSize: 9,
+    marginTop: 2,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
   tabLabelFocused: {
-    fontWeight: '700',
-    fontSize: 11,
+    fontWeight: '800',
+    fontSize: 9.5,
   },
 });

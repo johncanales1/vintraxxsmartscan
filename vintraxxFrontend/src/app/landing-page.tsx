@@ -36,29 +36,29 @@ const AboutModal = ({ open, onClose }: { open: boolean; onClose: () => void }) =
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center">
-            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+            <div className="absolute inset-0 bg-black/80" onClick={onClose} />
             <dialog
                 open
-                className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[85vh] overflow-y-auto p-0 z-10"
+                className="relative bg-white rounded-lg shadow-2xl max-w-3xl w-full mx-4 max-h-[80vh] overflow-y-auto p-6 z-10 border border-slate-200"
                 aria-label="About VinTraxx Automotive LLC"
             >
-                <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-8 pt-8 pb-4 border-b border-slate-100">
-                    <h2 className="text-2xl font-bold text-[#1B3A5F]">About VinTraxx Automotive LLC</h2>
-                    <button
-                        onClick={onClose}
-                        className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors"
-                    >
-                        <X className="w-5 h-5 text-slate-500" />
-                        <span className="sr-only">Close</span>
-                    </button>
+                <div className="flex flex-col space-y-1.5 text-left mb-4">
+                    <h2 className="tracking-tight text-2xl font-bold text-[#1B3A5F]">About VinTraxx Automotive LLC</h2>
                 </div>
-                <div className="px-8 py-6 space-y-5 text-slate-700 text-[15px] leading-relaxed">
-                    <div>
-                        <h3 className="text-xl font-bold text-[#1B3A5F] mb-1">Driving the Future of Automotive</h3>
-                        <p className="text-sm text-slate-500 font-medium">VinTraxx Automotive Holdings, LLC</p>
+                <button
+                    onClick={onClose}
+                    className="absolute right-4 top-4 rounded-sm opacity-70 hover:opacity-100 transition-opacity"
+                >
+                    <X className="w-4 h-4" />
+                    <span className="sr-only">Close</span>
+                </button>
+                <div className="space-y-6 text-slate-700 leading-relaxed">
+                    <div className="bg-gradient-to-br from-[#1B3A5F] to-[#234A6F] rounded-2xl p-8 text-white text-center">
+                        <h3 className="text-2xl font-bold mb-2">Driving the Future of Automotive</h3>
+                        <p className="text-blue-200 text-sm">VinTraxx Automotive Holdings, LLC</p>
                     </div>
-                    <p className="italic text-slate-600">
-                        &ldquo;VinTraxx was founded with a clear mission: give dealerships and businesses the technology to scan, appraise, finance, and close — faster and smarter than ever before.&rdquo;
+                    <p className="text-lg">
+                        VinTraxx was founded with a clear mission: give dealerships and businesses the technology to scan, appraise, finance, and close — faster and smarter than ever before.
                     </p>
                     <p>
                         At the core of our platform is <strong>SmartScan</strong> — an AI-powered vehicle diagnostic and appraisal tool that connects to any vehicle via OBD-II in seconds. SmartScan reads every system, generates a professional condition report, estimates reconditioning costs, and delivers data-driven pricing recommendations. Know exactly what you&apos;re buying before you make an offer.
@@ -75,10 +75,12 @@ const AboutModal = ({ open, onClose }: { open: boolean; onClose: () => void }) =
                     <p>
                         Headquartered in Texas and trusted by dealerships and businesses nationwide, VinTraxx is led by a team with deep roots in automotive retail, fintech, and enterprise software. We move fast, listen to our customers, and ship technology that actually works.
                     </p>
-                    <img src={TEAM_IMAGE_URL} alt="VinTraxx Leadership Team" className="w-full rounded-xl mt-4" />
-                    <p className="text-center text-xs text-slate-400 mt-4 pb-2">
+                    <div className="my-6">
+                        <img src="/assets/images/60202e8d3_image.png" alt="VinTraxx Leadership Team" className="w-full rounded-lg shadow-lg" />
+                    </div>
+                    <div className="border-t border-slate-200 pt-4 text-sm text-slate-500 text-center">
                         © 2026 VinTraxx Automotive Holdings, LLC — All Rights Reserved.
-                    </p>
+                    </div>
                 </div>
             </dialog>
         </div>
@@ -96,7 +98,7 @@ const Nav = () => {
                     <div className="flex items-center justify-between h-20">
                         <div className="flex items-center gap-3">
                             <Link href="/">
-                                <img src={LOGO_URL} alt="VinTraxx" className="h-16 transition-transform hover:scale-105" />
+                                <img src={LOGO_URL} alt="VinTraxx" className="h-32 transition-transform hover:scale-105" />
                             </Link>
                         </div>
                         <div className="hidden lg:flex items-center gap-8">
@@ -148,30 +150,26 @@ const Nav = () => {
 
 /* ─── Hero ─── */
 const Hero = () => (
-    <section className="relative bg-white overflow-hidden py-20 px-4 sm:px-6 lg:px-8">
-        {/* Grid overlay */}
-        <div
-            className="absolute inset-0 opacity-[0.03] pointer-events-none"
-            style={{ backgroundImage: "linear-gradient(rgb(27, 58, 95) 1px, transparent 1px), linear-gradient(90deg, rgb(27, 58, 95) 1px, transparent 1px)", backgroundSize: "50px 50px" }}
-        />
-        {/* Blur orbs */}
-        <div className="absolute top-0 left-0 w-96 h-96 bg-[#1B3A5F] opacity-5 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
-        <div className="absolute bottom-0 right-0 w-96 h-96 bg-[#8B2332] opacity-5 rounded-full blur-3xl translate-x-1/2 translate-y-1/2 pointer-events-none" />
+    <section className="relative overflow-hidden py-20 px-4 sm:px-6 lg:px-8 bg-black">
+        {/* Video background */}
+        <video autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover z-0" src="/assets/videos/intro_min.mp4" />
+        {/* Dark overlay */}
+        <div className="absolute inset-0 bg-black/55 z-[1] pointer-events-none" />
 
-        <div className="relative max-w-6xl mx-auto text-center">
+        <div className="relative z-10 max-w-6xl mx-auto text-center">
             {/* Badge */}
-            <div className="inline-flex items-center gap-2 bg-[#1B3A5F]/[0.08] border border-[#1B3A5F]/[0.15] rounded-full px-5 py-2 text-sm font-semibold text-[#1B3A5F] mb-8">
+            <div className="inline-flex items-center gap-2 rounded-full px-5 py-2 text-sm font-semibold mb-8 bg-white/15 border border-white/30 text-white">
                 <span className="w-2 h-2 rounded-full bg-[#8B2332] animate-pulse" />
                 Powered by AI · Built for Dealers
             </div>
 
             {/* Headline */}
-            <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold text-[#1B3A5F] leading-[1.05] tracking-tight mb-6">
+            <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold leading-[1.05] tracking-tight mb-6 text-white" style={{ fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
                 Scan. Appraise.<br />
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#8B2332] to-[#e53e3e]">Finance. Close.</span>
             </h1>
 
-            <p className="text-lg sm:text-xl text-slate-500 max-w-2xl mx-auto mb-14 leading-relaxed">
+            <p className="text-lg sm:text-xl max-w-2xl mx-auto mb-14 leading-relaxed text-white/85">
                 VinTraxx gives dealerships and businesses the tools to diagnose vehicles, generate professional appraisals, and offer instant consumer financing — all in one platform.
             </p>
 
@@ -242,27 +240,6 @@ const AnimatedBarsSection = ({ heading, text }: { heading: string; text: string 
                 />
             </div>
             <div className="max-w-4xl mx-auto relative z-10" ref={ref}>
-                {/* Animated bars */}
-                <div className="flex justify-center gap-2 mb-12">
-                    {[
-                        "bg-gradient-to-b from-[#1B3A5F] to-slate-300",
-                        "bg-gradient-to-b from-[#1B3A5F] to-slate-300",
-                        "bg-gradient-to-b from-[#1B3A5F] to-[#8B2332]",
-                        "bg-gradient-to-b from-slate-300 to-slate-100",
-                        "bg-gradient-to-b from-slate-300 to-slate-100",
-                    ].map((cls, i) => (
-                        <div
-                            key={i}
-                            className={`w-1 rounded-full ${cls} transition-all duration-700`}
-                            style={{
-                                height: visible ? `${60 + i * 20}px` : "0px",
-                                opacity: visible ? 1 : 0,
-                                transitionDelay: `${i * 80}ms`,
-                            }}
-                        />
-                    ))}
-                </div>
-
                 {/* Text */}
                 <div
                     className="text-center mb-12 transition-all duration-700"

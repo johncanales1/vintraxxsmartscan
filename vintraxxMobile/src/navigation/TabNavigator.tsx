@@ -1,13 +1,11 @@
 // Tab Navigator for VinTraxx SmartScan
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   StyleSheet,
   Animated,
-  Dimensions,
   Platform,
 } from 'react-native';
 import { createBottomTabNavigator, BottomTabBarProps } from '@react-navigation/bottom-tabs';
@@ -30,13 +28,11 @@ import HistoryIcon from '../assets/icons/history.svg';
 import CalendarIcon from '../assets/icons/calendar.svg';
 
 const Tab = createBottomTabNavigator<TabParamList>();
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const TAB_ACTIVE_COLOR = '#FFFFFF';
 const TAB_INACTIVE_COLOR = 'rgba(255,255,255,0.55)';
 const TAB_BAR_BG = colors.primary.navy;
 const TAB_ACTIVE_PILL = 'rgba(255,255,255,0.18)';
-const AUTO_HIDE_DELAY = 3500;
 
 interface SvgIcon {
   width: number;
@@ -105,53 +101,14 @@ const TabItem: React.FC<{
 
 const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigation }) => {
   const insets = useSafeAreaInsets();
-  const translateY = useRef(new Animated.Value(100)).current;
-  const isVisible = useRef(false);
-  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const showBar = useCallback(() => {
-    if (hideTimer.current) clearTimeout(hideTimer.current);
-    if (!isVisible.current) {
-      isVisible.current = true;
-      Animated.spring(translateY, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 280,
-        friction: 22,
-      }).start();
-    }
-    hideTimer.current = setTimeout(() => {
-      isVisible.current = false;
-      Animated.timing(translateY, {
-        toValue: 100,
-        duration: 350,
-        useNativeDriver: true,
-      }).start();
-    }, AUTO_HIDE_DELAY);
-  }, [translateY]);
-
-  // Show bar on tab change
-  useEffect(() => {
-    showBar();
-  }, [state.index, showBar]);
-
-  // Show bar initially for a moment
-  useEffect(() => {
-    showBar();
-    return () => {
-      if (hideTimer.current) clearTimeout(hideTimer.current);
-    };
-  }, [showBar]);
-
   const bottomOffset = insets.bottom > 0 ? insets.bottom : 8;
 
   return (
-    <Animated.View
+    <View
       style={[
         styles.tabBarOuter,
         {
           bottom: bottomOffset,
-          transform: [{ translateY }],
         },
       ]}
     >
@@ -160,7 +117,6 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigat
           const focused = state.index === tabIndex;
 
           const onPress = () => {
-            showBar();
             const event = navigation.emit({
               type: 'tabPress',
               target: route.key,
@@ -172,7 +128,6 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigat
           };
 
           const onLongPress = () => {
-            showBar();
             navigation.emit({
               type: 'tabLongPress',
               target: route.key,
@@ -190,7 +145,7 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigat
           );
         })}
       </View>
-    </Animated.View>
+    </View>
   );
 };
 
@@ -212,28 +167,12 @@ const DealerBadgeHeader: React.FC = () => {
   );
 };
 
-// Touchable wrapper to show tab bar on screen tap
-const TabBarRevealWrapper: React.FC<{
-  children: React.ReactNode;
-  onTouch: () => void;
-}> = ({ children, onTouch }) => (
-  <TouchableWithoutFeedback onPress={onTouch}>
-    <View style={{ flex: 1 }}>{children}</View>
-  </TouchableWithoutFeedback>
-);
-
 export const TabNavigator: React.FC = () => {
-  const tabBarRef = useRef<{ show: () => void }>({ show: () => {} });
-
   return (
     <View style={{ flex: 1 }}>
       <DealerBadgeHeader />
       <Tab.Navigator
-        tabBar={(props) => {
-          // Expose showBar so we can call it from the wrapper
-          const customBar = <CustomTabBar {...props} />;
-          return customBar;
-        }}
+        tabBar={(props) => <CustomTabBar {...props} />}
         screenOptions={{
           headerShown: false,
         }}

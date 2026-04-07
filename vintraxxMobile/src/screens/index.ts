@@ -5,3 +5,4 @@ export { ReportScreen } from './ReportScreen';
 export { HistoryScreen } from './HistoryScreen';
 export { AppraiserScreen } from './AppraiserScreen';
 export { VinScannerScreen } from './VinScannerScreen';
+export { ScheduleScreen } from './ScheduleScreen';

@@ -3,7 +3,7 @@
 import { logger, LogCategory } from '../../utils/Logger';
 import { debugLogger } from '../debug/DebugLogger';
 import { authService } from '../auth/AuthService';
-import { API_CONFIG, SCAN_ENDPOINTS, APPRAISAL_ENDPOINTS } from '../../config/api';
+import { API_CONFIG, SCAN_ENDPOINTS, APPRAISAL_ENDPOINTS, SCHEDULE_ENDPOINTS } from '../../config/api';
 import type {
   ScanSubmissionPayload,
   ScanSubmitResponse,
@@ -576,6 +576,86 @@ class ApiService {
     } catch (error) {
       logger.error(LogCategory.APP, 'Unexpected appraisal PDF error', error);
       return { success: false, message: 'Failed to generate PDF.' };
+    }
+  }
+
+  // ================================================================
+  // SCHEDULE API METHODS
+  // ================================================================
+
+  /**
+   * Submit a service appointment schedule request
+   */
+  async submitScheduleRequest(data: {
+    name: string;
+    email: string;
+    phone: string;
+    dealership: string;
+    vehicle: string;
+    vin: string;
+    serviceType: string;
+    preferredDate: string;
+    preferredTime: string;
+    additionalNotes?: string;
+  }): Promise<{ success: boolean; message?: string }> {
+    try {
+      if (!authService.isAuthenticated()) {
+        logger.warn(LogCategory.APP, 'Schedule request failed: User not authenticated');
+        return { success: false, message: 'Please log in to submit a schedule request.' };
+      }
+
+      logger.info(LogCategory.APP, 'Submitting schedule request', {
+        serviceType: data.serviceType,
+        vehicle: data.vehicle,
+        preferredDate: data.preferredDate,
+      });
+
+      const url = `${API_CONFIG.BASE_URL}${SCHEDULE_ENDPOINTS.SUBMIT}`;
+      const requestHeaders = this.getAuthHeaders();
+      const reqId = `schedule-${Date.now()}`;
+
+      debugLogger.logNetworkStart(reqId, 'POST', url);
+
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method: 'POST',
+          headers: requestHeaders,
+          body: JSON.stringify(data),
+        });
+      } catch (fetchError) {
+        debugLogger.logNetworkError(reqId, fetchError);
+        logger.error(LogCategory.APP, 'Schedule request network error', fetchError);
+        return { success: false, message: 'Unable to connect to server. Please check your internet connection.' };
+      }
+
+      debugLogger.logNetworkEnd(reqId, response.status);
+
+      if (!response.ok) {
+        let errorMessage = `Server error (${response.status})`;
+        try {
+          const errorData = await response.json();
+          if (errorData.message) {
+            errorMessage = errorData.message;
+          }
+        } catch {
+          if (response.status === 401) {
+            errorMessage = 'Session expired. Please log in again.';
+          } else if (response.status >= 500) {
+            errorMessage = 'Server is temporarily unavailable. Please try again later.';
+          }
+        }
+        logger.warn(LogCategory.APP, 'Schedule request failed', { status: response.status, errorMessage });
+        return { success: false, message: errorMessage };
+      }
+
+      const result = await response.json();
+      logger.info(LogCategory.APP, 'Schedule request submitted successfully');
+      return { success: true, message: result.message };
+    } catch (error) {
+      logger.error(LogCategory.APP, 'Unexpected schedule request error', error);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      return { success: false, message: `An unexpected error occurred: ${errorMsg}` };
     }
   }
 }

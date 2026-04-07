@@ -73,3 +73,11 @@ export const APPRAISAL_ENDPOINTS = {
 
 };
 
+// Schedule endpoints (prefix: /api/v1/schedule) - requires auth
+
+export const SCHEDULE_ENDPOINTS = {
+
+  SUBMIT: '/api/v1/schedule/submit',
+
+};
+

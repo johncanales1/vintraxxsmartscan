@@ -12,10 +12,11 @@ interface DealerNavProps {
     dealerName?: string;
     userEmail?: string;
     userId?: string;
+    fullName?: string | null;
     pricePerLaborHour?: number | null;
     qrCodeUrl?: string | null;
     createdAt?: string;
-    onProfileUpdate?: (data: { logoUrl?: string; originalLogoUrl?: string; pricePerLaborHour?: number; qrCodeUrl?: string }) => void;
+    onProfileUpdate?: (data: { logoUrl?: string; originalLogoUrl?: string; pricePerLaborHour?: number; qrCodeUrl?: string; fullName?: string; email?: string }) => void;
 }
 
 const API_BASE = process.env.NODE_ENV === 'production' 
@@ -25,9 +26,10 @@ const API_BASE = process.env.NODE_ENV === 'production'
 interface ProfileModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (data: { logoUrl?: string; originalLogoUrl?: string; pricePerLaborHour?: number; qrCodeUrl?: string; password?: string }) => Promise<void>;
+    onSave: (data: { logoUrl?: string; originalLogoUrl?: string; pricePerLaborHour?: number; qrCodeUrl?: string; password?: string; fullName?: string; email?: string }) => Promise<void>;
     userId?: string;
     userEmail?: string;
+    fullName?: string | null;
     pricePerLaborHour?: number | null;
     logoUrl?: string | null;
     originalLogoUrl?: string | null;
@@ -259,11 +261,13 @@ const ImageCropEditor = ({
     );
 };
 
-const ProfileModal = ({ isOpen, onClose, onSave, userId, userEmail, pricePerLaborHour, logoUrl, originalLogoUrl, qrCodeUrl, createdAt }: ProfileModalProps) => {
+const ProfileModal = ({ isOpen, onClose, onSave, userId, userEmail, fullName, pricePerLaborHour, logoUrl, originalLogoUrl, qrCodeUrl, createdAt }: ProfileModalProps) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const qrCodeInputRef = useRef<HTMLInputElement>(null);
     const [saving, setSaving] = useState(false);
     const [editedLaborRate, setEditedLaborRate] = useState<string>(pricePerLaborHour?.toString() || "");
+    const [editedFullName, setEditedFullName] = useState<string>(fullName || "");
+    const [editedEmail, setEditedEmail] = useState<string>(userEmail || "");
     const [originalImage, setOriginalImage] = useState<string | null>(null);
     const [selectedOriginalImage, setSelectedOriginalImage] = useState<string | null>(null);
     const [croppedImage, setCroppedImage] = useState<string | null>(null);
@@ -277,6 +281,8 @@ const ProfileModal = ({ isOpen, onClose, onSave, userId, userEmail, pricePerLabo
     useEffect(() => {
         if (isOpen) {
             setEditedLaborRate(pricePerLaborHour?.toString() || "");
+            setEditedFullName(fullName || "");
+            setEditedEmail(userEmail || "");
             setCroppedImage(null);
             setOriginalImage(null);
             setSelectedOriginalImage(null);
@@ -293,8 +299,10 @@ const ProfileModal = ({ isOpen, onClose, onSave, userId, userEmail, pricePerLabo
         const laborRateChanged = editedLaborRate !== (pricePerLaborHour?.toString() || "");
         const logoChanged = croppedImage !== null;
         const qrCodeChanged = newQrCode !== null;
-        setHasChanges(laborRateChanged || logoChanged || qrCodeChanged);
-    }, [editedLaborRate, pricePerLaborHour, croppedImage, newQrCode]);
+        const fullNameChanged = editedFullName !== (fullName || "");
+        const emailChanged = editedEmail !== (userEmail || "");
+        setHasChanges(laborRateChanged || logoChanged || qrCodeChanged || fullNameChanged || emailChanged);
+    }, [editedLaborRate, pricePerLaborHour, croppedImage, newQrCode, editedFullName, fullName, editedEmail, userEmail]);
 
     if (!isOpen) return null;
 
@@ -382,7 +390,14 @@ const ProfileModal = ({ isOpen, onClose, onSave, userId, userEmail, pricePerLabo
         setSaving(true);
         setQrCodeError("");
         try {
-            const updateData: { logoUrl?: string; originalLogoUrl?: string; pricePerLaborHour?: number; qrCodeUrl?: string; password?: string } = {};
+            const updateData: { logoUrl?: string; originalLogoUrl?: string; pricePerLaborHour?: number; qrCodeUrl?: string; password?: string; fullName?: string; email?: string } = {};
+            
+            if (editedFullName !== (fullName || "")) {
+                updateData.fullName = editedFullName;
+            }
+            if (editedEmail && editedEmail !== (userEmail || "")) {
+                updateData.email = editedEmail;
+            }
             
             if (croppedImage) {
                 updateData.logoUrl = croppedImage;
@@ -502,12 +517,34 @@ const ProfileModal = ({ isOpen, onClose, onSave, userId, userEmail, pricePerLabo
                     </div>
 
                     <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-xl">
+                        <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
+                            <User className="w-5 h-5 text-indigo-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Full Name</p>
+                            <input
+                                type="text"
+                                value={editedFullName}
+                                onChange={(e) => setEditedFullName(e.target.value)}
+                                placeholder="Enter full name"
+                                className="w-full text-sm text-slate-900 bg-white border border-slate-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mt-1"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-xl">
                         <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
                             <Mail className="w-5 h-5 text-emerald-600" />
                         </div>
                         <div className="flex-1 min-w-0">
                             <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Email Address</p>
-                            <p className="text-sm text-slate-900 truncate">{userEmail || "—"}</p>
+                            <input
+                                type="email"
+                                value={editedEmail}
+                                onChange={(e) => setEditedEmail(e.target.value)}
+                                placeholder="Enter email"
+                                className="w-full text-sm text-slate-900 bg-white border border-slate-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mt-1"
+                            />
                         </div>
                     </div>
 
@@ -653,7 +690,7 @@ const UserDropdownMenu = ({ className, userEmail, onProfileClick, onClose }: { c
     );
 };
 
-export const DealerNav = ({ dealerLogo, originalLogoUrl, dealerName, userEmail, userId, pricePerLaborHour, qrCodeUrl, createdAt, onProfileUpdate }: DealerNavProps) => {
+export const DealerNav = ({ dealerLogo, originalLogoUrl, dealerName, userEmail, userId, fullName, pricePerLaborHour, qrCodeUrl, createdAt, onProfileUpdate }: DealerNavProps) => {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
     const [isUserPopoverOpen, setIsUserPopoverOpen] = useState(false);
@@ -688,7 +725,7 @@ export const DealerNav = ({ dealerLogo, originalLogoUrl, dealerName, userEmail, 
         }
     }, [isSearchOpen]);
 
-    const handleProfileSave = async (data: { logoUrl?: string; originalLogoUrl?: string; pricePerLaborHour?: number; qrCodeUrl?: string; password?: string }) => {
+    const handleProfileSave = async (data: { logoUrl?: string; originalLogoUrl?: string; pricePerLaborHour?: number; qrCodeUrl?: string; password?: string; fullName?: string; email?: string }) => {
         const token = localStorage.getItem("dealer_token");
         const res = await fetch(`${API_BASE}/dealer/profile`, {
             method: "PUT",
@@ -701,7 +738,9 @@ export const DealerNav = ({ dealerLogo, originalLogoUrl, dealerName, userEmail, 
                 originalLogoImage: data.originalLogoUrl,
                 pricePerLaborHour: data.pricePerLaborHour,
                 qrCodeImage: data.qrCodeUrl,
-                password: data.password
+                password: data.password,
+                fullName: data.fullName,
+                email: data.email,
             }),
         });
         
@@ -732,6 +771,8 @@ export const DealerNav = ({ dealerLogo, originalLogoUrl, dealerName, userEmail, 
             if (data.originalLogoUrl) user.originalLogoUrl = data.originalLogoUrl;
             if (data.pricePerLaborHour) user.pricePerLaborHour = data.pricePerLaborHour;
             if (data.qrCodeUrl) user.qrCodeUrl = data.qrCodeUrl;
+            if (data.fullName !== undefined) user.fullName = data.fullName;
+            if (data.email) user.email = data.email;
             localStorage.setItem("dealer_user", JSON.stringify(user));
         }
         
@@ -988,6 +1029,7 @@ export const DealerNav = ({ dealerLogo, originalLogoUrl, dealerName, userEmail, 
                 onSave={handleProfileSave}
                 userId={userId}
                 userEmail={userEmail}
+                fullName={fullName}
                 pricePerLaborHour={currentLaborRate}
                 logoUrl={currentLogo}
                 originalLogoUrl={currentOriginalLogo}

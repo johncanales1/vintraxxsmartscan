@@ -12,6 +12,7 @@ const API_BASE = "https://api.vintraxx.com/api/v1";
 interface DealerUser {
     id: string;
     email: string;
+    fullName?: string | null;
     isDealer: boolean;
     pricePerLaborHour: number | null;
     logoUrl?: string | null;
@@ -36,6 +37,7 @@ interface OBDScanReport {
     additionalRepairsCost: number | null;
     pdfUrl: string | null;
     emailSentAt: string | null;
+    userFullName?: string | null;
 }
 
 // Detailed report from /scan/report/:scanId (FullReportData structure)
@@ -95,6 +97,24 @@ interface AppraisalData {
     };
     createdAt: string;
     userEmail: string;
+    userFullName?: string;
+    pdfUrl?: string | null;
+}
+
+interface ServiceAppointment {
+    id: string;
+    name: string;
+    email: string;
+    phone?: string | null;
+    dealership?: string | null;
+    vehicle?: string | null;
+    vin?: string | null;
+    serviceType: string;
+    preferredDate: string;
+    preferredTime?: string | null;
+    additionalNotes?: string | null;
+    status: string;
+    createdAt: string;
 }
 
 export default function DealerPortalPage() {
@@ -110,6 +130,9 @@ export default function DealerPortalPage() {
     // Appraisal Data
     const [appraisals, setAppraisals] = useState<AppraisalData[]>([]);
     const [appraisalSearchQuery, setAppraisalSearchQuery] = useState("");
+    
+    // Service Appointments
+    const [appointments, setAppointments] = useState<ServiceAppointment[]>([]);
     
     // Modal States
     const [showScanListModal, setShowScanListModal] = useState(false);
@@ -142,7 +165,7 @@ export default function DealerPortalPage() {
 
     const fetchDealerData = useCallback(async (token: string) => {
         try {
-            const [profileRes, reportsRes, appraisalsRes] = await Promise.all([
+            const [profileRes, reportsRes, appraisalsRes, appointmentsRes] = await Promise.all([
                 fetch(`${API_BASE}/dealer/profile`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
@@ -150,6 +173,9 @@ export default function DealerPortalPage() {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
                 fetch(`${API_BASE}/appraisal/dashboard`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                }),
+                fetch(`${API_BASE}/dealer/appointments`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             ]);
@@ -164,6 +190,7 @@ export default function DealerPortalPage() {
             const profileData = await profileRes.json();
             const reportsData = await reportsRes.json();
             const appraisalsData = await appraisalsRes.json();
+            const appointmentsData = await appointmentsRes.json();
 
             if (profileData.success) setDealer(profileData.dealer);
             if (reportsData.success) {
@@ -171,6 +198,9 @@ export default function DealerPortalPage() {
             }
             if (appraisalsData.success) {
                 setAppraisals(appraisalsData.data || []);
+            }
+            if (appointmentsData.success) {
+                setAppointments(appointmentsData.appointments || []);
             }
         } catch {
             setError("Failed to load dealer data. Please try again.");
@@ -390,7 +420,8 @@ export default function DealerPortalPage() {
         return r.vin.toLowerCase().includes(query) ||
                r.vehicleMake?.toLowerCase().includes(query) ||
                r.vehicleModel?.toLowerCase().includes(query) ||
-               r.stockNumber?.toLowerCase().includes(query);
+               r.stockNumber?.toLowerCase().includes(query) ||
+               r.userFullName?.toLowerCase().includes(query);
     });
     
     // Filtered appraisals
@@ -399,7 +430,9 @@ export default function DealerPortalPage() {
         const query = appraisalSearchQuery.toLowerCase();
         return a.vin.toLowerCase().includes(query) ||
                a.vehicle.make?.toLowerCase().includes(query) ||
-               a.vehicle.model?.toLowerCase().includes(query);
+               a.vehicle.model?.toLowerCase().includes(query) ||
+               a.userFullName?.toLowerCase().includes(query) ||
+               a.userEmail?.toLowerCase().includes(query);
     });
 
     if (loading) {
@@ -461,6 +494,7 @@ export default function DealerPortalPage() {
                 dealerName={dealer?.companyName}
                 userEmail={dealer?.email}
                 userId={dealer?.id}
+                fullName={dealer?.fullName}
                 pricePerLaborHour={dealer?.pricePerLaborHour}
                 qrCodeUrl={dealer?.qrCodeUrl}
                 createdAt={dealer?.createdAt}
@@ -469,7 +503,9 @@ export default function DealerPortalPage() {
                     logoUrl: data.logoUrl || prev.logoUrl,
                     originalLogoUrl: data.originalLogoUrl || prev.originalLogoUrl,
                     qrCodeUrl: data.qrCodeUrl || prev.qrCodeUrl,
-                    pricePerLaborHour: data.pricePerLaborHour ?? prev.pricePerLaborHour
+                    pricePerLaborHour: data.pricePerLaborHour ?? prev.pricePerLaborHour,
+                    fullName: data.fullName || prev.fullName,
+                    email: data.email || prev.email,
                 } : null)}
             />
 
@@ -699,13 +735,14 @@ export default function DealerPortalPage() {
                                                 <th className="text-white px-3 lg:px-4 py-3 font-semibold text-left">Retail</th>
                                                 <th className="text-white px-3 lg:px-4 py-3 font-semibold text-left">Trade-In</th>
                                                 <th className="text-white px-3 lg:px-4 py-3 font-semibold text-left">Date</th>
+                                                <th className="text-white px-3 lg:px-4 py-3 font-semibold text-center w-20">PDF</th>
                                                 <th className="text-white px-3 lg:px-4 py-3 font-semibold text-center w-16">View</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {filteredAppraisals.length === 0 ? (
                                                 <tr>
-                                                    <td colSpan={8} className="text-center py-12 text-slate-400">
+                                                    <td colSpan={9} className="text-center py-12 text-slate-400">
                                                         {appraisals.length === 0 ? 'No appraisals found' : 'No matching appraisals'}
                                                     </td>
                                                 </tr>
@@ -734,6 +771,19 @@ export default function DealerPortalPage() {
                                                         <td className="px-3 lg:px-4 py-3 text-amber-600 font-semibold text-sm">{formatCurrency(appraisal.valuation.tradeIn)}</td>
                                                         <td className="px-3 lg:px-4 py-3 text-slate-500 text-xs lg:text-sm">{formatDate(appraisal.createdAt)}</td>
                                                         <td className="px-3 lg:px-4 py-3 text-center">
+                                                            {appraisal.pdfUrl ? (
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); window.open(appraisal.pdfUrl!, '_blank'); }}
+                                                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-medium hover:bg-blue-200 transition-colors"
+                                                                >
+                                                                    <FileText className="w-3 h-3" />
+                                                                    PDF
+                                                                </button>
+                                                            ) : (
+                                                                <span className="text-slate-300 text-xs">—</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-3 lg:px-4 py-3 text-center">
                                                             <button className="p-2 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-[#1B3A5F] transition-colors">
                                                                 <Eye className="w-4 h-4" />
                                                             </button>
@@ -745,6 +795,67 @@ export default function DealerPortalPage() {
                                     </table>
                                 </div>
                             </div>
+                        </div>
+                        {/* Service Appointment Activity History */}
+                        <div className="mb-8 sm:mb-12">
+                            <div className="mb-4 sm:mb-6">
+                                <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-[#1B3A5F] flex items-center gap-2">
+                                    <CalendarDays className="w-5 h-5 sm:w-6 sm:h-6" />
+                                    Service Appointment Activity
+                                </h2>
+                                <p className="text-slate-500 text-xs sm:text-sm mt-1">History of scheduled service appointments</p>
+                            </div>
+
+                            {appointments.length === 0 ? (
+                                <div className="bg-white rounded-xl shadow-sm p-8 text-center text-slate-400 border border-slate-200">
+                                    No service appointments scheduled yet
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {appointments.map((apt) => (
+                                        <div key={apt.id} className="bg-white rounded-xl shadow-sm p-4 border border-slate-200 hover:shadow-md transition-shadow">
+                                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                                        apt.status === 'confirmed' ? 'bg-emerald-100' :
+                                                        apt.status === 'completed' ? 'bg-blue-100' :
+                                                        apt.status === 'cancelled' ? 'bg-red-100' : 'bg-amber-100'
+                                                    }`}>
+                                                        <CalendarDays className={`w-5 h-5 ${
+                                                            apt.status === 'confirmed' ? 'text-emerald-600' :
+                                                            apt.status === 'completed' ? 'text-blue-600' :
+                                                            apt.status === 'cancelled' ? 'text-red-600' : 'text-amber-600'
+                                                        }`} />
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-semibold text-slate-900 text-sm">{apt.serviceType}</p>
+                                                        <p className="text-xs text-slate-500">{apt.name} &bull; <a href={`mailto:${apt.email}`} onClick={(e) => e.stopPropagation()} className="text-blue-600 hover:underline">{apt.email}</a></p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-3 ml-13 sm:ml-0">
+                                                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${
+                                                        apt.status === 'confirmed' ? 'bg-emerald-100 text-emerald-700' :
+                                                        apt.status === 'completed' ? 'bg-blue-100 text-blue-700' :
+                                                        apt.status === 'cancelled' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                                                    }`}>{apt.status}</span>
+                                                    <span className="text-xs text-slate-400">{formatDate(apt.createdAt)}</span>
+                                                </div>
+                                            </div>
+                                            <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-slate-500">
+                                                {apt.vehicle && <div><span className="text-slate-400">Vehicle:</span> {apt.vehicle}</div>}
+                                                {apt.vin && <div><span className="text-slate-400">VIN:</span> <span className="font-mono">{apt.vin}</span></div>}
+                                                {apt.preferredDate && <div><span className="text-slate-400">Date:</span> {apt.preferredDate}</div>}
+                                                {apt.preferredTime && <div><span className="text-slate-400">Time:</span> {apt.preferredTime}</div>}
+                                                {apt.dealership && <div><span className="text-slate-400">Dealership:</span> {apt.dealership}</div>}
+                                                {apt.phone && <div><span className="text-slate-400">Phone:</span> {apt.phone}</div>}
+                                            </div>
+                                            {apt.additionalNotes && (
+                                                <p className="mt-2 text-xs text-slate-400 italic truncate">Note: {apt.additionalNotes}</p>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

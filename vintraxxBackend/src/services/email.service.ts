@@ -77,6 +77,7 @@ export async function sendReportEmail(
   <div class="container">
     ${getEmailLogoHeaderHtml('Diagnostic Scan Report', 'VinTraxx SmartScan')}
     <div class="content">
+      ${report.reportMetadata.userFullName ? `<p>Prepared for: <strong>${report.reportMetadata.userFullName}</strong> (${report.reportMetadata.userEmail})</p>` : ''}
       <p>Your vehicle scan report for your <strong>${vehicleStr}</strong> (VIN: ${vehicle.vin}) is ready.</p>
       ${report.stockNumber ? `<p style="text-align: center; margin: 10px 0;"><strong>Stock #:</strong> ${report.stockNumber}</p>` : ''}
       <div style="text-align: center; margin: 20px 0;">

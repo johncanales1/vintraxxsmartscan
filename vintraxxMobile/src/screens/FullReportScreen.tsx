@@ -50,7 +50,7 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
   const [reportSaved, setReportSaved] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const isMounted = useRef(true);
-  const { updateSavedReport, savedReports, selectedBleDevice } = useAppStore();
+  const { updateSavedReport, savedReports, selectedBleDevice, userDevice } = useAppStore();
 
   useEffect(() => {
     return () => { isMounted.current = false; };
@@ -103,7 +103,8 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
       try {
         // Step 1: Build payload and submit
         const scannerDeviceId = selectedBleDevice?.id || undefined;
-        const payload = apiService.buildScanPayload(scanResult, stockNumber, additionalRepairs, scannerDeviceId);
+        const userFullName = userDevice?.name || undefined;
+        const payload = apiService.buildScanPayload(scanResult, stockNumber, additionalRepairs, scannerDeviceId, userFullName);
         logger.info(LogCategory.APP, 'Submitting scan for full report', {
           stockNumber: stockNumber || undefined,
           additionalRepairs: additionalRepairs || [],

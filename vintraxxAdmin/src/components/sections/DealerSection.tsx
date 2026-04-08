@@ -26,7 +26,7 @@ export default function DealerSection() {
 
   useEffect(() => {
     const q = search.toLowerCase();
-    setFiltered(dealers.filter(d => d.email.toLowerCase().includes(q) || d.id.toLowerCase().includes(q)));
+    setFiltered(dealers.filter(d => d.email.toLowerCase().includes(q) || d.id.toLowerCase().includes(q) || (d.fullName && d.fullName.toLowerCase().includes(q))));
   }, [search, dealers]);
 
   const loadDealers = async () => {
@@ -109,7 +109,8 @@ export default function DealerSection() {
                     <UserCheck size={20} />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{dealer.email}</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{dealer.fullName || dealer.email}</p>
+                    {dealer.fullName && <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{dealer.email}</p>}
                     <span className="inline-flex px-1.5 py-0.5 text-[10px] font-semibold rounded-md bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 mt-0.5">
                       DEALER
                     </span>

@@ -12,7 +12,7 @@ import BackupModal from '@/components/modals/BackupModal';
 import {
   LayoutDashboard, Users, UserCheck, History, Settings, LogOut,
   Moon, Sun, Shield, Menu, X, ChevronDown,
-  TrendingUp, Car, FileText, ClipboardList
+  TrendingUp, Car, FileText, ClipboardList, CalendarDays, DollarSign
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -170,6 +170,8 @@ function OverviewTab({ stats, loading, onNavigate }: { stats: DashboardStats | n
     { label: 'Total Scans', value: stats.totalScans, icon: <Car size={22} />, color: 'amber', onClick: () => onNavigate('history') },
     { label: 'Reports Generated', value: stats.totalReports, icon: <FileText size={22} />, color: 'rose', onClick: () => onNavigate('history') },
     { label: 'Inspections', value: stats.totalInspections, icon: <ClipboardList size={22} />, color: 'cyan', onClick: () => onNavigate('history') },
+    { label: 'Appraisals', value: stats.totalAppraisals, icon: <DollarSign size={22} />, color: 'teal', onClick: () => onNavigate('history') },
+    { label: 'Appointments', value: stats.totalServiceAppointments, icon: <CalendarDays size={22} />, color: 'indigo', onClick: () => onNavigate('history') },
   ];
 
   const colorMap: Record<string, string> = {
@@ -179,6 +181,8 @@ function OverviewTab({ stats, loading, onNavigate }: { stats: DashboardStats | n
     amber: 'from-amber-500 to-amber-600',
     rose: 'from-rose-500 to-rose-600',
     cyan: 'from-cyan-500 to-cyan-600',
+    teal: 'from-teal-500 to-teal-600',
+    indigo: 'from-indigo-500 to-indigo-600',
   };
 
   const bgColorMap: Record<string, string> = {
@@ -188,6 +192,8 @@ function OverviewTab({ stats, loading, onNavigate }: { stats: DashboardStats | n
     amber: 'bg-amber-50 dark:bg-amber-500/10',
     rose: 'bg-rose-50 dark:bg-rose-500/10',
     cyan: 'bg-cyan-50 dark:bg-cyan-500/10',
+    teal: 'bg-teal-50 dark:bg-teal-500/10',
+    indigo: 'bg-indigo-50 dark:bg-indigo-500/10',
   };
 
   const textColorMap: Record<string, string> = {
@@ -197,6 +203,8 @@ function OverviewTab({ stats, loading, onNavigate }: { stats: DashboardStats | n
     amber: 'text-amber-600 dark:text-amber-400',
     rose: 'text-rose-600 dark:text-rose-400',
     cyan: 'text-cyan-600 dark:text-cyan-400',
+    teal: 'text-teal-600 dark:text-teal-400',
+    indigo: 'text-indigo-600 dark:text-indigo-400',
   };
 
   return (

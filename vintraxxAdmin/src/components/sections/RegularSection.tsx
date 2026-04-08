@@ -25,7 +25,7 @@ export default function RegularSection() {
 
   useEffect(() => {
     const q = search.toLowerCase();
-    setFiltered(users.filter(u => u.email.toLowerCase().includes(q) || u.id.toLowerCase().includes(q)));
+    setFiltered(users.filter(u => u.email.toLowerCase().includes(q) || u.id.toLowerCase().includes(q) || (u.fullName && u.fullName.toLowerCase().includes(q))));
   }, [search, users]);
 
   const loadUsers = async () => {
@@ -108,7 +108,8 @@ export default function RegularSection() {
                     <Users size={20} />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{user.email}</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{user.fullName || user.email}</p>
+                    {user.fullName && <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user.email}</p>}
                     <span className="text-xs text-gray-400 dark:text-gray-500">{user.authProvider}</span>
                   </div>
                 </div>

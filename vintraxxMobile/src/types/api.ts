@@ -75,6 +75,7 @@ export interface ScanSubmissionPayload {
   stockNumber?: string;
   additionalRepairs?: string[];
   scannerDeviceId?: string;
+  userFullName?: string;
 }
 
 export interface ScanSubmitResponse {

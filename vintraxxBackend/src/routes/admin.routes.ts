@@ -39,6 +39,10 @@ router.delete('/inspections/:id', adminCtrl.deleteInspection);
 router.get('/appraisals', adminCtrl.listAppraisals);
 router.delete('/appraisals/:id', adminCtrl.deleteAppraisal);
 
+// Service Appointments
+router.get('/service-appointments', adminCtrl.listServiceAppointments);
+router.delete('/service-appointments/:id', adminCtrl.deleteServiceAppointment);
+
 // Verify Password
 router.post('/verify-password', adminCtrl.verifyPassword);
 

@@ -45,7 +45,7 @@ class ApiService {
   /**
    * Build ScanSubmissionPayload from ScanResult (matches backend exactly)
    */
-  buildScanPayload(scanResult: ScanResult, stockNumber?: string, additionalRepairs?: string[], scannerDeviceId?: string): ScanSubmissionPayload {
+  buildScanPayload(scanResult: ScanResult, stockNumber?: string, additionalRepairs?: string[], scannerDeviceId?: string, userFullName?: string): ScanSubmissionPayload {
     const payload: ScanSubmissionPayload = {
       vin: scanResult.vin.valid ? scanResult.vin.vin : '',
       mileage: scanResult.odometer !== null ? kmToMiles(scanResult.odometer) : null,
@@ -77,6 +77,9 @@ class ApiService {
     }
     if (scannerDeviceId) {
       payload.scannerDeviceId = scannerDeviceId;
+    }
+    if (userFullName) {
+      payload.userFullName = userFullName;
     }
     return payload;
   }

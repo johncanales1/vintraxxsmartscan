@@ -220,7 +220,7 @@ export async function getScans(page = 1, limit = 50) {
       skip,
       take: limit,
       include: {
-        user: { select: { id: true, email: true, isDealer: true } },
+        user: { select: { id: true, email: true, fullName: true, isDealer: true } },
         fullReport: { select: { id: true, pdfUrl: true, totalReconditioningCost: true, additionalRepairsCost: true, createdAt: true } },
       },
       orderBy: { receivedAt: 'desc' },
@@ -234,7 +234,7 @@ export async function getScanDetail(scanId: string) {
   const scan = await prisma.scan.findUnique({
     where: { id: scanId },
     include: {
-      user: { select: { id: true, email: true, isDealer: true } },
+      user: { select: { id: true, email: true, fullName: true, isDealer: true } },
       fullReport: true,
     },
   });
@@ -271,20 +271,22 @@ export async function deleteInspection(id: string) {
 // ── Dashboard Stats ───────────────────────────────────────────────────────────
 
 export async function getDashboardStats() {
-  const [totalUsers, totalDealers, totalRegular, totalScans, totalReports, totalInspections, recentScans] = await Promise.all([
+  const [totalUsers, totalDealers, totalRegular, totalScans, totalReports, totalInspections, totalAppraisals, totalServiceAppointments, recentScans] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { isDealer: true } }),
     prisma.user.count({ where: { isDealer: false } }),
     prisma.scan.count(),
     prisma.fullReport.count(),
     prisma.inspection.count(),
+    prisma.appraisal.count(),
+    prisma.serviceAppointment.count(),
     prisma.scan.findMany({
       take: 5,
       orderBy: { receivedAt: 'desc' },
-      include: { user: { select: { email: true, isDealer: true } } },
+      include: { user: { select: { email: true, fullName: true, isDealer: true } } },
     }),
   ]);
-  return { totalUsers, totalDealers, totalRegular, totalScans, totalReports, totalInspections, recentScans };
+  return { totalUsers, totalDealers, totalRegular, totalScans, totalReports, totalInspections, totalAppraisals, totalServiceAppointments, recentScans };
 }
 
 // ── Appraisals ───────────────────────────────────────────────────────────────
@@ -308,17 +310,42 @@ export async function deleteAppraisal(id: string) {
 // ── Backup ────────────────────────────────────────────────────────────────────
 
 export async function getFullBackup() {
-  const [users, scans, fullReports, scannerDevices, vinUsages, inspections, otps] = await Promise.all([
-    prisma.user.findMany({ include: { usedScannerDevices: true, usedVins: true } }),
+  const [users, scans, fullReports, scannerDevices, vinUsages, inspections, appraisals, serviceAppointments, otps] = await Promise.all([
+    prisma.user.findMany({ include: { usedScannerDevices: true, usedVins: true, serviceAppointments: true } }),
     prisma.scan.findMany(),
     prisma.fullReport.findMany(),
     prisma.userScannerDevice.findMany(),
     prisma.userVinUsage.findMany(),
     prisma.inspection.findMany(),
+    prisma.appraisal.findMany(),
+    prisma.serviceAppointment.findMany(),
     prisma.otp.findMany(),
   ]);
   return {
     exportedAt: new Date().toISOString(),
-    data: { users, scans, fullReports, scannerDevices, vinUsages, inspections, otps },
+    data: { users, scans, fullReports, scannerDevices, vinUsages, inspections, appraisals, serviceAppointments, otps },
   };
+}
+
+// ── Service Appointments ─────────────────────────────────────────────────────
+
+export async function getServiceAppointments(page = 1, limit = 50) {
+  const skip = (page - 1) * limit;
+  const [appointments, total] = await Promise.all([
+    prisma.serviceAppointment.findMany({
+      skip,
+      take: limit,
+      include: { user: { select: { id: true, email: true, fullName: true, isDealer: true } } },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.serviceAppointment.count(),
+  ]);
+  return { appointments, total, page, limit, totalPages: Math.ceil(total / limit) };
+}
+
+export async function deleteServiceAppointment(id: string) {
+  const apt = await prisma.serviceAppointment.findUnique({ where: { id } });
+  if (!apt) throw new AppError('Service appointment not found', 404);
+  await prisma.serviceAppointment.delete({ where: { id } });
+  logger.info(`Admin deleted service appointment: ${id}`);
 }

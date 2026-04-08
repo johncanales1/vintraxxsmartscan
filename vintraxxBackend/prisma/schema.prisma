@@ -11,6 +11,7 @@ datasource db {
 model User {
   id               String   @id @default(uuid())
   email            String   @unique
+  fullName         String?
   passwordHash     String?
   authProvider     String   @default("email")
   googleId         String?  @unique
@@ -28,6 +29,7 @@ model User {
   usedScannerDevices UserScannerDevice[]
   usedVins           UserVinUsage[]
   passwordResetTokens PasswordResetToken[]
+  serviceAppointments ServiceAppointment[]
 }
 
 model PasswordResetToken {
@@ -75,6 +77,7 @@ model Scan {
   stockNumber          String?
   additionalRepairs    String[]
   scannerDeviceId      String?
+  userFullName         String?
   rawPayload           Json
   vehicleYear          Int?
   vehicleMake          String?
@@ -178,6 +181,27 @@ model Appraisal {
 
   @@index([userId])
   @@index([vin])
+}
+
+model ServiceAppointment {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  name            String
+  email           String
+  phone           String?
+  dealership      String?
+  vehicle         String?
+  vin             String?
+  serviceType     String
+  preferredDate   String
+  preferredTime   String?
+  additionalNotes String?
+  status          String   @default("pending")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model Inspection {

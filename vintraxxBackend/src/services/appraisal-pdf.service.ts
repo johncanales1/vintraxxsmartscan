@@ -392,7 +392,10 @@ export async function generateAppraisalPdf(appraisal: AppraisalSummaryData): Pro
       doc.strokeColor(C.border).lineWidth(0.5).moveTo(leftMargin, y).lineTo(leftMargin + pageWidth, y).stroke();
       y += 8;
       doc.fontSize(8).font('Helvetica').fillColor(C.lightGray);
-      doc.text(`User: ${appraisal.userEmail}`, leftMargin, y, { width: pageWidth / 3, align: 'left' });
+      const userDisplay = appraisal.userFullName
+        ? `${appraisal.userFullName} (${appraisal.userEmail})`
+        : appraisal.userEmail;
+      doc.text(`User: ${userDisplay}`, leftMargin, y, { width: pageWidth / 3, align: 'left' });
       doc.text(`${appraisal.appraisalId}`, leftMargin + pageWidth / 3, y, { width: pageWidth / 3, align: 'center' });
       doc.text(`Date: ${generatedDate}  |  Data: ${valuation.dataAsOf}`, leftMargin + (pageWidth / 3) * 2, y, { width: pageWidth / 3, align: 'right' });
 

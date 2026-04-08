@@ -19,6 +19,7 @@ export interface ScanSubmissionPayload {
   stockNumber?: string;
   additionalRepairs?: string[];
   scannerDeviceId?: string;
+  userFullName?: string;
 }
 
 export interface VinDecodeResult {
@@ -131,6 +132,7 @@ export interface FullReportData {
     reportVersion: string;
     generatedAt: string;
     userEmail: string;
+    userFullName?: string;
   };
   stockNumber?: string;
   dealerLogoUrl?: string;
@@ -213,5 +215,6 @@ export interface AppraisalSummaryData {
   photos?: string[];
   createdAt: string;
   userEmail: string;
+  userFullName?: string;
   dealerLogoUrl?: string;
 }

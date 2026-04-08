@@ -198,7 +198,7 @@ export const DeviceSetupScreen: React.FC<DeviceSetupScreenProps> = ({ navigation
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Set Up Your OBD-II Device</Text>
           <Text style={styles.headerSubtitle}>
-            Name your device and connect it to start scanning
+            Enter your name and connect your device to start scanning
           </Text>
         </View>
 
@@ -208,20 +208,17 @@ export const DeviceSetupScreen: React.FC<DeviceSetupScreenProps> = ({ navigation
             <View style={styles.stepNumber}>
               <Text style={styles.stepNumberText}>1</Text>
             </View>
-            <Text style={styles.stepTitle}>Name Your Device</Text>
+            <Text style={styles.stepTitle}>Enter Your Full Name</Text>
           </View>
           <View style={styles.stepContent}>
             <TextInput
               style={styles.input}
-              placeholder="e.g., My Car Scanner"
+              placeholder="e.g., John Smith"
               placeholderTextColor={colors.text.muted}
               value={deviceName}
               onChangeText={setDeviceName}
               maxLength={30}
             />
-            <Text style={styles.inputHint}>
-              Choose a friendly name to identify your OBD-II device
-            </Text>
           </View>
         </View>
 
@@ -245,7 +242,7 @@ export const DeviceSetupScreen: React.FC<DeviceSetupScreenProps> = ({ navigation
             />
             {!deviceName.trim() && (
               <Text style={styles.warningText}>
-                Please enter a device name first
+                Please enter your full name first
               </Text>
             )}
           </View>

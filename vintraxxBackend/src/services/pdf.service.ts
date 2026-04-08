@@ -438,7 +438,10 @@ export async function generatePdf(report: FullReportData): Promise<string> {
       doc.strokeColor(C.border).lineWidth(0.5).moveTo(leftMargin, footerY).lineTo(leftMargin + pageWidth, footerY).stroke();
       const footerColW = Math.floor(pageWidth / 3);
       doc.fontSize(8).font('Helvetica').fillColor(C.lightGray);
-      doc.text(`User: ${report.reportMetadata.userEmail}`, leftMargin, footerY + 8, { width: footerColW, align: 'left' });
+      const userDisplay = report.reportMetadata.userFullName 
+        ? `${report.reportMetadata.userFullName} (${report.reportMetadata.userEmail})`
+        : report.reportMetadata.userEmail;
+      doc.text(`User: ${userDisplay}`, leftMargin, footerY + 8, { width: footerColW, align: 'left' });
       doc.text(`${report.reportMetadata.reportId} v:${report.reportMetadata.reportVersion}`, leftMargin + footerColW, footerY + 8, { width: footerColW, align: 'center' });
       doc.text(`Date: ${generatedDate}`, leftMargin + footerColW * 2, footerY + 8, { width: footerColW, align: 'right' });
 

@@ -21,6 +21,8 @@ const dealerUpdateSchema = z.object({
     originalLogoImage: z.string().optional(),
     qrCodeImage: z.string().optional(),
     password: z.string().optional(),
+    fullName: z.string().optional(),
+    email: z.string().email().optional(),
   }),
 });
 
@@ -40,5 +42,8 @@ router.get('/report/:scanId', authMiddleware, dealerController.getDealerReportDe
 
 // Schedule service appointment (sends email to john@vintraxx.com)
 router.post('/schedule-appointment', authMiddleware, dealerController.scheduleAppointment);
+
+// Service appointment activity history
+router.get('/appointments', authMiddleware, dealerController.getDealerAppointments);
 
 export default router;

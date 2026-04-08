@@ -52,6 +52,7 @@ export async function getDealerProfile(req: Request, res: Response, next: NextFu
       select: {
         id: true,
         email: true,
+        fullName: true,
         isDealer: true,
         pricePerLaborHour: true,
         logoUrl: true,
@@ -75,7 +76,7 @@ export async function getDealerProfile(req: Request, res: Response, next: NextFu
 export async function updateDealerProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = req.user!.userId;
-    const { pricePerLaborHour, logoImage, originalLogoImage, qrCodeImage, password } = req.body;
+    const { pricePerLaborHour, logoImage, originalLogoImage, qrCodeImage, password, fullName, email: newEmail } = req.body;
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user || !user.isDealer) {
@@ -100,7 +101,20 @@ export async function updateDealerProfile(req: Request, res: Response, next: Nex
       }
     }
 
-    const updateData: { pricePerLaborHour?: number; logoUrl?: string; originalLogoUrl?: string; qrCodeUrl?: string } = {};
+    const updateData: { pricePerLaborHour?: number; logoUrl?: string; originalLogoUrl?: string; qrCodeUrl?: string; fullName?: string; email?: string } = {};
+
+    if (fullName !== undefined && typeof fullName === 'string') {
+      updateData.fullName = fullName.trim() || null as any;
+    }
+
+    if (newEmail !== undefined && typeof newEmail === 'string' && newEmail.trim() && newEmail.trim() !== user.email) {
+      const existing = await prisma.user.findUnique({ where: { email: newEmail.trim() } });
+      if (existing && existing.id !== userId) {
+        res.status(409).json({ success: false, error: 'Email already in use by another account.' });
+        return;
+      }
+      updateData.email = newEmail.trim();
+    }
 
     if (pricePerLaborHour !== undefined && typeof pricePerLaborHour === 'number' && pricePerLaborHour > 0) {
       updateData.pricePerLaborHour = pricePerLaborHour;
@@ -221,6 +235,7 @@ export async function updateDealerProfile(req: Request, res: Response, next: Nex
       select: {
         id: true,
         email: true,
+        fullName: true,
         isDealer: true,
         pricePerLaborHour: true,
         logoUrl: true,
@@ -266,6 +281,7 @@ export async function getDealerReports(req: Request, res: Response, next: NextFu
       scanDate: scan.scanDate.toISOString(),
       stockNumber: scan.stockNumber,
       additionalRepairs: scan.additionalRepairs,
+      userFullName: scan.userFullName,
       totalReconditioningCost: scan.fullReport?.totalReconditioningCost ?? null,
       additionalRepairsCost: scan.fullReport?.additionalRepairsCost ?? null,
       pdfUrl: toPublicPdfUrl(scan.fullReport?.pdfUrl),
@@ -330,6 +346,7 @@ export async function getDealerScanHistory(req: Request, res: Response, next: Ne
         vehicleModel: scan.vehicleModel,
         mileage: scan.mileage,
         stockNumber: scan.stockNumber,
+        userFullName: scan.userFullName,
         scanDate: scan.scanDate.toISOString(),
         healthScore,
         totalRepairCost: totalCost,
@@ -603,11 +620,60 @@ export async function scheduleAppointment(req: Request, res: Response, next: Nex
       html: htmlBody,
     });
 
+    // Save appointment to DB for activity history
+    const userId = req.user!.userId;
+    try {
+      await prisma.serviceAppointment.create({
+        data: {
+          userId,
+          name,
+          email,
+          phone: phone || null,
+          dealership: dealership || null,
+          vehicle: vehicle || null,
+          vin: vin || null,
+          serviceType,
+          preferredDate,
+          preferredTime: preferredTime || null,
+          additionalNotes: additionalNotes || null,
+          status: 'pending',
+        },
+      });
+    } catch (dbErr) {
+      logger.warn('Failed to save service appointment to DB', { error: (dbErr as Error).message });
+    }
+
     logger.info('Schedule appointment email sent', { name, email, serviceType, preferredDate });
 
     res.json({ success: true, message: 'Appointment request submitted successfully.' });
   } catch (error) {
     logger.error('Schedule appointment email failed', { error: (error as Error).message });
+    next(error);
+  }
+}
+
+// ================================================================
+// GET /api/v1/dealer/appointments
+// Get dealer's schedule service appointment activity history
+// ================================================================
+export async function getDealerAppointments(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.user!.userId;
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.isDealer) {
+      res.status(403).json({ success: false, error: 'Dealer access required.' });
+      return;
+    }
+
+    const appointments = await prisma.serviceAppointment.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json({ success: true, appointments });
+  } catch (error) {
+    logger.error('Dealer appointments failed', { error: (error as Error).message });
     next(error);
   }
 }

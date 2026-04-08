@@ -92,7 +92,8 @@ export async function register(
   pricePerLaborHour?: number,
   logoUrl?: string,
   qrCodeUrl?: string,
-): Promise<{ user: { id: string; email: string; isDealer: boolean; pricePerLaborHour: number | null; logoUrl: string | null; originalLogoUrl: string | null; qrCodeUrl: string | null }; token: string }> {
+  fullName?: string,
+): Promise<{ user: { id: string; email: string; fullName: string | null; isDealer: boolean; pricePerLaborHour: number | null; logoUrl: string | null; originalLogoUrl: string | null; qrCodeUrl: string | null }; token: string }> {
   const verifiedOtp = await prisma.otp.findFirst({
     where: {
       email,
@@ -172,7 +173,7 @@ export async function register(
   }
 
   const user = await prisma.user.create({
-    data: { email, passwordHash, isDealer: dealer, pricePerLaborHour: laborHourPrice, logoUrl: processedLogoUrl, qrCodeUrl: processedQrCodeUrl },
+    data: { email, passwordHash, isDealer: dealer, pricePerLaborHour: laborHourPrice, logoUrl: processedLogoUrl, qrCodeUrl: processedQrCodeUrl, fullName: fullName || null },
   });
 
   await prisma.otp.deleteMany({ where: { email } });
@@ -182,12 +183,12 @@ export async function register(
   logger.info(`User registered: ${user.email}, isDealer: ${dealer}`);
 
   return {
-    user: { id: user.id, email: user.email, isDealer: user.isDealer, pricePerLaborHour: user.pricePerLaborHour, logoUrl: user.logoUrl, originalLogoUrl: user.originalLogoUrl, qrCodeUrl: user.qrCodeUrl },
+    user: { id: user.id, email: user.email, fullName: user.fullName, isDealer: user.isDealer, pricePerLaborHour: user.pricePerLaborHour, logoUrl: user.logoUrl, originalLogoUrl: user.originalLogoUrl, qrCodeUrl: user.qrCodeUrl },
     token,
   };
 }
 
-export async function login(email: string, password: string, isDealer?: boolean, pricePerLaborHour?: number): Promise<{ user: { id: string; email: string; isDealer: boolean; pricePerLaborHour: number | null; logoUrl: string | null; originalLogoUrl: string | null; qrCodeUrl: string | null }; token: string }> {
+export async function login(email: string, password: string, isDealer?: boolean, pricePerLaborHour?: number): Promise<{ user: { id: string; email: string; fullName: string | null; isDealer: boolean; pricePerLaborHour: number | null; logoUrl: string | null; originalLogoUrl: string | null; qrCodeUrl: string | null }; token: string }> {
   logger.info('User login attempt', { email, hasPassword: !!password });
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
@@ -227,7 +228,7 @@ export async function login(email: string, password: string, isDealer?: boolean,
   logger.info(`User logged in: ${user.email}, isDealer: ${user.isDealer}`);
 
   return {
-    user: { id: user.id, email: user.email, isDealer: user.isDealer, pricePerLaborHour: user.pricePerLaborHour, logoUrl: user.logoUrl, originalLogoUrl: user.originalLogoUrl, qrCodeUrl: user.qrCodeUrl },
+    user: { id: user.id, email: user.email, fullName: user.fullName, isDealer: user.isDealer, pricePerLaborHour: user.pricePerLaborHour, logoUrl: user.logoUrl, originalLogoUrl: user.originalLogoUrl, qrCodeUrl: user.qrCodeUrl },
     token,
   };
 }

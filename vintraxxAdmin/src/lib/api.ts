@@ -116,6 +116,15 @@ export const api = {
   deleteAppraisal: (id: string) =>
     request<{ success: boolean }>(`/appraisals/${id}`, { method: 'DELETE' }),
 
+  // Service Appointments
+  getServiceAppointments: (page = 1, limit = 50) =>
+    request<{ success: boolean; appointments: ServiceAppointment[]; total: number; page: number; totalPages: number }>(
+      `/service-appointments?page=${page}&limit=${limit}`
+    ),
+
+  deleteServiceAppointment: (id: string) =>
+    request<{ success: boolean }>(`/service-appointments/${id}`, { method: 'DELETE' }),
+
   // Verify Password
   verifyPassword: (password: string) =>
     request<{ success: boolean }>('/verify-password', {
@@ -135,18 +144,21 @@ export interface DashboardStats {
   totalScans: number;
   totalReports: number;
   totalInspections: number;
+  totalAppraisals: number;
+  totalServiceAppointments: number;
   recentScans: Array<{
     id: string;
     vin: string;
     status: string;
     receivedAt: string;
-    user: { email: string; isDealer: boolean };
+    user: { email: string; fullName: string | null; isDealer: boolean };
   }>;
 }
 
 export interface User {
   id: string;
   email: string;
+  fullName: string | null;
   authProvider: string;
   isDealer: boolean;
   pricePerLaborHour: number | null;
@@ -200,6 +212,7 @@ export interface Scan {
   stockNumber: string | null;
   additionalRepairs: string[];
   scannerDeviceId: string | null;
+  userFullName: string | null;
   vehicleYear: number | null;
   vehicleMake: string | null;
   vehicleModel: string | null;
@@ -209,7 +222,7 @@ export interface Scan {
   scanDate: string;
   receivedAt: string;
   processedAt: string | null;
-  user?: { id: string; email: string; isDealer: boolean };
+  user?: { id: string; email: string; fullName: string | null; isDealer: boolean };
   fullReport?: FullReportSummary | null;
 }
 
@@ -287,9 +300,29 @@ export interface Appraisal {
   createdAt: string;
 }
 
+export interface ServiceAppointment {
+  id: string;
+  userId: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  dealership: string | null;
+  vehicle: string | null;
+  vin: string | null;
+  serviceType: string;
+  preferredDate: string;
+  preferredTime: string | null;
+  additionalNotes: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  user?: { id: string; email: string; fullName: string | null; isDealer: boolean };
+}
+
 export interface CreateUserData {
   email: string;
   password?: string;
+  fullName?: string;
   isDealer?: boolean;
   pricePerLaborHour?: number;
   logoUrl?: string;

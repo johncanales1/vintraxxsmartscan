@@ -169,6 +169,24 @@ export async function verifyPassword(req: Request, res: Response, next: NextFunc
   } catch (err) { next(err); }
 }
 
+// ── Service Appointments ─────────────────────────────────────────────────────
+
+export async function listServiceAppointments(req: Request, res: Response, next: NextFunction) {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const result = await adminService.getServiceAppointments(page, limit);
+    res.json({ success: true, ...result });
+  } catch (err) { next(err); }
+}
+
+export async function deleteServiceAppointment(req: Request, res: Response, next: NextFunction) {
+  try {
+    await adminService.deleteServiceAppointment(req.params.id as string);
+    res.json({ success: true, message: 'Service appointment deleted' });
+  } catch (err) { next(err); }
+}
+
 // ── Backup ────────────────────────────────────────────────────────────────────
 
 export async function backup(req: Request, res: Response, next: NextFunction) {

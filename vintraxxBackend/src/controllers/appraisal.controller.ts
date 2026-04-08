@@ -304,15 +304,7 @@ export async function pdfAppraisal(req: Request, res: Response, next: NextFuncti
     // Send email with PDF attachment
     await sendAppraisalEmail(toEmail, appraisalData, pdfPath);
 
-    // Clean up PDF file after sending
-    try {
-      if (pdfPath && fs.existsSync(pdfPath)) {
-        fs.unlinkSync(pdfPath);
-        logger.debug('Appraisal PDF file cleaned up', { pdfPath });
-      }
-    } catch (cleanupErr) {
-      logger.warn('Failed to cleanup appraisal PDF file', { pdfPath, error: (cleanupErr as Error).message });
-    }
+    // Keep PDF file on disk so dealers can view it later via PDF View link
 
     logger.info('Appraisal PDF email sent successfully', {
       appraisalId: appraisalData.appraisalId,

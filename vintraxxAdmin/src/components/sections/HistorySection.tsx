@@ -1,16 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { api, Scan, ScanDetail, Appraisal, normalizePdfUrl } from '@/lib/api';
+import { api, Scan, ScanDetail, Appraisal, ServiceAppointment, normalizePdfUrl } from '@/lib/api';
 import { StatusBadge } from '@/components/Dashboard';
 import ScanDetailModal from '@/components/modals/ScanDetailModal';
 import ConfirmDeleteModal from '@/components/modals/ConfirmDeleteModal';
 import {
-  Search, Trash2, Eye, History, RefreshCw, ChevronLeft, ChevronRight, ExternalLink, FileText, ClipboardList
+  Search, Trash2, Eye, History, RefreshCw, ChevronLeft, ChevronRight, ExternalLink, FileText, ClipboardList, CalendarDays
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-type HistoryTab = 'scans' | 'appraisals';
+type HistoryTab = 'scans' | 'appraisals' | 'appointments';
 
 export default function HistorySection() {
   const [activeTab, setActiveTab] = useState<HistoryTab>('scans');
@@ -36,8 +36,19 @@ export default function HistorySection() {
   const [appraisalTotal, setAppraisalTotal] = useState(0);
   const [appraisalDeleteTarget, setAppraisalDeleteTarget] = useState<{ id: string; vin: string } | null>(null);
 
+  // Service Appointments state
+  const [appointments, setAppointments] = useState<ServiceAppointment[]>([]);
+  const [filteredAppointments, setFilteredAppointments] = useState<ServiceAppointment[]>([]);
+  const [appointmentSearch, setAppointmentSearch] = useState('');
+  const [appointmentLoading, setAppointmentLoading] = useState(true);
+  const [appointmentPage, setAppointmentPage] = useState(1);
+  const [appointmentTotalPages, setAppointmentTotalPages] = useState(1);
+  const [appointmentTotal, setAppointmentTotal] = useState(0);
+  const [appointmentDeleteTarget, setAppointmentDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+
   useEffect(() => { loadScans(); }, [page]);
   useEffect(() => { loadAppraisals(); }, [appraisalPage]);
+  useEffect(() => { loadAppointments(); }, [appointmentPage]);
 
   useEffect(() => {
     const q = search.toLowerCase();
@@ -45,6 +56,8 @@ export default function HistorySection() {
       scans.filter(s =>
         s.vin.toLowerCase().includes(q) ||
         s.user?.email.toLowerCase().includes(q) ||
+        s.user?.fullName?.toLowerCase().includes(q) ||
+        s.userFullName?.toLowerCase().includes(q) ||
         s.vehicleMake?.toLowerCase().includes(q) ||
         s.vehicleModel?.toLowerCase().includes(q) ||
         s.status.toLowerCase().includes(q)
@@ -64,6 +77,20 @@ export default function HistorySection() {
       )
     );
   }, [appraisalSearch, appraisals]);
+
+  useEffect(() => {
+    const q = appointmentSearch.toLowerCase();
+    setFilteredAppointments(
+      appointments.filter(a =>
+        a.name.toLowerCase().includes(q) ||
+        a.email.toLowerCase().includes(q) ||
+        a.serviceType.toLowerCase().includes(q) ||
+        a.vin?.toLowerCase().includes(q) ||
+        a.vehicle?.toLowerCase().includes(q) ||
+        a.status.toLowerCase().includes(q)
+      )
+    );
+  }, [appointmentSearch, appointments]);
 
   const loadScans = async () => {
     setLoading(true);
@@ -107,6 +134,17 @@ export default function HistorySection() {
     } catch { toast.error('Failed to delete scan'); }
   };
 
+  const loadAppointments = async () => {
+    setAppointmentLoading(true);
+    try {
+      const res = await api.getServiceAppointments(appointmentPage, 50);
+      setAppointments(res.appointments);
+      setAppointmentTotalPages(res.totalPages);
+      setAppointmentTotal(res.total);
+    } catch { toast.error('Failed to load appointments'); }
+    finally { setAppointmentLoading(false); }
+  };
+
   const handleDeleteAppraisal = async () => {
     if (!appraisalDeleteTarget) return;
     try {
@@ -115,6 +153,16 @@ export default function HistorySection() {
       setAppraisalDeleteTarget(null);
       loadAppraisals();
     } catch { toast.error('Failed to delete appraisal'); }
+  };
+
+  const handleDeleteAppointment = async () => {
+    if (!appointmentDeleteTarget) return;
+    try {
+      await api.deleteServiceAppointment(appointmentDeleteTarget.id);
+      toast.success('Appointment deleted');
+      setAppointmentDeleteTarget(null);
+      loadAppointments();
+    } catch { toast.error('Failed to delete appointment'); }
   };
 
   return (
@@ -142,6 +190,17 @@ export default function HistorySection() {
         >
           <ClipboardList size={16} />
           Appraisals
+        </button>
+        <button
+          onClick={() => setActiveTab('appointments')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            activeTab === 'appointments'
+              ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+          }`}
+        >
+          <CalendarDays size={16} />
+          Appointments
         </button>
       </div>
 
@@ -408,6 +467,124 @@ export default function HistorySection() {
           message={`Delete appraisal for VIN "${appraisalDeleteTarget.vin}"?`}
           onConfirm={handleDeleteAppraisal}
           onCancel={() => setAppraisalDeleteTarget(null)}
+        />
+      )}
+
+      {/* Service Appointments Tab */}
+      {activeTab === 'appointments' && (
+        <>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="relative flex-1 w-full sm:max-w-md">
+              <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search by name, email, service type, VIN..."
+                value={appointmentSearch}
+                onChange={(e) => setAppointmentSearch(e.target.value)}
+                className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500 dark:text-gray-400">{appointmentTotal.toLocaleString()} total</span>
+              <button onClick={loadAppointments} className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
+                <RefreshCw size={18} />
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            {appointmentLoading ? (
+              <div className="p-8 space-y-4">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="h-12 rounded-lg bg-gray-200 dark:bg-gray-700 animate-pulse" />
+                ))}
+              </div>
+            ) : filteredAppointments.length === 0 ? (
+              <div className="text-center py-16">
+                <CalendarDays size={48} className="mx-auto text-gray-300 dark:text-gray-600 mb-4" />
+                <p className="text-gray-500 dark:text-gray-400">{appointmentSearch ? 'No appointments match your search' : 'No service appointments found'}</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
+                      <th className="px-4 lg:px-6 py-3">Name</th>
+                      <th className="px-4 lg:px-6 py-3">Email</th>
+                      <th className="px-4 lg:px-6 py-3">Service Type</th>
+                      <th className="px-4 lg:px-6 py-3">Vehicle</th>
+                      <th className="px-4 lg:px-6 py-3">VIN</th>
+                      <th className="px-4 lg:px-6 py-3">Preferred Date</th>
+                      <th className="px-4 lg:px-6 py-3">Status</th>
+                      <th className="px-4 lg:px-6 py-3">Dealer</th>
+                      <th className="px-4 lg:px-6 py-3">Created</th>
+                      <th className="px-4 lg:px-6 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                    {filteredAppointments.map((apt) => (
+                      <tr key={apt.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                        <td className="px-4 lg:px-6 py-3.5 text-sm text-gray-900 dark:text-white font-medium">{apt.name}</td>
+                        <td className="px-4 lg:px-6 py-3.5 text-sm text-gray-600 dark:text-gray-300">
+                          <a href={`mailto:${apt.email}`} className="text-blue-600 dark:text-blue-400 hover:underline">{apt.email}</a>
+                        </td>
+                        <td className="px-4 lg:px-6 py-3.5">
+                          <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-md bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400">
+                            {apt.serviceType}
+                          </span>
+                        </td>
+                        <td className="px-4 lg:px-6 py-3.5 text-sm text-gray-600 dark:text-gray-300">{apt.vehicle || '—'}</td>
+                        <td className="px-4 lg:px-6 py-3.5 text-sm font-mono text-gray-600 dark:text-gray-300">{apt.vin || '—'}</td>
+                        <td className="px-4 lg:px-6 py-3.5 text-sm text-gray-600 dark:text-gray-300">{apt.preferredDate}{apt.preferredTime ? ` ${apt.preferredTime}` : ''}</td>
+                        <td className="px-4 lg:px-6 py-3.5">
+                          <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-md capitalize ${
+                            apt.status === 'confirmed' ? 'bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400' :
+                            apt.status === 'completed' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400' :
+                            apt.status === 'cancelled' ? 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400' :
+                            'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                          }`}>{apt.status}</span>
+                        </td>
+                        <td className="px-4 lg:px-6 py-3.5 text-sm text-gray-600 dark:text-gray-300">
+                          <span className="truncate max-w-[120px] block">{apt.user?.email || apt.dealership || '—'}</span>
+                        </td>
+                        <td className="px-4 lg:px-6 py-3.5 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                          {new Date(apt.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="px-4 lg:px-6 py-3.5 text-right">
+                          <button onClick={() => setAppointmentDeleteTarget({ id: apt.id, name: apt.name })} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-red-500 transition-all">
+                            <Trash2 size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {appointmentTotalPages > 1 && (
+              <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 dark:border-gray-700">
+                <p className="text-sm text-gray-500 dark:text-gray-400">Page {appointmentPage} of {appointmentTotalPages}</p>
+                <div className="flex gap-2">
+                  <button onClick={() => setAppointmentPage(p => Math.max(1, p - 1))} disabled={appointmentPage === 1} className="p-2 rounded-lg border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button onClick={() => setAppointmentPage(p => Math.min(appointmentTotalPages, p + 1))} disabled={appointmentPage === appointmentTotalPages} className="p-2 rounded-lg border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {appointmentDeleteTarget && (
+        <ConfirmDeleteModal
+          title="Delete Appointment"
+          message={`Delete service appointment for "${appointmentDeleteTarget.name}"?`}
+          onConfirm={handleDeleteAppointment}
+          onCancel={() => setAppointmentDeleteTarget(null)}
         />
       )}
     </div>

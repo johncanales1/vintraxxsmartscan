@@ -66,6 +66,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const [pricePerLaborHour, setPricePerLaborHour] = useState('');
   const [logoUri, setLogoUri] = useState<string | null>(null);
   const [qrCodeUri, setQrCodeUri] = useState<string | null>(null);
+  const [fullName, setFullName] = useState('');
   const [googleLoading, setGoogleLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
@@ -414,6 +415,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
       return;
     }
 
+    // Validate full name for new registration
+    if (!isRegistered && !fullName.trim()) {
+      setErrorMessage('Please enter your full name.');
+      return;
+    }
+
     // Validate dealer price if dealer mode is selected
     const dealerPrice = wantDealer && pricePerLaborHour.trim()
       ? parseFloat(pricePerLaborHour.trim())
@@ -436,7 +443,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
           wantDealer || undefined,
           dealerPrice,
           wantDealer && logoUri ? logoUri : undefined,
-          wantDealer && qrCodeUri ? qrCodeUri : undefined
+          wantDealer && qrCodeUri ? qrCodeUri : undefined,
+          fullName.trim() || undefined
         );
       }
 
@@ -456,7 +464,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [password, confirmPassword, isRegistered, email, navigation, setUser, setIsAuthenticated, wantDealer, pricePerLaborHour, logoUri, qrCodeUri]);
+  }, [password, confirmPassword, isRegistered, email, navigation, setUser, setIsAuthenticated, wantDealer, pricePerLaborHour, logoUri, qrCodeUri, fullName]);
 
   // Resend OTP
   const handleResendOtp = useCallback(async () => {
@@ -745,6 +753,22 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
                       editable={!isLoading}
                       returnKeyType="done"
                       onSubmitEditing={handlePasswordSubmit}
+                    />
+                  </View>
+                )}
+
+                {!isRegistered && (
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.inputLabel}>Full Name</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Enter your full name"
+                      placeholderTextColor={colors.text.light}
+                      value={fullName}
+                      onChangeText={(text) => { setFullName(text); setErrorMessage(''); }}
+                      autoCapitalize="words"
+                      editable={!isLoading}
+                      returnKeyType="next"
                     />
                   </View>
                 )}

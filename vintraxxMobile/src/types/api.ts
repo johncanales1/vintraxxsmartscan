@@ -76,6 +76,7 @@ export interface ScanSubmissionPayload {
   additionalRepairs?: string[];
   scannerDeviceId?: string;
   userFullName?: string;
+  vehicleOwnerName?: string;
 }
 
 export interface ScanSubmitResponse {
@@ -201,6 +202,7 @@ export interface AppraisalValuationRequest {
   condition: 'clean' | 'average' | 'rough';
   zipCode?: string;
   notes?: string;
+  vehicleOwnerName?: string;
 }
 
 export interface AppraisalValuationSource {

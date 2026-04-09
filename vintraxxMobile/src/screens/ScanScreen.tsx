@@ -194,6 +194,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
   const [cancelRequested, setCancelRequested] = useState(false);
   const [stockNumber, setStockNumber] = useState('');
   const [showStockNumber, setShowStockNumber] = useState(false);
+  const [vehicleOwnerName, setVehicleOwnerName] = useState('');
   const [showAdditionalRepairs, setShowAdditionalRepairs] = useState(false);
   const [selectedAdditionalRepairs, setSelectedAdditionalRepairs] = useState<string[]>([]);
   const [errorModalVisible, setErrorModalVisible] = useState(false);
@@ -312,6 +313,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
       setCancelRequested(false);
       setStockNumber('');
       setShowStockNumber(false);
+      setVehicleOwnerName('');
       setShowAdditionalRepairs(false);
       setSelectedAdditionalRepairs([]);
       setScanSteps([
@@ -590,8 +592,9 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
       conditionReport,
       stockNumber: trimmedStock.length > 0 ? trimmedStock : undefined,
       additionalRepairs: selectedAdditionalRepairs.length > 0 ? selectedAdditionalRepairs : undefined,
+      vehicleOwnerName: vehicleOwnerName.trim() || undefined,
     });
-  }, [lastScanResult, resolveVehicle, navigation, setCurrentReport, stockNumber, selectedAdditionalRepairs]);
+  }, [lastScanResult, resolveVehicle, navigation, setCurrentReport, stockNumber, selectedAdditionalRepairs, vehicleOwnerName]);
 
   // Cancel scan
   const handleCancelScan = useCallback(() => {
@@ -916,6 +919,22 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
                       )}
                     </View>
                   )}
+                </View>
+
+                {/* Vehicle Owner Name Input */}
+                <View style={styles.stockNumberContainer}>
+                  <Text style={styles.stockNumberToggleText}>Vehicle Owner Name</Text>
+                  <View style={styles.stockNumberInputWrap}>
+                    <TextInput
+                      style={styles.stockNumberInput}
+                      placeholder="Enter vehicle owner name"
+                      placeholderTextColor={colors.text.muted}
+                      value={vehicleOwnerName}
+                      onChangeText={setVehicleOwnerName}
+                      autoCapitalize="words"
+                      maxLength={100}
+                    />
+                  </View>
                 </View>
               </View>
             </View>

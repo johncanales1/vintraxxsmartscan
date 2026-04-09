@@ -38,6 +38,8 @@ interface OBDScanReport {
     pdfUrl: string | null;
     emailSentAt: string | null;
     userFullName?: string | null;
+    vehicleOwnerName?: string | null;
+    scannerOwnerName?: string | null;
 }
 
 // Detailed report from /scan/report/:scanId (FullReportData structure)
@@ -98,6 +100,7 @@ interface AppraisalData {
     createdAt: string;
     userEmail: string;
     userFullName?: string;
+    vehicleOwnerName?: string;
     pdfUrl?: string | null;
 }
 
@@ -421,7 +424,9 @@ export default function DealerPortalPage() {
                r.vehicleMake?.toLowerCase().includes(query) ||
                r.vehicleModel?.toLowerCase().includes(query) ||
                r.stockNumber?.toLowerCase().includes(query) ||
-               r.userFullName?.toLowerCase().includes(query);
+               r.userFullName?.toLowerCase().includes(query) ||
+               r.vehicleOwnerName?.toLowerCase().includes(query) ||
+               r.scannerOwnerName?.toLowerCase().includes(query);
     });
     
     // Filtered appraisals
@@ -432,6 +437,7 @@ export default function DealerPortalPage() {
                a.vehicle.make?.toLowerCase().includes(query) ||
                a.vehicle.model?.toLowerCase().includes(query) ||
                a.userFullName?.toLowerCase().includes(query) ||
+               a.vehicleOwnerName?.toLowerCase().includes(query) ||
                a.userEmail?.toLowerCase().includes(query);
     });
 

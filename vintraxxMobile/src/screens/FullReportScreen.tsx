@@ -35,6 +35,7 @@ interface FullReportScreenProps {
       conditionReport?: ConditionReport;
       stockNumber?: string;
       additionalRepairs?: string[];
+      vehicleOwnerName?: string;
     };
   };
 }
@@ -42,7 +43,7 @@ interface FullReportScreenProps {
 type ProcessingStatus = 'submitting' | 'processing' | 'completed' | 'failed';
 
 export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, route }) => {
-  const { scanResult, vehicle, conditionReport, stockNumber, additionalRepairs } = route.params;
+  const { scanResult, vehicle, conditionReport, stockNumber, additionalRepairs, vehicleOwnerName } = route.params;
   const [status, setStatus] = useState<ProcessingStatus>('submitting');
   const [statusMessage, setStatusMessage] = useState('Submitting scan data...');
   const [reportData, setReportData] = useState<FullReportData | null>(null);
@@ -104,11 +105,12 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
         // Step 1: Build payload and submit
         const scannerDeviceId = selectedBleDevice?.id || undefined;
         const userFullName = userDevice?.name || undefined;
-        const payload = apiService.buildScanPayload(scanResult, stockNumber, additionalRepairs, scannerDeviceId, userFullName);
+        const payload = apiService.buildScanPayload(scanResult, stockNumber, additionalRepairs, scannerDeviceId, userFullName, vehicleOwnerName);
         logger.info(LogCategory.APP, 'Submitting scan for full report', {
           stockNumber: stockNumber || undefined,
           additionalRepairs: additionalRepairs || [],
           scannerDeviceId: scannerDeviceId || undefined,
+          vehicleOwnerName: vehicleOwnerName || undefined,
         });
 
         const submitResult = await apiService.submitScan(payload);

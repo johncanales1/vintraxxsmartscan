@@ -119,6 +119,7 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
   const [zipCode, setZipCode] = useState('');
   const [condition, setCondition] = useState<ConditionLevel>('average');
   const [notes, setNotes] = useState('');
+  const [vehicleOwnerName, setVehicleOwnerName] = useState('');
   const [appraisalStarted, setAppraisalStarted] = useState(false);
   const [valuationLoading, setValuationLoading] = useState(false);
   const [valuationData, setValuationData] = useState<AiValuationOutput | null>(null);
@@ -399,6 +400,7 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
         condition,
         zipCode: zipCode || undefined,
         notes: notes || undefined,
+        vehicleOwnerName: vehicleOwnerName.trim() || undefined,
       });
 
       if (result.success && result.valuation && result.appraisalId) {
@@ -646,6 +648,20 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
           </View>
         </View>
       )}
+
+      {/* Vehicle Owner Name Input */}
+      <View style={styles.inputGroup}>
+        <Text style={styles.inputLabel}>Vehicle Owner Name</Text>
+        <TextInput
+          style={styles.textInput}
+          placeholder="Enter vehicle owner name"
+          placeholderTextColor={colors.text.light}
+          value={vehicleOwnerName}
+          onChangeText={setVehicleOwnerName}
+          autoCapitalize="words"
+          maxLength={100}
+        />
+      </View>
     </View>
   );
 

@@ -20,6 +20,7 @@ export interface ScanSubmissionPayload {
   additionalRepairs?: string[];
   scannerDeviceId?: string;
   userFullName?: string;
+  vehicleOwnerName?: string;
 }
 
 export interface VinDecodeResult {
@@ -133,6 +134,8 @@ export interface FullReportData {
     generatedAt: string;
     userEmail: string;
     userFullName?: string;
+    scannerOwnerName?: string;
+    vehicleOwnerName?: string;
   };
   stockNumber?: string;
   dealerLogoUrl?: string;

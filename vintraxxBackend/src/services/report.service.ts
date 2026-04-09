@@ -15,6 +15,8 @@ interface ReportAssemblyInput {
   distanceSinceCleared: number | null;
   userEmail: string;
   userFullName?: string;
+  scannerOwnerName?: string;
+  vehicleOwnerName?: string;
   aiOutput: AiAnalysisOutput;
   stockNumber?: string;
   additionalRepairs?: AdditionalRepairItem[];
@@ -24,7 +26,7 @@ interface ReportAssemblyInput {
 }
 
 export function assembleFullReport(input: ReportAssemblyInput): FullReportData {
-  const { scanId, reportId, vin, year, make, model, mileage, milOn, distanceSinceCleared, userEmail, userFullName, aiOutput, stockNumber, additionalRepairs, additionalRepairsTotalCost, dealerLogoUrl, dealerQrCodeUrl } = input;
+  const { scanId, reportId, vin, year, make, model, mileage, milOn, distanceSinceCleared, userEmail, userFullName, scannerOwnerName, vehicleOwnerName, aiOutput, stockNumber, additionalRepairs, additionalRepairsTotalCost, dealerLogoUrl, dealerQrCodeUrl } = input;
 
   const healthScore = calculateHealthScore(aiOutput, milOn);
   const overallStatus = determineOverallStatus(healthScore);
@@ -91,6 +93,8 @@ export function assembleFullReport(input: ReportAssemblyInput): FullReportData {
       generatedAt: new Date().toISOString(),
       userEmail,
       userFullName: userFullName || undefined,
+      scannerOwnerName: scannerOwnerName || undefined,
+      vehicleOwnerName: vehicleOwnerName || undefined,
     },
     stockNumber,
     additionalRepairs: additionalRepairs || undefined,

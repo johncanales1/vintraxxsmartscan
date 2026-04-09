@@ -260,7 +260,22 @@ export async function generatePdf(report: FullReportData): Promise<string> {
         }
       });
 
-      y += boxH + 20;
+      y += boxH + 8;
+
+      // ============ USER INFORMATION BLOCK ============
+      const userBoxH = 60;
+      doc.save();
+      doc.lineWidth(1).strokeColor(C.border).rect(leftMargin, y, pageWidth, userBoxH).stroke();
+      doc.fontSize(11).font('Helvetica-Bold').fillColor('#8B2332').text('User Information', leftMargin + 10, y + 8, { width: pageWidth - 20 });
+      const uiY = y + 22;
+      const uiColW = Math.floor(pageWidth / 2);
+      doc.fontSize(8).font('Helvetica').fillColor(C.medGray);
+      doc.text(`Email Owner: ${report.reportMetadata.userFullName || 'N/A'}`, leftMargin + 10, uiY, { width: uiColW - 20 });
+      doc.text(`Email: ${report.reportMetadata.userEmail}`, leftMargin + uiColW + 10, uiY, { width: uiColW - 20 });
+      doc.text(`Scanner Owner: ${report.reportMetadata.scannerOwnerName || 'N/A'}`, leftMargin + 10, uiY + 14, { width: uiColW - 20 });
+      doc.text(`Vehicle Owner: ${report.reportMetadata.vehicleOwnerName || 'N/A'}`, leftMargin + uiColW + 10, uiY + 14, { width: uiColW - 20 });
+      doc.restore();
+      y += userBoxH + 12;
 
       // ============ ESTIMATED RECONDITIONING COSTS ============
       doc.fontSize(13).font('Helvetica-Bold').fillColor(C.darkGray).text('Estimated Reconditioning Costs', leftMargin, y);
@@ -378,24 +393,92 @@ export async function generatePdf(report: FullReportData): Promise<string> {
         }
       }
 
-      // ============ QR CODE & MARKETING CTA ============
+      // ============ REPAIRS TOTAL COST (always shown) ============
+      if (y + 50 > doc.page.height - 60) { doc.addPage(); y = 50; }
+      const repairsTotalBoxH = 44;
+      doc.save();
+      doc.rect(leftMargin, y, pageWidth, repairsTotalBoxH).fill('#F0F4FF');
+      doc.strokeColor(C.blue).lineWidth(1).rect(leftMargin, y, pageWidth, repairsTotalBoxH).stroke();
+      doc.fontSize(9).font('Helvetica').fillColor(C.medGray)
+        .text('Repairs Total Cost', leftMargin + 14, y + 8, { width: 200 });
+      const grandTotal = (report.grandTotalCost !== undefined) ? report.grandTotalCost : report.totalEstimatedRepairCost;
+      doc.fontSize(22).font('Helvetica-Bold').fillColor('#1a1a2e')
+        .text(fmtCurrency(grandTotal), leftMargin + 14, y + 20, { width: 200 });
+      doc.restore();
+      y += repairsTotalBoxH + 4;
+
+      // ============ VINTRAXX CAPITAL ADVERTISEMENT + QR CODE ============
       if (report.dealerQrCodeUrl) {
-        // Ensure enough space for QR code section (QR 100px + text ~50px + padding)
-        if (y + 180 > doc.page.height - 60) { doc.addPage(); y = 50; }
+        // Calculate total height needed: header(60) + description(40) + steps(80) + scan-to-apply(20) + qr(120) + footer(30) = ~350
+        const adTotalH = 350;
+        if (y + adTotalH > doc.page.height - 60) { doc.addPage(); y = 50; }
 
-        const qrSize = 100;
-        const ctaSectionH = 160;
-        const ctaBoxY = y;
-
-        // Light background box for the CTA section
+        // --- Advertisement header ---
         doc.save();
-        doc.rect(leftMargin, ctaBoxY, pageWidth, ctaSectionH).fill('#F0F4FF');
-        doc.strokeColor(C.blue).lineWidth(1.5).rect(leftMargin, ctaBoxY, pageWidth, ctaSectionH).stroke();
+        // VinTraxx Capital logo area
+        const vinCapLogoPath = path.resolve(__dirname, '../assets/VinTraxxLOGO.jpeg');
+        try {
+          if (fs.existsSync(vinCapLogoPath)) {
+            doc.image(vinCapLogoPath, leftMargin + 10, y + 4, { width: 60, height: 28, fit: [60, 28] });
+          }
+        } catch (_e) { /* ignore */ }
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#1a1a2e')
+          .text('VinTraxx', leftMargin + 75, y + 6, { width: 80 });
+        doc.fontSize(7).font('Helvetica').fillColor(C.medGray)
+          .text('CAPITAL', leftMargin + 75, y + 16, { width: 80 });
+        doc.restore();
+        y += 36;
+
+        // --- Heading ---
+        doc.fontSize(16).font('Helvetica-Bold').fillColor('#1a1a2e')
+          .text('Your Next Step: Apply for Vehicle Repair Financing', leftMargin, y, { width: pageWidth, align: 'center' });
+        y += 22;
+        doc.fontSize(9).font('Helvetica').fillColor(C.gray)
+          .text('You just completed a self diagnostic scan with VinTraxx Automotive. If your scan identified recommended repairs, VinTraxx Capital makes it easy to apply for financing right from your phone.', leftMargin + 20, y, { width: pageWidth - 40, align: 'center' });
+        y += 36;
+
+        // --- 3 Steps ---
+        const stepW = Math.floor((pageWidth - 40) / 3);
+        const stepsX = leftMargin + 20;
+        const stepsData = [
+          { num: '1', title: 'Review Your Scan Results', desc: 'Confirm the recommended repairs identified during your VinTraxx Automotive self scan.' },
+          { num: '2', title: 'Scan the QR Code', desc: 'Use your phone camera to open the secure application and complete a quick request.' },
+          { num: '3', title: 'Get Your Approval Options', desc: 'Receive a fast decision and move forward with financing for eligible repair costs.' },
+        ];
+        for (let si = 0; si < stepsData.length; si++) {
+          const sx = stepsX + si * stepW;
+          const step = stepsData[si];
+          // Circle with number
+          doc.save();
+          doc.circle(sx + stepW / 2, y + 12, 14).fill('#1a1a2e');
+          doc.fontSize(12).font('Helvetica-Bold').fillColor('#FFFFFF')
+            .text(step.num, sx + stepW / 2 - 5, y + 6, { width: 10, align: 'center' });
+          doc.restore();
+          doc.fontSize(9).font('Helvetica-Bold').fillColor(C.darkGray)
+            .text(step.title, sx + 4, y + 30, { width: stepW - 8, align: 'center' });
+          doc.fontSize(7).font('Helvetica').fillColor(C.gray)
+            .text(step.desc, sx + 4, y + 44, { width: stepW - 8, align: 'center' });
+        }
+        y += 76;
+
+        // --- Scan to Apply ---
+        doc.fontSize(13).font('Helvetica-Bold').fillColor(C.darkGray)
+          .text('Scan to Apply', leftMargin, y, { width: pageWidth, align: 'center' });
+        y += 16;
+        doc.fontSize(8).font('Helvetica').fillColor(C.gray)
+          .text('The QR code below takes the customer directly to the VinTraxx Capital application so they can request financing to help cover recommended vehicle service repairs.', leftMargin + 30, y, { width: pageWidth - 60, align: 'center' });
+        y += 26;
+
+        // --- QR Code Box ---
+        const qrSize = 100;
+        const qrBoxH = qrSize + 50;
+        doc.save();
+        doc.rect(leftMargin + 40, y, pageWidth - 80, qrBoxH).fill('#F8F8F8');
+        doc.strokeColor(C.border).lineWidth(1).rect(leftMargin + 40, y, pageWidth - 80, qrBoxH).stroke();
         doc.restore();
 
-        // QR code centered
         const qrX = leftMargin + (pageWidth - qrSize) / 2;
-        const qrY = ctaBoxY + 12;
+        const qrY = y + 8;
         let qrLoaded = false;
 
         try {
@@ -421,17 +504,22 @@ export async function generatePdf(report: FullReportData): Promise<string> {
         }
 
         if (qrLoaded) {
-          // Marketing text below QR code
-          const textY = qrY + qrSize + 8;
-          doc.fontSize(12).font('Helvetica-Bold').fillColor('#1a1a2e')
-            .text('Scan Here for Instant Repair Approval', leftMargin + 14, textY, { width: pageWidth - 28, align: 'center' });
-          doc.fontSize(9).font('Helvetica').fillColor(C.gray)
-            .text('Get a fast, hassle-free approval for all recommended repairs. Scan the QR code above to get started.', leftMargin + 14, textY + 18, { width: pageWidth - 28, align: 'center' });
+          const textBelowQr = qrY + qrSize + 6;
+          doc.fontSize(10).font('Helvetica-Bold').fillColor('#1a1a2e')
+            .text('Scan Here for Instant Repair Approval', leftMargin + 40, textBelowQr, { width: pageWidth - 80, align: 'center' });
+          doc.fontSize(7).font('Helvetica').fillColor(C.gray)
+            .text('Get a fast, hassle-free approval for all recommended repairs. Scan the QR code above to get started.', leftMargin + 40, textBelowQr + 14, { width: pageWidth - 80, align: 'center' });
         }
+        y += qrBoxH + 8;
 
-        y += ctaSectionH + 10;
+        // --- Advertisement footer ---
+        doc.fontSize(7).font('Helvetica').fillColor(C.lightGray)
+          .text('Fast mobile application. Quick decisioning. A simple next step after the diagnostic scan.', leftMargin, y, { width: pageWidth, align: 'center' });
+        y += 14;
+        doc.fontSize(7).font('Helvetica').fillColor(C.lightGray)
+          .text('VinTraxx Capital  |  Repair Financing Next Step', leftMargin, y, { width: pageWidth, align: 'center' });
+        y += 14;
       }
-      y += 10;
 
       // ============ FOOTER ============
       const footerY = doc.page.height - doc.page.margins.bottom - 22;

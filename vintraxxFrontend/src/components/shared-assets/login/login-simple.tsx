@@ -102,6 +102,7 @@ export const LoginSimple = ({ resetToken }: { resetToken: string | null }) => {
     const [otp, setOtp] = useState("");
     const [regPassword, setRegPassword] = useState("");
     const [regPasswordConfirm, setRegPasswordConfirm] = useState("");
+    const [fullName, setFullName] = useState("");
     const [pricePerLaborHour, setPricePerLaborHour] = useState("");
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [logoPreview, setLogoPreview] = useState<string>("");
@@ -324,6 +325,10 @@ export const LoginSimple = ({ resetToken }: { resetToken: string | null }) => {
         e.preventDefault();
         setError("");
 
+        if (!fullName.trim()) {
+            setError("Please enter your full name.");
+            return;
+        }
         if (!regPassword.trim()) {
             setError("Please enter a password.");
             return;
@@ -370,6 +375,7 @@ export const LoginSimple = ({ resetToken }: { resetToken: string | null }) => {
                 body: JSON.stringify({
                     email: regEmail.trim(),
                     password: regPassword,
+                    fullName: fullName.trim(),
                     isDealer: true,
                     pricePerLaborHour: price,
                     logoUrl: logoUrl || undefined,
@@ -824,6 +830,21 @@ export const LoginSimple = ({ resetToken }: { resetToken: string | null }) => {
                                 {/* Step 3: Password + password confirm + price per labor hour + logo */}
                                 {registerStep === 3 && (
                                     <form onSubmit={handleRegister} className="flex flex-col gap-3" noValidate>
+                                        <div className="flex flex-col gap-1.5">
+                                            <span className="text-xs sm:text-sm font-medium text-gray-700">Full Name</span>
+                                            <Input
+                                                hideRequiredIndicator
+                                                label=""
+                                                type="text"
+                                                name="fullName"
+                                                placeholder="Enter your full name"
+                                                size="sm"
+                                                className="w-full"
+                                                inputClassName="bg-blue-50 text-xs sm:text-sm md:text-base"
+                                                value={fullName}
+                                                onChange={(val: string) => setFullName(val)}
+                                            />
+                                        </div>
                                         <div className="flex flex-col gap-1.5">
                                             <span className="text-xs sm:text-sm font-medium text-gray-700">Password</span>
                                             <Input

@@ -78,6 +78,7 @@ model Scan {
   additionalRepairs    String[]
   scannerDeviceId      String?
   userFullName         String?
+  vehicleOwnerName     String?
   rawPayload           Json
   vehicleYear          Int?
   vehicleMake          String?
@@ -176,8 +177,10 @@ model Appraisal {
   valuationData Json?
   pdfUrl        String?
   photoCount    Int      @default(0)
-  userEmail     String?
-  createdAt     DateTime @default(now())
+  userEmail          String?
+  userFullName       String?
+  vehicleOwnerName   String?
+  createdAt          DateTime @default(now())
 
   @@index([userId])
   @@index([vin])

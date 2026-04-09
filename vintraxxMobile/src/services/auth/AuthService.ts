@@ -32,6 +32,8 @@ export interface User {
 
   email: string;
 
+  fullName?: string;
+
   token: string;
 
   isDealer: boolean;
@@ -642,7 +644,7 @@ class AuthService {
 
    */
 
-  async register(email: string, password: string, isDealer?: boolean, pricePerLaborHour?: number, logoUrl?: string, qrCodeUrl?: string): Promise<AuthResponse> {
+  async register(email: string, password: string, isDealer?: boolean, pricePerLaborHour?: number, logoUrl?: string, qrCodeUrl?: string, fullName?: string): Promise<AuthResponse> {
 
     try {
 
@@ -653,6 +655,7 @@ class AuthService {
       if (pricePerLaborHour) body.pricePerLaborHour = pricePerLaborHour;
       if (logoUrl) body.logoUrl = logoUrl;
       if (qrCodeUrl) body.qrCodeUrl = qrCodeUrl;
+      if (fullName) body.fullName = fullName;
 
       const data = await this.apiCall<ApiRegisterResponse>(AUTH_ENDPOINTS.REGISTER, body);
 
@@ -671,6 +674,8 @@ class AuthService {
           isDealer: data.user.isDealer || false,
 
           pricePerLaborHour: data.user.pricePerLaborHour || null,
+
+          fullName: (data.user as any).fullName || fullName || undefined,
 
           deviceSetupCompleted: false,
 

@@ -650,14 +650,14 @@ const ProfileModal = ({ isOpen, onClose, onSave, userId, userEmail, fullName, pr
     );
 };
 
-const UserDropdownMenu = ({ className, userEmail, onProfileClick, onClose }: { className?: string; userEmail?: string; onProfileClick: () => void; onClose?: () => void }) => {
+const UserDropdownMenu = ({ className, userEmail, fullName, onProfileClick, onClose }: { className?: string; userEmail?: string; fullName?: string | null; onProfileClick: () => void; onClose?: () => void }) => {
     return (
         <div className={cx(
             "z-50 min-w-[8rem] overflow-hidden rounded-md border text-popover-foreground shadow-md w-64 bg-white border-slate-200 p-2",
             className
         )}>
             <div className="px-3 py-2 border-b border-slate-200">
-                <p className="text-sm font-medium text-slate-900">{userEmail?.split('@')[0] || 'User'}</p>
+                <p className="text-sm font-medium text-slate-900">{fullName || userEmail?.split('@')[0] || 'User'}</p>
                 <p className="text-xs text-slate-500">{userEmail || 'user@example.com'}</p>
             </div>
             <div className="py-1">
@@ -962,7 +962,8 @@ export const DealerNav = ({ dealerLogo, originalLogoUrl, dealerName, userEmail, 
                                         )}
                                     >
                                         <UserDropdownMenu 
-                                            userEmail={userEmail} 
+                                            userEmail={userEmail}
+                                            fullName={fullName}
                                             onProfileClick={() => setIsProfileModalOpen(true)} 
                                             onClose={() => setIsUserPopoverOpen(false)}
                                         />
@@ -1015,7 +1016,7 @@ export const DealerNav = ({ dealerLogo, originalLogoUrl, dealerName, userEmail, 
                                         className={cx("size-4 stroke-[2.625px] text-fg-quaternary transition duration-100 ease-linear", isUserDropdownOpen ? "-rotate-180" : "rotate-0")}
                                     />
                                 </button>
-                                {isUserDropdownOpen && <div className="mt-1"><UserDropdownMenu userEmail={userEmail} onProfileClick={() => setIsProfileModalOpen(true)} onClose={() => { setIsUserDropdownOpen(false); setIsMobileMenuOpen(false); }} /></div>}
+                                {isUserDropdownOpen && <div className="mt-1"><UserDropdownMenu userEmail={userEmail} fullName={fullName} onProfileClick={() => setIsProfileModalOpen(true)} onClose={() => { setIsUserDropdownOpen(false); setIsMobileMenuOpen(false); }} /></div>}
                             </div>
                         </div>
                     </div>

@@ -48,7 +48,7 @@ export async function submitScan(req: Request, res: Response, next: NextFunction
             return;
           }
           await prisma.userScannerDevice.create({
-            data: { userId, deviceId: payload.scannerDeviceId },
+            data: { userId, deviceId: payload.scannerDeviceId, scannerOwnerName: payload.userFullName || null },
           });
         } else {
           await prisma.userScannerDevice.update({
@@ -87,7 +87,7 @@ export async function submitScan(req: Request, res: Response, next: NextFunction
       if (payload.scannerDeviceId) {
         await prisma.userScannerDevice.upsert({
           where: { userId_deviceId: { userId, deviceId: payload.scannerDeviceId } },
-          create: { userId, deviceId: payload.scannerDeviceId },
+          create: { userId, deviceId: payload.scannerDeviceId, scannerOwnerName: payload.userFullName || null },
           update: { lastUsedAt: new Date() },
         });
       }
@@ -436,6 +436,30 @@ export async function getReport(req: Request, res: Response, next: NextFunction)
     });
 
     res.json({ success: true, status: 'completed', data: reportData });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getScannerOwner(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.user!.userId;
+    const deviceId = req.params.deviceId as string;
+
+    if (!deviceId) {
+      res.status(400).json({ success: false, error: 'deviceId is required' });
+      return;
+    }
+
+    const device = await prisma.userScannerDevice.findUnique({
+      where: { userId_deviceId: { userId, deviceId } },
+      select: { scannerOwnerName: true },
+    });
+
+    res.json({
+      success: true,
+      scannerOwnerName: device?.scannerOwnerName || null,
+    });
   } catch (error) {
     next(error);
   }

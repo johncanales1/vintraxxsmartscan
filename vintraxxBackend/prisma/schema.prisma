@@ -119,13 +119,14 @@ model FullReport {
 }
 
 model UserScannerDevice {
-  id         String   @id @default(uuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id])
-  deviceId   String
-  deviceName String?
-  firstUsedAt DateTime @default(now())
-  lastUsedAt  DateTime @default(now())
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id])
+  deviceId         String
+  deviceName       String?
+  scannerOwnerName String?
+  firstUsedAt      DateTime @default(now())
+  lastUsedAt       DateTime @default(now())
 
   @@unique([userId, deviceId])
   @@index([userId])

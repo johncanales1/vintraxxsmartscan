@@ -170,7 +170,7 @@ export async function generatePdf(report: FullReportData): Promise<string> {
       const logoH = 40;
       const logoW = 90;
       const logoY = y + (logoHeaderH - logoH) / 2;
-      const vintraxxLogoPath = path.resolve(__dirname, '../assets/VinTraxxLOGO.jpeg');
+      const vintraxxLogoPath = path.resolve(process.cwd(), 'src/assets/VinTraxxLOGO.jpeg');
 
       // VinTraxx logo on the left
       try {
@@ -195,7 +195,7 @@ export async function generatePdf(report: FullReportData): Promise<string> {
           } else if (report.dealerLogoUrl.includes('/dealer-logos/')) {
             const dlFilename = report.dealerLogoUrl.split('/dealer-logos/').pop();
             if (dlFilename) {
-              const logoPath = path.resolve(__dirname, '../assets/dealer-logos', dlFilename);
+              const logoPath = path.resolve(process.cwd(), 'src/assets/dealer-logos', dlFilename);
               if (fs.existsSync(logoPath)) {
                 doc.image(logoPath, leftMargin + pageWidth - logoW - 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
                 rightLogoLoaded = true;
@@ -209,7 +209,7 @@ export async function generatePdf(report: FullReportData): Promise<string> {
 
       // Fall back to 35Motors logo on right if no dealer logo
       if (!rightLogoLoaded) {
-        const motorsLogoPath = path.resolve(__dirname, '../assets/35MotorsLOGO.jpeg');
+        const motorsLogoPath = path.resolve(process.cwd(), 'src/assets/35MotorsLOGO.jpeg');
         try {
           if (fs.existsSync(motorsLogoPath)) {
             doc.image(motorsLogoPath, leftMargin + pageWidth - logoW - 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
@@ -416,7 +416,7 @@ export async function generatePdf(report: FullReportData): Promise<string> {
         // --- Advertisement header ---
         doc.save();
         // VinTraxx Capital logo area
-        const vinCapLogoPath = path.resolve(__dirname, '../assets/VinTraxxLOGO.jpeg');
+        const vinCapLogoPath = path.resolve(process.cwd(), 'src/assets/VinTraxxLOGO.jpeg');
         try {
           if (fs.existsSync(vinCapLogoPath)) {
             doc.image(vinCapLogoPath, leftMargin + 10, y + 4, { width: 60, height: 28, fit: [60, 28] });
@@ -492,7 +492,7 @@ export async function generatePdf(report: FullReportData): Promise<string> {
           } else if (report.dealerQrCodeUrl.includes('/dealer-qrcodes/')) {
             const qrFilename = report.dealerQrCodeUrl.split('/dealer-qrcodes/').pop();
             if (qrFilename) {
-              const qrCodePath = path.resolve(__dirname, '../assets/dealer-qrcodes', qrFilename);
+              const qrCodePath = path.resolve(process.cwd(), 'src/assets/dealer-qrcodes', qrFilename);
               if (fs.existsSync(qrCodePath)) {
                 doc.image(qrCodePath, qrX, qrY, { width: qrSize, height: qrSize, fit: [qrSize, qrSize] });
                 qrLoaded = true;

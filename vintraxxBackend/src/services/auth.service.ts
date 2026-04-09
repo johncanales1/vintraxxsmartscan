@@ -11,9 +11,9 @@ import { generateOtpCode } from '../utils/helpers';
 import logger from '../utils/logger';
 import prisma from '../config/db';
 
-// Directories for dealer assets
-const LOGO_DIR = path.join(__dirname, '../assets/dealer-logos');
-const QR_CODE_DIR = path.join(__dirname, '../assets/dealer-qrcodes');
+// Directories for dealer assets (persistent path survives builds)
+const LOGO_DIR = path.join(process.cwd(), 'src', 'assets', 'dealer-logos');
+const QR_CODE_DIR = path.join(process.cwd(), 'src', 'assets', 'dealer-qrcodes');
 
 // Ensure directories exist
 if (!fs.existsSync(LOGO_DIR)) {

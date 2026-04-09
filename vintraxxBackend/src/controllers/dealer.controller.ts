@@ -16,8 +16,8 @@ function toPublicPdfUrl(filePath: string | null | undefined): string | null {
   return `${API_BASE_URL}/reports/${filename}`;
 }
 
-const LOGO_DIR = path.join(__dirname, '..', 'assets', 'dealer-logos');
-const QR_CODE_DIR = path.join(__dirname, '..', 'assets', 'dealer-qrcodes');
+const LOGO_DIR = path.join(process.cwd(), 'src', 'assets', 'dealer-logos');
+const QR_CODE_DIR = path.join(process.cwd(), 'src', 'assets', 'dealer-qrcodes');
 
 // Ensure logo and QR code directories exist
 if (!fs.existsSync(LOGO_DIR)) {
@@ -656,6 +656,76 @@ export async function scheduleAppointment(req: Request, res: Response, next: Nex
     res.json({ success: true, message: 'Appointment request submitted successfully.' });
   } catch (error) {
     logger.error('Schedule appointment email failed', { error: (error as Error).message });
+    next(error);
+  }
+}
+
+// ================================================================
+// POST /api/v1/dealer/send-email
+// Send a custom email from the dealer portal
+// ================================================================
+export async function sendDealerEmail(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { to, subject, body } = req.body;
+    const userId = req.user!.userId;
+    const userEmail = req.user!.email;
+
+    if (!to || !subject) {
+      res.status(400).json({ success: false, error: 'Recipient and subject are required.' });
+      return;
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: env.SMTP_HOST,
+      port: env.SMTP_PORT,
+      secure: false,
+      auth: {
+        user: env.SMTP_USER,
+        pass: env.SMTP_PASS,
+      },
+    });
+
+    const htmlBody = `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; color: #333; line-height: 1.6; margin: 0; padding: 0; background: #f4f4f4; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: #1B3A5F; color: #fff; padding: 24px; text-align: center; border-radius: 8px 8px 0 0; }
+    .header h1 { margin: 0; font-size: 22px; }
+    .content { background: #ffffff; padding: 28px; border: 1px solid #ddd; border-top: none; border-radius: 0 0 8px 8px; }
+    .footer { text-align: center; padding: 16px; color: #999; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>VinTraxx SmartScan</h1>
+    </div>
+    <div class="content">
+      ${body ? body.replace(/\n/g, '<br/>') : '<p>No message content.</p>'}
+    </div>
+    <div class="footer">
+      <p>&copy; ${new Date().getFullYear()} VinTraxx SmartScan. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+    await transporter.sendMail({
+      from: `"${env.EMAIL_FROM_NAME}" <${env.EMAIL_FROM}>`,
+      to,
+      replyTo: userEmail,
+      subject,
+      html: htmlBody,
+    });
+
+    logger.info('Dealer email sent', { userId, to, subject });
+
+    res.json({ success: true, message: 'Email sent successfully.' });
+  } catch (error) {
+    logger.error('Dealer send email failed', { error: (error as Error).message });
     next(error);
   }
 }

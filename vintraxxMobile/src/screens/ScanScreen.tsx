@@ -28,6 +28,7 @@ import { ConditionReport } from '../models/ConditionReport';
 import { useAppStore } from '../store/appStore';
 import { scannerService } from '../services/scanner/ScannerService';
 import { apiService } from '../services/api/ApiService';
+import { authService } from '../services/auth/AuthService';
 import { logger, LogCategory } from '../utils/Logger';
 import { ScanResult } from '../services/scanner/ScannerService';
 import { BleConnectionState } from '../services/ble/types';
@@ -195,6 +196,8 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
   const [stockNumber, setStockNumber] = useState('');
   const [showStockNumber, setShowStockNumber] = useState(false);
   const [vehicleOwnerName, setVehicleOwnerName] = useState('');
+  const [scannerOwnerName, setScannerOwnerName] = useState('');
+  const [scannerOwnerLocked, setScannerOwnerLocked] = useState(false);
   const [showAdditionalRepairs, setShowAdditionalRepairs] = useState(false);
   const [selectedAdditionalRepairs, setSelectedAdditionalRepairs] = useState<string[]>([]);
   const [errorModalVisible, setErrorModalVisible] = useState(false);
@@ -294,7 +297,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
   const autoStart = route?.params?.autoStart || false;
   
   // Get connection state from store
-  const { connectionState, setCurrentReport, addSavedReport, user } = useAppStore();
+  const { connectionState, setCurrentReport, addSavedReport, user, selectedBleDevice } = useAppStore();
   const isConnected = connectionState === BleConnectionState.CONNECTED;
   const hasAutoStarted = useRef(false);
 
@@ -314,6 +317,8 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
       setStockNumber('');
       setShowStockNumber(false);
       setVehicleOwnerName('');
+      setScannerOwnerName('');
+      setScannerOwnerLocked(false);
       setShowAdditionalRepairs(false);
       setSelectedAdditionalRepairs([]);
       setScanSteps([
@@ -324,6 +329,24 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
       ]);
     }, [])
   );
+
+  // Auto-fill scanner owner name from backend when BLE device is connected
+  useEffect(() => {
+    const fetchScannerOwner = async () => {
+      if (!isConnected || !selectedBleDevice?.id) return;
+      try {
+        const result = await apiService.getScannerOwner(selectedBleDevice.id);
+        if (result.success && result.scannerOwnerName) {
+          setScannerOwnerName(result.scannerOwnerName);
+          setScannerOwnerLocked(true);
+          logger.info(LogCategory.APP, 'Scanner owner auto-filled from backend', { scannerOwnerName: result.scannerOwnerName });
+        }
+      } catch (err) {
+        logger.warn(LogCategory.APP, 'Failed to fetch scanner owner', err);
+      }
+    };
+    fetchScannerOwner();
+  }, [isConnected, selectedBleDevice?.id]);
 
   // Real scan using ScannerService
   const handleStartScan = useCallback(async () => {
@@ -593,8 +616,9 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
       stockNumber: trimmedStock.length > 0 ? trimmedStock : undefined,
       additionalRepairs: selectedAdditionalRepairs.length > 0 ? selectedAdditionalRepairs : undefined,
       vehicleOwnerName: vehicleOwnerName.trim() || undefined,
+      scannerOwnerName: scannerOwnerName.trim() || undefined,
     });
-  }, [lastScanResult, resolveVehicle, navigation, setCurrentReport, stockNumber, selectedAdditionalRepairs, vehicleOwnerName]);
+  }, [lastScanResult, resolveVehicle, navigation, setCurrentReport, stockNumber, selectedAdditionalRepairs, vehicleOwnerName, scannerOwnerName]);
 
   // Cancel scan
   const handleCancelScan = useCallback(() => {
@@ -668,9 +692,15 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
           {scanStatus === 'idle' && (
             <View style={styles.idleScanContainer}>
               <TouchableOpacity 
-                onPress={handleStartScan}
-                activeOpacity={0.8}
-                style={styles.scanImageButton}
+                onPress={() => {
+                  if (!vehicleOwnerName.trim()) {
+                    Alert.alert('Vehicle Owner Required', 'Please enter the vehicle owner name before scanning.');
+                    return;
+                  }
+                  handleStartScan();
+                }}
+                activeOpacity={vehicleOwnerName.trim() ? 0.8 : 1}
+                style={[styles.scanImageButton, !vehicleOwnerName.trim() && { opacity: 0.4 }]}
               >
                 <Image
                   source={require('../assets/images/scan.png')}
@@ -679,6 +709,38 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
                 />
                 <Text style={styles.scanButtonHint}>Tap to Start OBD2 Scan</Text>
               </TouchableOpacity>
+
+              {/* Vehicle Owner Name Input */}
+              <View style={styles.preScanInputContainer}>
+                <Text style={styles.preScanInputLabel}>Vehicle Owner Name *</Text>
+                <TextInput
+                  style={styles.preScanInput}
+                  placeholder="Enter vehicle owner name"
+                  placeholderTextColor={colors.text.muted}
+                  value={vehicleOwnerName}
+                  onChangeText={setVehicleOwnerName}
+                  autoCapitalize="words"
+                  maxLength={100}
+                />
+              </View>
+
+              {/* Scanner Owner Name Input */}
+              <View style={styles.preScanInputContainer}>
+                <Text style={styles.preScanInputLabel}>Scanner Owner Name</Text>
+                <TextInput
+                  style={[styles.preScanInput, scannerOwnerLocked && styles.preScanInputLocked]}
+                  placeholder="Enter scanner owner name"
+                  placeholderTextColor={colors.text.muted}
+                  value={scannerOwnerName}
+                  onChangeText={scannerOwnerLocked ? undefined : setScannerOwnerName}
+                  editable={!scannerOwnerLocked}
+                  autoCapitalize="words"
+                  maxLength={100}
+                />
+                {scannerOwnerLocked && (
+                  <Text style={styles.preScanInputHint}>Auto-filled from previous scan</Text>
+                )}
+              </View>
             </View>
           )}
 
@@ -921,21 +983,13 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
                   )}
                 </View>
 
-                {/* Vehicle Owner Name Input */}
-                <View style={styles.stockNumberContainer}>
-                  <Text style={styles.stockNumberToggleText}>Vehicle Owner Name</Text>
-                  <View style={styles.stockNumberInputWrap}>
-                    <TextInput
-                      style={styles.stockNumberInput}
-                      placeholder="Enter vehicle owner name"
-                      placeholderTextColor={colors.text.muted}
-                      value={vehicleOwnerName}
-                      onChangeText={setVehicleOwnerName}
-                      autoCapitalize="words"
-                      maxLength={100}
-                    />
+                {/* Vehicle Owner Name - display only (entered before scan) */}
+                {vehicleOwnerName.trim() ? (
+                  <View style={styles.stockNumberContainer}>
+                    <Text style={styles.stockNumberToggleText}>Vehicle Owner</Text>
+                    <Text style={[styles.stockNumberValid, { marginTop: 4 }]}>{vehicleOwnerName}</Text>
                   </View>
-                </View>
+                ) : null}
               </View>
             </View>
           )}
@@ -949,6 +1003,9 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
               <Text style={styles.tipsTitle}>Before Scanning</Text>
             </View>
             <View style={styles.tipsList}>
+              <Text style={styles.tipItem}>
+                • Enter vehicle owner name above before scanning
+              </Text>
               <Text style={styles.tipItem}>
                 • Engine should be running or ignition on
               </Text>
@@ -1057,6 +1114,40 @@ const styles = StyleSheet.create({
     color: colors.primary.navy,
     marginTop: spacing.md,
     fontWeight: typography.fontWeight.semiBold,
+  },
+  preScanInputContainer: {
+    width: '100%',
+    marginTop: spacing.md,
+    backgroundColor: colors.background.secondary,
+    borderRadius: spacing.inputRadius,
+    padding: spacing.md,
+  },
+  preScanInputLabel: {
+    ...typography.styles.label,
+    color: colors.primary.navy,
+    fontWeight: typography.fontWeight.semiBold,
+    marginBottom: spacing.xs,
+  },
+  preScanInput: {
+    backgroundColor: colors.background.primary,
+    borderRadius: spacing.inputRadius,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    ...typography.styles.body,
+    color: colors.text.primary,
+  },
+  preScanInputLocked: {
+    backgroundColor: '#F1F5F9',
+    borderColor: colors.border.medium,
+    color: colors.text.secondary,
+  },
+  preScanInputHint: {
+    ...typography.styles.caption,
+    color: colors.text.muted,
+    marginTop: spacing.xs,
+    fontStyle: 'italic',
   },
   progressContainer: {
     alignItems: 'center',

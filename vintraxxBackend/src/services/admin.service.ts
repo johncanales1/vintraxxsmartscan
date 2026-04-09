@@ -10,8 +10,8 @@ import { generateOtpCode } from '../utils/helpers';
 import prisma from '../config/db';
 import logger from '../utils/logger';
 
-const LOGO_DIR = path.join(__dirname, '../assets/dealer-logos');
-const QR_CODE_DIR = path.join(__dirname, '../assets/dealer-qrcodes');
+const LOGO_DIR = path.join(process.cwd(), 'src', 'assets', 'dealer-logos');
+const QR_CODE_DIR = path.join(process.cwd(), 'src', 'assets', 'dealer-qrcodes');
 if (!fs.existsSync(LOGO_DIR)) fs.mkdirSync(LOGO_DIR, { recursive: true });
 if (!fs.existsSync(QR_CODE_DIR)) fs.mkdirSync(QR_CODE_DIR, { recursive: true });
 

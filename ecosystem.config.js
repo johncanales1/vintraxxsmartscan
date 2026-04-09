@@ -7,7 +7,7 @@ module.exports = {
       interpreter: 'node',
       env: {
         NODE_ENV: 'production',
-        PORT: 3001
+        PORT: 3000
       },
       instances: 1,
       autorestart: true,
@@ -21,7 +21,7 @@ module.exports = {
     {
       name: 'vintraxx-frontend',
       script: 'node_modules/.bin/next',
-      args: 'start -p 3002',
+      args: 'start -p 3001',
       cwd: '/home/ec2-user/vintraxxsmartscan/vintraxxFrontend',
       interpreter: 'node',
       env: {
@@ -39,7 +39,7 @@ module.exports = {
     {
       name: 'vintraxx-admin',
       script: 'node_modules/.bin/next',
-      args: 'start -p 3000',
+      args: 'start -p 3002',
       cwd: '/home/ec2-user/vintraxxsmartscan/vintraxxAdmin',
       interpreter: 'node',
       env: {

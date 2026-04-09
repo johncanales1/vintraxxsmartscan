@@ -45,7 +45,7 @@ class ApiService {
   /**
    * Build ScanSubmissionPayload from ScanResult (matches backend exactly)
    */
-  buildScanPayload(scanResult: ScanResult, stockNumber?: string, additionalRepairs?: string[], scannerDeviceId?: string, userFullName?: string): ScanSubmissionPayload {
+  buildScanPayload(scanResult: ScanResult, stockNumber?: string, additionalRepairs?: string[], scannerDeviceId?: string, userFullName?: string, vehicleOwnerName?: string): ScanSubmissionPayload {
     const payload: ScanSubmissionPayload = {
       vin: scanResult.vin.valid ? scanResult.vin.vin : '',
       mileage: scanResult.odometer !== null ? kmToMiles(scanResult.odometer) : null,
@@ -80,6 +80,10 @@ class ApiService {
     }
     if (userFullName) {
       payload.userFullName = userFullName;
+    }
+    if (vehicleOwnerName) {
+      payload.vehicleOwnerName = vehicleOwnerName;
+      logger.info(LogCategory.APP, 'Vehicle owner name included in scan payload', { vehicleOwnerName });
     }
     return payload;
   }

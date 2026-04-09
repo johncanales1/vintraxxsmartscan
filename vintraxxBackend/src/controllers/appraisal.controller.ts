@@ -19,8 +19,9 @@ const appraisalStore = new Map<string, AppraisalSummaryData>();
 // ================================================================
 export async function valuateVehicle(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const input = req.body as AppraisalValuationRequest;
+    const input = req.body as AppraisalValuationRequest & { vehicleOwnerName?: string };
     const userEmail = req.user!.email;
+    const userId = req.user!.userId;
 
     logger.info('Appraisal valuation requested', {
       userId: req.user!.userId,
@@ -173,6 +174,7 @@ export async function valuateVehicle(req: Request, res: Response, next: NextFunc
           valuationData: valuation as any,
           photoCount: 0,
           userEmail,
+          vehicleOwnerName: input.vehicleOwnerName ?? null,
         },
       });
     } catch (dbErr) {
@@ -422,6 +424,8 @@ export async function listDashboardAppraisals(req: Request, res: Response, next:
         valuation: { wholesale, retail, tradeIn },
         createdAt: a.createdAt.toISOString(),
         userEmail: a.userEmail ?? userEmail,
+        userFullName: a.userFullName ?? undefined,
+        vehicleOwnerName: a.vehicleOwnerName ?? undefined,
       };
     });
 

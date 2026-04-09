@@ -368,6 +368,26 @@ class ApiService {
     }
   }
 
+  /**
+   * Get scanner owner name for a device ID
+   */
+  async getScannerOwner(deviceId: string): Promise<{ success: boolean; scannerOwnerName?: string | null }> {
+    try {
+      if (!authService.isAuthenticated()) {
+        return { success: false };
+      }
+      const url = `${API_CONFIG.BASE_URL}/api/v1/scan/scanner-owner/${encodeURIComponent(deviceId)}`;
+      const requestHeaders = this.getAuthHeaders();
+      const response = await fetch(url, { method: 'GET', headers: requestHeaders });
+      if (!response.ok) return { success: false };
+      const data = await response.json();
+      return { success: data.success, scannerOwnerName: data.scannerOwnerName || null };
+    } catch (error) {
+      logger.error(LogCategory.APP, 'getScannerOwner error', error);
+      return { success: false };
+    }
+  }
+
   // ================================================================
   // APPRAISAL API METHODS
   // ================================================================

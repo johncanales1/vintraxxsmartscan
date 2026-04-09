@@ -11,6 +11,7 @@ router.use(authMiddleware);
 
 router.post('/submit', scanRateLimiter, validateRequest(scanSubmissionSchema), scanController.submitScan);
 router.get('/report/:scanId', validateRequest(scanReportParamsSchema), scanController.getReport);
+router.get('/scanner-owner/:deviceId', scanController.getScannerOwner);
 router.get('/history', scanController.getHistory);
 
 export default router;

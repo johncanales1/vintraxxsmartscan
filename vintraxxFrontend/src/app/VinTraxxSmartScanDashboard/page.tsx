@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Search, Eye, Car, Scan, DollarSign, TrendingUp, ClipboardList, X, FileText, Wrench, Activity, CalendarDays } from "lucide-react";
+import { Search, Eye, Car, Scan, DollarSign, TrendingUp, ClipboardList, X, FileText, Wrench, Activity, CalendarDays, Mail, Send, User } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line, ResponsiveContainer } from "recharts";
 import { DealerNav } from "@/components/shared-assets/navigation/dealer-nav";
 
@@ -40,6 +40,8 @@ interface OBDScanReport {
     userFullName?: string | null;
     vehicleOwnerName?: string | null;
     scannerOwnerName?: string | null;
+    emailOwnerName?: string | null;
+    emailOwnerEmail?: string | null;
 }
 
 // Detailed report from /scan/report/:scanId (FullReportData structure)
@@ -166,6 +168,12 @@ export default function DealerPortalPage() {
     const [scheduleSubmitting, setScheduleSubmitting] = useState(false);
     const [scheduleSuccess, setScheduleSuccess] = useState(false);
 
+    // Email Compose Modal
+    const [showEmailCompose, setShowEmailCompose] = useState(false);
+    const [composeEmail, setComposeEmail] = useState({ to: '', subject: '', body: '' });
+    const [composeSending, setComposeSending] = useState(false);
+    const [composeSent, setComposeSent] = useState(false);
+
     const fetchDealerData = useCallback(async (token: string) => {
         try {
             const [profileRes, reportsRes, appraisalsRes, appointmentsRes] = await Promise.all([
@@ -270,6 +278,40 @@ export default function DealerPortalPage() {
         setScheduleForm({ name: '', email: '', phone: '', dealership: '', vehicle: '', vin: '', serviceType: '', preferredDate: '', preferredTime: '', additionalNotes: '' });
         setScheduleErrors({});
         setScheduleSuccess(false);
+    };
+
+    const openEmailCompose = (toEmail: string) => {
+        setComposeEmail({ to: toEmail, subject: '', body: '' });
+        setComposeSent(false);
+        setShowEmailCompose(true);
+    };
+
+    const closeEmailCompose = () => {
+        setShowEmailCompose(false);
+        setComposeEmail({ to: '', subject: '', body: '' });
+        setComposeSent(false);
+    };
+
+    const handleSendEmail = async () => {
+        if (!composeEmail.to || !composeEmail.subject.trim()) return;
+        setComposeSending(true);
+        try {
+            const token = localStorage.getItem("dealer_token");
+            const res = await fetch(`${API_BASE}/dealer/send-email`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ to: composeEmail.to, subject: composeEmail.subject, body: composeEmail.body }),
+            });
+            if (res.ok) {
+                setComposeSent(true);
+            } else {
+                alert('Failed to send email. Please try again.');
+            }
+        } catch {
+            alert('Network error. Please try again.');
+        } finally {
+            setComposeSending(false);
+        }
     };
 
     const validateScheduleForm = () => {
@@ -426,7 +468,9 @@ export default function DealerPortalPage() {
                r.stockNumber?.toLowerCase().includes(query) ||
                r.userFullName?.toLowerCase().includes(query) ||
                r.vehicleOwnerName?.toLowerCase().includes(query) ||
-               r.scannerOwnerName?.toLowerCase().includes(query);
+               r.scannerOwnerName?.toLowerCase().includes(query) ||
+               r.emailOwnerName?.toLowerCase().includes(query) ||
+               r.emailOwnerEmail?.toLowerCase().includes(query);
     });
     
     // Filtered appraisals
@@ -676,7 +720,7 @@ export default function DealerPortalPage() {
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                     <input 
                                         className="flex h-10 w-full rounded-lg border px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 pl-10 bg-white border-slate-300 text-slate-900 placeholder:text-slate-500" 
-                                        placeholder="Search appraisals by VIN, Make, or Model..." 
+                                        placeholder="Search by VIN, Make, Model, Email, or Owner..." 
                                         value={appraisalSearchQuery}
                                         onChange={(e) => setAppraisalSearchQuery(e.target.value)}
                                     />
@@ -696,7 +740,7 @@ export default function DealerPortalPage() {
                                             onClick={() => setSelectedAppraisal(appraisal)}
                                             className="bg-white rounded-xl shadow-sm p-4 border border-slate-200 cursor-pointer hover:shadow-md transition-shadow"
                                         >
-                                            <div className="flex items-start justify-between mb-3">
+                                            <div className="flex items-start justify-between mb-2">
                                                 <div className="flex items-center gap-3">
                                                     <div className="w-10 h-10 bg-gradient-to-br from-[#1B3A5F] to-[#2d5278] rounded-lg flex items-center justify-center flex-shrink-0">
                                                         <Car className="w-5 h-5 text-white" />
@@ -709,19 +753,34 @@ export default function DealerPortalPage() {
                                                 <span className="text-xs text-slate-400">{formatDate(appraisal.createdAt)}</span>
                                             </div>
                                             <p className="font-mono text-xs text-slate-500 mb-3 truncate">{appraisal.vin}</p>
-                                            <div className="grid grid-cols-3 gap-2 text-center">
-                                                <div className="bg-emerald-50 rounded-lg p-2">
-                                                    <p className="text-[10px] text-emerald-700">Wholesale</p>
-                                                    <p className="text-sm font-bold text-emerald-600">{formatCurrency(appraisal.valuation.wholesale)}</p>
-                                                </div>
-                                                <div className="bg-blue-50 rounded-lg p-2">
-                                                    <p className="text-[10px] text-blue-700">Retail</p>
-                                                    <p className="text-sm font-bold text-blue-600">{formatCurrency(appraisal.valuation.retail)}</p>
-                                                </div>
-                                                <div className="bg-amber-50 rounded-lg p-2">
-                                                    <p className="text-[10px] text-amber-700">Trade-In</p>
-                                                    <p className="text-sm font-bold text-amber-600">{formatCurrency(appraisal.valuation.tradeIn)}</p>
-                                                </div>
+                                            <div className="flex items-center justify-between text-xs text-slate-500 mb-3">
+                                                <span>{appraisal.vehicle.mileage?.toLocaleString() || '—'} mi</span>
+                                                {appraisal.pdfUrl && (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); window.open(appraisal.pdfUrl!, '_blank'); }}
+                                                        className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-medium hover:bg-blue-200 transition-colors"
+                                                    >
+                                                        <FileText className="w-3 h-3" />
+                                                        PDF
+                                                    </button>
+                                                )}
+                                            </div>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {appraisal.vehicleOwnerName && (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-medium">
+                                                        <User className="w-3 h-3" />
+                                                        {appraisal.vehicleOwnerName}
+                                                    </span>
+                                                )}
+                                                {appraisal.userEmail && (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); openEmailCompose(appraisal.userEmail); }}
+                                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-[10px] font-medium hover:bg-indigo-100 transition-colors"
+                                                    >
+                                                        <Send className="w-3 h-3" />
+                                                        {appraisal.userEmail}
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     ))
@@ -731,24 +790,22 @@ export default function DealerPortalPage() {
                             {/* Desktop Table View */}
                             <div className="hidden md:block rounded-xl border border-slate-200 overflow-hidden bg-white shadow-sm">
                                 <div className="relative w-full overflow-x-auto">
-                                    <table className="w-full caption-bottom text-sm min-w-[800px]">
+                                    <table className="w-full caption-bottom text-sm">
                                         <thead>
                                             <tr className="bg-[#1B3A5F]">
-                                                <th className="text-white px-3 lg:px-4 py-3 font-semibold text-left">Vehicle</th>
-                                                <th className="text-white px-3 lg:px-4 py-3 font-semibold text-left">VIN</th>
-                                                <th className="text-white px-3 lg:px-4 py-3 font-semibold text-left">Mileage</th>
-                                                <th className="text-white px-3 lg:px-4 py-3 font-semibold text-left">Wholesale</th>
-                                                <th className="text-white px-3 lg:px-4 py-3 font-semibold text-left">Retail</th>
-                                                <th className="text-white px-3 lg:px-4 py-3 font-semibold text-left">Trade-In</th>
-                                                <th className="text-white px-3 lg:px-4 py-3 font-semibold text-left">Date</th>
-                                                <th className="text-white px-3 lg:px-4 py-3 font-semibold text-center w-20">PDF</th>
-                                                <th className="text-white px-3 lg:px-4 py-3 font-semibold text-center w-16">View</th>
+                                                <th className="text-white px-4 py-3 font-semibold text-left">Vehicle</th>
+                                                <th className="text-white px-4 py-3 font-semibold text-left">VIN</th>
+                                                <th className="text-white px-4 py-3 font-semibold text-left">Mileage</th>
+                                                <th className="text-white px-4 py-3 font-semibold text-left">Date</th>
+                                                <th className="text-white px-4 py-3 font-semibold text-left">Email</th>
+                                                <th className="text-white px-4 py-3 font-semibold text-left">Customer</th>
+                                                <th className="text-white px-4 py-3 font-semibold text-center w-20">PDF</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {filteredAppraisals.length === 0 ? (
                                                 <tr>
-                                                    <td colSpan={9} className="text-center py-12 text-slate-400">
+                                                    <td colSpan={7} className="text-center py-12 text-slate-400">
                                                         {appraisals.length === 0 ? 'No appraisals found' : 'No matching appraisals'}
                                                     </td>
                                                 </tr>
@@ -757,30 +814,47 @@ export default function DealerPortalPage() {
                                                     <tr 
                                                         key={appraisal.appraisalId} 
                                                         onClick={() => setSelectedAppraisal(appraisal)}
-                                                        className="border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer"
+                                                        className="border-b border-slate-100 hover:bg-blue-50/40 transition-colors cursor-pointer group"
                                                     >
-                                                        <td className="px-3 lg:px-4 py-3">
-                                                            <div className="flex items-center gap-2 lg:gap-3">
-                                                                <div className="w-8 h-8 lg:w-10 lg:h-10 bg-gradient-to-br from-[#1B3A5F] to-[#2d5278] rounded-lg flex items-center justify-center flex-shrink-0">
-                                                                    <Car className="w-4 h-4 lg:w-5 lg:h-5 text-white" />
+                                                        <td className="px-4 py-3.5">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-9 h-9 bg-gradient-to-br from-[#1B3A5F] to-[#2d5278] rounded-lg flex items-center justify-center flex-shrink-0">
+                                                                    <Car className="w-4 h-4 text-white" />
                                                                 </div>
                                                                 <div>
-                                                                    <p className="font-medium text-slate-900 text-sm">{appraisal.vehicle.year} {appraisal.vehicle.make}</p>
+                                                                    <p className="font-semibold text-slate-900 text-sm">{appraisal.vehicle.year} {appraisal.vehicle.make}</p>
                                                                     <p className="text-xs text-slate-500">{appraisal.vehicle.model} {appraisal.vehicle.trim || ''}</p>
                                                                 </div>
                                                             </div>
                                                         </td>
-                                                        <td className="px-3 lg:px-4 py-3 font-mono text-xs lg:text-sm text-slate-600">{appraisal.vin}</td>
-                                                        <td className="px-3 lg:px-4 py-3 text-slate-600 text-sm">{appraisal.vehicle.mileage?.toLocaleString() || '—'} mi</td>
-                                                        <td className="px-3 lg:px-4 py-3 text-emerald-600 font-semibold text-sm">{formatCurrency(appraisal.valuation.wholesale)}</td>
-                                                        <td className="px-3 lg:px-4 py-3 text-blue-600 font-semibold text-sm">{formatCurrency(appraisal.valuation.retail)}</td>
-                                                        <td className="px-3 lg:px-4 py-3 text-amber-600 font-semibold text-sm">{formatCurrency(appraisal.valuation.tradeIn)}</td>
-                                                        <td className="px-3 lg:px-4 py-3 text-slate-500 text-xs lg:text-sm">{formatDate(appraisal.createdAt)}</td>
-                                                        <td className="px-3 lg:px-4 py-3 text-center">
+                                                        <td className="px-4 py-3.5 font-mono text-xs text-slate-600">{appraisal.vin}</td>
+                                                        <td className="px-4 py-3.5 text-slate-600 text-sm">{appraisal.vehicle.mileage?.toLocaleString() || '—'} mi</td>
+                                                        <td className="px-4 py-3.5 text-slate-500 text-sm">{formatDate(appraisal.createdAt)}</td>
+                                                        <td className="px-4 py-3.5">
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); openEmailCompose(appraisal.userEmail); }}
+                                                                className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-800 text-xs font-medium transition-colors"
+                                                                title={appraisal.userEmail}
+                                                            >
+                                                                <Send className="w-3 h-3" />
+                                                                <span className="truncate max-w-[160px]">{appraisal.userEmail}</span>
+                                                            </button>
+                                                        </td>
+                                                        <td className="px-4 py-3.5">
+                                                            {appraisal.vehicleOwnerName ? (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-xs font-medium">
+                                                                    <User className="w-3 h-3" />
+                                                                    {appraisal.vehicleOwnerName}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-slate-300 text-xs">—</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-4 py-3.5 text-center">
                                                             {appraisal.pdfUrl ? (
                                                                 <button
                                                                     onClick={(e) => { e.stopPropagation(); window.open(appraisal.pdfUrl!, '_blank'); }}
-                                                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-medium hover:bg-blue-200 transition-colors"
+                                                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-medium hover:bg-blue-200 transition-colors"
                                                                 >
                                                                     <FileText className="w-3 h-3" />
                                                                     PDF
@@ -788,11 +862,6 @@ export default function DealerPortalPage() {
                                                             ) : (
                                                                 <span className="text-slate-300 text-xs">—</span>
                                                             )}
-                                                        </td>
-                                                        <td className="px-3 lg:px-4 py-3 text-center">
-                                                            <button className="p-2 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-[#1B3A5F] transition-colors">
-                                                                <Eye className="w-4 h-4" />
-                                                            </button>
                                                         </td>
                                                     </tr>
                                                 ))
@@ -889,7 +958,7 @@ export default function DealerPortalPage() {
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                 <input 
                                     className="w-full h-9 sm:h-10 rounded-lg border px-3 py-2 text-sm pl-10 bg-slate-50 border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" 
-                                    placeholder="Search by VIN, Make, Model..." 
+                                    placeholder="Search by VIN, Make, Model, Email, Owner..." 
                                     value={obdSearchQuery}
                                     onChange={(e) => setObdSearchQuery(e.target.value)}
                                 />
@@ -943,6 +1012,36 @@ export default function DealerPortalPage() {
                                                             >
                                                                 <FileText className="w-3 h-3" />
                                                                 View PDF File
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    {/* Owner Info Badges */}
+                                                    <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-2">
+                                                        {(report.emailOwnerName || report.userFullName) && (
+                                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-violet-50 text-violet-700 text-[10px] sm:text-xs font-medium">
+                                                                <Mail className="w-3 h-3" />
+                                                                {report.emailOwnerName || report.userFullName}
+                                                            </span>
+                                                        )}
+                                                        {report.scannerOwnerName && (
+                                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-50 text-cyan-700 text-[10px] sm:text-xs font-medium">
+                                                                <Scan className="w-3 h-3" />
+                                                                {report.scannerOwnerName}
+                                                            </span>
+                                                        )}
+                                                        {report.vehicleOwnerName && (
+                                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 text-[10px] sm:text-xs font-medium">
+                                                                <User className="w-3 h-3" />
+                                                                {report.vehicleOwnerName}
+                                                            </span>
+                                                        )}
+                                                        {report.emailOwnerEmail && (
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); openEmailCompose(report.emailOwnerEmail!); }}
+                                                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600 text-[10px] sm:text-xs font-medium hover:bg-indigo-100 transition-colors cursor-pointer"
+                                                            >
+                                                                <Send className="w-3 h-3" />
+                                                                {report.emailOwnerEmail}
                                                             </button>
                                                         )}
                                                     </div>
@@ -1274,6 +1373,83 @@ export default function DealerPortalPage() {
                                     </button>
                                 </div>
                             </>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Email Compose Modal */}
+            {showEmailCompose && (
+                <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-2 sm:p-4" onClick={closeEmailCompose}>
+                    <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 px-5 sm:px-6 py-4 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <Mail className="w-5 h-5 text-white" />
+                                <h2 className="text-base sm:text-lg font-bold text-white">New Message</h2>
+                            </div>
+                            <button onClick={closeEmailCompose} className="text-white/80 hover:text-white p-1">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        {composeSent ? (
+                            <div className="flex flex-col items-center justify-center py-12 px-8 text-center">
+                                <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
+                                    <svg className="w-7 h-7 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                </div>
+                                <h3 className="text-lg font-bold text-slate-900 mb-2">Email Sent!</h3>
+                                <p className="text-slate-500 text-sm mb-6">Your message has been sent to {composeEmail.to}</p>
+                                <button onClick={closeEmailCompose} className="px-6 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm transition-colors">
+                                    Close
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="p-5 sm:p-6 space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">To</label>
+                                    <input
+                                        type="email"
+                                        value={composeEmail.to}
+                                        readOnly
+                                        className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm bg-slate-50 text-slate-700"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Subject <span className="text-red-500">*</span></label>
+                                    <input
+                                        type="text"
+                                        placeholder="Enter subject..."
+                                        value={composeEmail.subject}
+                                        onChange={e => setComposeEmail(prev => ({ ...prev, subject: e.target.value }))}
+                                        className="w-full h-10 rounded-lg border border-slate-300 px-3 text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Message</label>
+                                    <textarea
+                                        rows={5}
+                                        placeholder="Type your message..."
+                                        value={composeEmail.body}
+                                        onChange={e => setComposeEmail(prev => ({ ...prev, body: e.target.value }))}
+                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+                                    />
+                                </div>
+                                <div className="flex justify-end gap-3 pt-2">
+                                    <button onClick={closeEmailCompose} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleSendEmail}
+                                        disabled={composeSending || !composeEmail.subject.trim()}
+                                        className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                                    >
+                                        {composeSending && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                                        <Send className="w-4 h-4" />
+                                        Send
+                                    </button>
+                                </div>
+                            </div>
                         )}
                     </div>
                 </div>

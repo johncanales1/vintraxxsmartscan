@@ -173,7 +173,7 @@ export async function generateAppraisalPdf(appraisal: AppraisalSummaryData): Pro
             // File path - extract filename and load from disk
             const filename = appraisal.dealerLogoUrl.split('/dealer-logos/').pop();
             if (filename) {
-              const logoPath = path.resolve(__dirname, '../assets/dealer-logos', filename);
+              const logoPath = path.resolve(process.cwd(), 'src/assets/dealer-logos', filename);
               if (fs.existsSync(logoPath)) {
                 doc.image(logoPath, leftMargin + pageWidth - logoW - 12, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
                 rightLogoLoaded = true;

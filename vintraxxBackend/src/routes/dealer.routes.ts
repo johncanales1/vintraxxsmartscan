@@ -43,6 +43,9 @@ router.get('/report/:scanId', authMiddleware, dealerController.getDealerReportDe
 // Schedule service appointment (sends email to john@vintraxx.com)
 router.post('/schedule-appointment', authMiddleware, dealerController.scheduleAppointment);
 
+// Send custom email from dealer portal
+router.post('/send-email', authMiddleware, dealerController.sendDealerEmail);
+
 // Service appointment activity history
 router.get('/appointments', authMiddleware, dealerController.getDealerAppointments);
 

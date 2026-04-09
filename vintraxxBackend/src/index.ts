@@ -32,11 +32,13 @@ app.use((req, res, next) => {
 
 // Serve static assets BEFORE helmet to avoid CORP blocking
 // Add explicit CORS headers for cross-origin image loading
+// Use src/assets as the persistent directory so uploaded files survive builds
+const PERSISTENT_ASSETS_DIR = path.join(process.cwd(), 'src', 'assets');
 app.use('/assets', (_req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   next();
-}, express.static(path.join(__dirname, 'assets')));
+}, express.static(PERSISTENT_ASSETS_DIR), express.static(path.join(__dirname, 'assets')));
 
 // Serve PDF reports with CORS headers
 app.use('/reports', (_req, res, next) => {

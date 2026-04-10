@@ -196,8 +196,6 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
   const [stockNumber, setStockNumber] = useState('');
   const [showStockNumber, setShowStockNumber] = useState(false);
   const [vehicleOwnerName, setVehicleOwnerName] = useState('');
-  const [scannerOwnerName, setScannerOwnerName] = useState('');
-  const [scannerOwnerLocked, setScannerOwnerLocked] = useState(false);
   const [showAdditionalRepairs, setShowAdditionalRepairs] = useState(false);
   const [selectedAdditionalRepairs, setSelectedAdditionalRepairs] = useState<string[]>([]);
   const [errorModalVisible, setErrorModalVisible] = useState(false);
@@ -317,8 +315,6 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
       setStockNumber('');
       setShowStockNumber(false);
       setVehicleOwnerName('');
-      setScannerOwnerName('');
-      setScannerOwnerLocked(false);
       setShowAdditionalRepairs(false);
       setSelectedAdditionalRepairs([]);
       setScanSteps([
@@ -330,24 +326,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
     }, [])
   );
 
-  // Auto-fill scanner owner name from backend when BLE device is connected
-  useEffect(() => {
-    const fetchScannerOwner = async () => {
-      if (!isConnected || !selectedBleDevice?.id) return;
-      try {
-        const result = await apiService.getScannerOwner(selectedBleDevice.id);
-        if (result.success && result.scannerOwnerName) {
-          setScannerOwnerName(result.scannerOwnerName);
-          setScannerOwnerLocked(true);
-          logger.info(LogCategory.APP, 'Scanner owner auto-filled from backend', { scannerOwnerName: result.scannerOwnerName });
-        }
-      } catch (err) {
-        logger.warn(LogCategory.APP, 'Failed to fetch scanner owner', err);
-      }
-    };
-    fetchScannerOwner();
-  }, [isConnected, selectedBleDevice?.id]);
-
+  
   // Real scan using ScannerService
   const handleStartScan = useCallback(async () => {
     try {
@@ -616,9 +595,8 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
       stockNumber: trimmedStock.length > 0 ? trimmedStock : undefined,
       additionalRepairs: selectedAdditionalRepairs.length > 0 ? selectedAdditionalRepairs : undefined,
       vehicleOwnerName: vehicleOwnerName.trim() || undefined,
-      scannerOwnerName: scannerOwnerName.trim() || undefined,
     });
-  }, [lastScanResult, resolveVehicle, navigation, setCurrentReport, stockNumber, selectedAdditionalRepairs, vehicleOwnerName, scannerOwnerName]);
+  }, [lastScanResult, resolveVehicle, navigation, setCurrentReport, stockNumber, selectedAdditionalRepairs, vehicleOwnerName]);
 
   // Cancel scan
   const handleCancelScan = useCallback(() => {
@@ -724,24 +702,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
                 />
               </View>
 
-              {/* Scanner Owner Name Input */}
-              <View style={styles.preScanInputContainer}>
-                <Text style={styles.preScanInputLabel}>Scanner Owner Name</Text>
-                <TextInput
-                  style={[styles.preScanInput, scannerOwnerLocked && styles.preScanInputLocked]}
-                  placeholder="Enter scanner owner name"
-                  placeholderTextColor={colors.text.muted}
-                  value={scannerOwnerName}
-                  onChangeText={scannerOwnerLocked ? undefined : setScannerOwnerName}
-                  editable={!scannerOwnerLocked}
-                  autoCapitalize="words"
-                  maxLength={100}
-                />
-                {scannerOwnerLocked && (
-                  <Text style={styles.preScanInputHint}>Auto-filled from previous scan</Text>
-                )}
-              </View>
-            </View>
+                          </View>
           )}
 
           {scanStatus === 'scanning' && (

@@ -266,7 +266,7 @@ export async function getDealerReports(req: Request, res: Response, next: NextFu
     }
 
     const scans = await prisma.scan.findMany({
-      where: { userId },
+      where: { userId, status: 'COMPLETED' },
       orderBy: { receivedAt: 'desc' },
       include: { fullReport: true },
     });
@@ -726,6 +726,47 @@ export async function sendDealerEmail(req: Request, res: Response, next: NextFun
     res.json({ success: true, message: 'Email sent successfully.' });
   } catch (error) {
     logger.error('Dealer send email failed', { error: (error as Error).message });
+    next(error);
+  }
+}
+
+// ================================================================
+// PATCH /api/v1/dealer/appointments/:id/complete
+// Mark a service appointment as completed
+// ================================================================
+export async function completeDealerAppointment(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.user!.userId;
+    const appointmentId = req.params.id as string;
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.isDealer) {
+      res.status(403).json({ success: false, error: 'Dealer access required.' });
+      return;
+    }
+
+    const apt = await prisma.serviceAppointment.findFirst({
+      where: { id: appointmentId, userId },
+    });
+    if (!apt) {
+      res.status(404).json({ success: false, error: 'Service appointment not found.' });
+      return;
+    }
+
+    if (apt.status === 'completed') {
+      res.status(400).json({ success: false, error: 'Appointment is already completed.' });
+      return;
+    }
+
+    const updated = await prisma.serviceAppointment.update({
+      where: { id: appointmentId },
+      data: { status: 'completed' },
+    });
+
+    logger.info('Dealer marked appointment as completed', { userId, appointmentId });
+    res.json({ success: true, appointment: updated });
+  } catch (error) {
+    logger.error('Dealer complete appointment failed', { error: (error as Error).message });
     next(error);
   }
 }

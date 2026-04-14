@@ -49,4 +49,7 @@ router.post('/send-email', authMiddleware, dealerController.sendDealerEmail);
 // Service appointment activity history
 router.get('/appointments', authMiddleware, dealerController.getDealerAppointments);
 
+// Mark appointment as completed
+router.patch('/appointments/:id/complete', authMiddleware, dealerController.completeDealerAppointment);
+
 export default router;

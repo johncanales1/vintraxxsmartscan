@@ -143,6 +143,11 @@ export const ScheduleScreen: React.FC = () => {
 
     if (!formData.phone.trim()) {
       newErrors.phone = 'Phone is required';
+    } else {
+      const digitsOnly = formData.phone.replace(/\D/g, '');
+      if (digitsOnly.length < 10 || digitsOnly.length > 11) {
+        newErrors.phone = 'Enter a valid US phone number (10 digits)';
+      }
     }
 
     if (!formData.dealership.trim()) {
@@ -163,10 +168,30 @@ export const ScheduleScreen: React.FC = () => {
 
     if (!formData.preferredDate) {
       newErrors.preferredDate = 'Preferred date is required';
+    } else {
+      const dateMatch = formData.preferredDate.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (!dateMatch) {
+        newErrors.preferredDate = 'Use MM/DD/YYYY format';
+      } else {
+        const [, mm, dd, yyyy] = dateMatch;
+        const parsed = new Date(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd));
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (isNaN(parsed.getTime()) || parsed.getMonth() !== parseInt(mm) - 1 || parsed.getDate() !== parseInt(dd)) {
+          newErrors.preferredDate = 'Enter a valid date';
+        } else if (parsed < today) {
+          newErrors.preferredDate = 'Date cannot be in the past';
+        }
+      }
     }
 
     if (!formData.preferredTime) {
       newErrors.preferredTime = 'Preferred time is required';
+    } else {
+      const timeRegex = /^(0?[1-9]|1[0-2]):([0-5]\d)\s?(AM|PM|am|pm)$/;
+      if (!timeRegex.test(formData.preferredTime.trim())) {
+        newErrors.preferredTime = 'Use HH:MM AM/PM format (e.g. 10:30 AM)';
+      }
     }
 
     setErrors(newErrors);

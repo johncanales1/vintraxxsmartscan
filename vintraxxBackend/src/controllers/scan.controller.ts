@@ -370,13 +370,46 @@ async function processScanInBackground(scanId: string, userId: string, userEmail
     });
   } catch (error) {
     logger.error(`[${scanId}] Processing failed`, { error: (error as Error).message });
-    await prisma.scan.update({
-      where: { id: scanId },
-      data: {
-        status: 'FAILED',
-        errorMessage: (error as Error).message,
-      },
-    });
+
+    // Clean up: delete FullReport, PDF file, and the Scan record for failed scans
+    try {
+      const failedScan = await prisma.scan.findUnique({
+        where: { id: scanId },
+        include: { fullReport: true },
+      });
+
+      if (failedScan?.fullReport) {
+        // Delete PDF file from disk if it exists
+        if (failedScan.fullReport.pdfUrl) {
+          try {
+            if (fs.existsSync(failedScan.fullReport.pdfUrl)) {
+              fs.unlinkSync(failedScan.fullReport.pdfUrl);
+              logger.info(`[${scanId}] Deleted PDF file for failed scan: ${failedScan.fullReport.pdfUrl}`);
+            }
+          } catch (fileErr) {
+            logger.warn(`[${scanId}] Failed to delete PDF file`, { error: (fileErr as Error).message });
+          }
+        }
+        // Delete FullReport record
+        await prisma.fullReport.delete({ where: { id: failedScan.fullReport.id } });
+        logger.info(`[${scanId}] Deleted FullReport for failed scan`);
+      }
+
+      // Delete the Scan record itself
+      await prisma.scan.delete({ where: { id: scanId } });
+      logger.info(`[${scanId}] Deleted failed Scan record`);
+    } catch (cleanupErr) {
+      logger.error(`[${scanId}] Cleanup of failed scan failed, marking as FAILED instead`, {
+        error: (cleanupErr as Error).message,
+      });
+      // Fallback: just mark as failed if cleanup fails
+      try {
+        await prisma.scan.update({
+          where: { id: scanId },
+          data: { status: 'FAILED', errorMessage: (error as Error).message },
+        });
+      } catch (_) { /* ignore */ }
+    }
   }
 }
 

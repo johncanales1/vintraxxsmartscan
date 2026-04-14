@@ -187,6 +187,36 @@ export async function deleteServiceAppointment(req: Request, res: Response, next
   } catch (err) { next(err); }
 }
 
+export async function completeServiceAppointment(req: Request, res: Response, next: NextFunction) {
+  try {
+    const appointment = await adminService.completeServiceAppointment(req.params.id as string);
+    res.json({ success: true, appointment });
+  } catch (err) { next(err); }
+}
+
+// ── Appraisal Detail ────────────────────────────────────────────────
+
+export async function getAppraisalDetail(req: Request, res: Response, next: NextFunction) {
+  try {
+    const appraisal = await adminService.getAppraisalDetail(req.params.id as string);
+    res.json({ success: true, appraisal });
+  } catch (err) { next(err); }
+}
+
+// ── Send Email ──────────────────────────────────────────────────────
+
+export async function sendEmail(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { to, subject, body } = req.body;
+    if (!to || !subject) {
+      res.status(400).json({ success: false, error: 'Recipient and subject are required.' });
+      return;
+    }
+    await adminService.sendAdminEmail(to, subject, body || '');
+    res.json({ success: true, message: 'Email sent successfully.' });
+  } catch (err) { next(err); }
+}
+
 // ── Backup ────────────────────────────────────────────────────────────────────
 
 export async function backup(req: Request, res: Response, next: NextFunction) {

@@ -59,8 +59,6 @@ const corsOptions = {
     
     // List of allowed origins
     const allowedOrigins = [
-      'https://app.vintraxx.com',
-      'https://vintraxx.com', 
       'https://dev.vintraxx.com',
       'https://admin.vintraxx.com',
       'https://api.vintraxx.com'

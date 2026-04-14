@@ -7,7 +7,10 @@ module.exports = {
       interpreter: 'node',
       env: {
         NODE_ENV: 'production',
-        PORT: 3000
+        PORT: 3000,
+        FRONTEND_URL: 'https://dev.vintraxx.com',
+        ADMIN_URL: 'https://admin.vintraxx.com',
+        API_URL: 'https://api.vintraxx.com'
       },
       instances: 1,
       autorestart: true,
@@ -20,12 +23,15 @@ module.exports = {
     },
     {
       name: 'vintraxx-frontend',
-      script: 'node_modules/.bin/next',
-      args: 'start -p 3001',
+      script: './.next/standalone/vintraxxFrontend/server.js',
       cwd: '/home/ec2-user/vintraxxsmartscan/vintraxxFrontend',
       interpreter: 'node',
       env: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        PORT: 3001,
+        HOSTNAME: '0.0.0.0',
+        NEXT_PUBLIC_API_URL: 'https://api.vintraxx.com',
+        NEXT_PUBLIC_FRONTEND_URL: 'https://dev.vintraxx.com'
       },
       instances: 1,
       autorestart: true,
@@ -38,12 +44,15 @@ module.exports = {
     },
     {
       name: 'vintraxx-admin',
-      script: 'node_modules/.bin/next',
-      args: 'start -p 3002',
+      script: './.next/standalone/server.js',
       cwd: '/home/ec2-user/vintraxxsmartscan/vintraxxAdmin',
       interpreter: 'node',
       env: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        PORT: 3002,
+        HOSTNAME: '0.0.0.0',
+        NEXT_PUBLIC_API_URL: 'https://api.vintraxx.com',
+        NEXT_PUBLIC_ADMIN_URL: 'https://admin.vintraxx.com'
       },
       instances: 1,
       autorestart: true,

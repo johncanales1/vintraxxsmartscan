@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Search, Eye, Car, Scan, DollarSign, TrendingUp, ClipboardList, X, FileText, Wrench, Activity, CalendarDays, Mail, Send, User } from "lucide-react";
+import { Search, Eye, Car, Scan, DollarSign, TrendingUp, ClipboardList, X, FileText, Wrench, Activity, CalendarDays, Mail, Send, User, CheckCircle } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line, ResponsiveContainer } from "recharts";
 import { DealerNav } from "@/components/shared-assets/navigation/dealer-nav";
 
@@ -174,6 +174,10 @@ export default function DealerPortalPage() {
     const [composeSending, setComposeSending] = useState(false);
     const [composeSent, setComposeSent] = useState(false);
 
+    // Complete Appointment Confirm Modal
+    const [completeTarget, setCompleteTarget] = useState<{ id: string; name: string; serviceType: string } | null>(null);
+    const [completing, setCompleting] = useState(false);
+
     const fetchDealerData = useCallback(async (token: string) => {
         try {
             const [profileRes, reportsRes, appraisalsRes, appointmentsRes] = await Promise.all([
@@ -311,6 +315,28 @@ export default function DealerPortalPage() {
             alert('Network error. Please try again.');
         } finally {
             setComposeSending(false);
+        }
+    };
+
+    const handleCompleteAppointment = async () => {
+        if (!completeTarget) return;
+        setCompleting(true);
+        try {
+            const token = localStorage.getItem("dealer_token");
+            const res = await fetch(`${API_BASE}/dealer/appointments/${completeTarget.id}/complete`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+                setAppointments(prev => prev.map(a => a.id === completeTarget.id ? { ...a, status: 'completed' } : a));
+                setCompleteTarget(null);
+            } else {
+                alert('Failed to complete appointment.');
+            }
+        } catch {
+            alert('Network error. Please try again.');
+        } finally {
+            setCompleting(false);
         }
     };
 
@@ -908,6 +934,18 @@ export default function DealerPortalPage() {
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-3 ml-13 sm:ml-0">
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); apt.status !== 'completed' && setCompleteTarget({ id: apt.id, name: apt.name, serviceType: apt.serviceType }); }}
+                                                        disabled={apt.status === 'completed'}
+                                                        className={`p-1.5 rounded-lg transition-all ${
+                                                            apt.status === 'completed'
+                                                                ? 'text-slate-300 cursor-not-allowed'
+                                                                : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50'
+                                                        }`}
+                                                        title={apt.status === 'completed' ? 'Already completed' : 'Mark as completed'}
+                                                    >
+                                                        <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                                                    </button>
                                                     <span className={`px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${
                                                         apt.status === 'confirmed' ? 'bg-emerald-100 text-emerald-700' :
                                                         apt.status === 'completed' ? 'bg-blue-100 text-blue-700' :
@@ -1503,6 +1541,70 @@ export default function DealerPortalPage() {
                             {/* Date */}
                             <div className="text-xs sm:text-sm text-slate-500">
                                 Appraisal Date: {formatDate(selectedAppraisal.createdAt)}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Complete Appointment Confirm Modal */}
+            {completeTarget && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !completing && setCompleteTarget(null)} />
+                    <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 px-6 py-4 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <CheckCircle className="w-5 h-5 text-white" />
+                                <h2 className="text-lg font-bold text-white">Complete Service</h2>
+                            </div>
+                            <button onClick={() => !completing && setCompleteTarget(null)} className="text-white/80 hover:text-white p-1">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6">
+                            <div className="flex items-start gap-4 mb-6">
+                                <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                                    <CheckCircle className="w-6 h-6 text-emerald-600" />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-semibold text-slate-900 mb-1">Mark as Completed?</h3>
+                                    <p className="text-sm text-slate-500">
+                                        Are you sure you want to mark this service appointment as completed? This action cannot be undone.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="bg-slate-50 rounded-xl p-4 mb-6 border border-slate-200">
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <p className="text-[10px] uppercase tracking-wider text-slate-400">Customer</p>
+                                        <p className="text-sm font-medium text-slate-900">{completeTarget.name}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] uppercase tracking-wider text-slate-400">Service Type</p>
+                                        <p className="text-sm font-medium text-slate-900">{completeTarget.serviceType}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex justify-end gap-3">
+                                <button
+                                    onClick={() => setCompleteTarget(null)}
+                                    disabled={completing}
+                                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleCompleteAppointment}
+                                    disabled={completing}
+                                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
+                                >
+                                    {completing ? (
+                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    ) : (
+                                        <CheckCircle className="w-4 h-4" />
+                                    )}
+                                    {completing ? 'Completing...' : 'Confirm Complete'}
+                                </button>
                             </div>
                         </div>
                     </div>

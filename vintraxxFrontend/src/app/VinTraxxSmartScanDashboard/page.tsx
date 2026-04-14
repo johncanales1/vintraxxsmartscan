@@ -899,72 +899,159 @@ export default function DealerPortalPage() {
                         </div>
                         {/* Service Appointment Activity History */}
                         <div className="mb-8 sm:mb-12">
-                            <div className="mb-4 sm:mb-6">
-                                <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-[#1B3A5F] flex items-center gap-2">
-                                    <CalendarDays className="w-5 h-5 sm:w-6 sm:h-6" />
-                                    Service Appointment Activity
-                                </h2>
-                                <p className="text-slate-500 text-xs sm:text-sm mt-1">History of scheduled service appointments</p>
+                            <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                <div>
+                                    <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-[#1B3A5F] to-[#3d6a9f] bg-clip-text text-transparent flex items-center gap-3">
+                                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-[#1B3A5F] to-[#3d6a9f] flex items-center justify-center shadow-lg shadow-blue-500/20">
+                                            <CalendarDays className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                                        </div>
+                                        Service Appointments
+                                    </h2>
+                                    <p className="text-slate-500 text-sm mt-2 ml-[52px] sm:ml-[60px]">Track and manage your scheduled service appointments</p>
+                                </div>
+                                <div className="flex items-center gap-2 ml-[52px] sm:ml-0">
+                                    <span className="px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 text-xs font-medium">
+                                        {appointments.length} {appointments.length === 1 ? 'appointment' : 'appointments'}
+                                    </span>
+                                </div>
                             </div>
 
                             {appointments.length === 0 ? (
-                                <div className="bg-white rounded-xl shadow-sm p-8 text-center text-slate-400 border border-slate-200">
-                                    No service appointments scheduled yet
+                                <div className="bg-gradient-to-br from-slate-50 to-white rounded-2xl shadow-sm p-12 text-center border border-slate-200/60">
+                                    <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-slate-100 flex items-center justify-center">
+                                        <CalendarDays className="w-8 h-8 text-slate-400" />
+                                    </div>
+                                    <p className="text-slate-500 font-medium">No service appointments scheduled yet</p>
+                                    <p className="text-slate-400 text-sm mt-1">Appointments will appear here once scheduled</p>
                                 </div>
                             ) : (
-                                <div className="space-y-3">
+                                <div className="space-y-4">
                                     {appointments.map((apt) => (
-                                        <div key={apt.id} className="bg-white rounded-xl shadow-sm p-4 border border-slate-200 hover:shadow-md transition-shadow">
-                                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                                                <div className="flex items-center gap-3">
-                                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                                                        apt.status === 'confirmed' ? 'bg-emerald-100' :
-                                                        apt.status === 'completed' ? 'bg-blue-100' :
-                                                        apt.status === 'cancelled' ? 'bg-red-100' : 'bg-amber-100'
-                                                    }`}>
-                                                        <CalendarDays className={`w-5 h-5 ${
-                                                            apt.status === 'confirmed' ? 'text-emerald-600' :
-                                                            apt.status === 'completed' ? 'text-blue-600' :
-                                                            apt.status === 'cancelled' ? 'text-red-600' : 'text-amber-600'
-                                                        }`} />
+                                        <div 
+                                            key={apt.id} 
+                                            className="group relative bg-white rounded-2xl border border-slate-200/80 hover:border-slate-300 shadow-sm hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-300 overflow-hidden"
+                                        >
+                                            {/* Status Indicator Bar */}
+                                            <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${
+                                                apt.status === 'confirmed' ? 'bg-gradient-to-b from-emerald-400 to-emerald-600' :
+                                                apt.status === 'completed' ? 'bg-gradient-to-b from-blue-400 to-blue-600' :
+                                                apt.status === 'cancelled' ? 'bg-gradient-to-b from-red-400 to-red-600' : 'bg-gradient-to-b from-amber-400 to-amber-600'
+                                            }`} />
+                                            
+                                            <div className="p-5 sm:p-6 pl-6 sm:pl-7">
+                                                {/* Header Row */}
+                                                <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                                                    {/* Left: Service Type & Contact Info */}
+                                                    <div className="flex items-start gap-4 flex-1">
+                                                        <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg ${
+                                                            apt.status === 'confirmed' ? 'bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-emerald-500/30' :
+                                                            apt.status === 'completed' ? 'bg-gradient-to-br from-blue-400 to-blue-600 shadow-blue-500/30' :
+                                                            apt.status === 'cancelled' ? 'bg-gradient-to-br from-red-400 to-red-600 shadow-red-500/30' : 'bg-gradient-to-br from-amber-400 to-amber-600 shadow-amber-500/30'
+                                                        }`}>
+                                                            <CalendarDays className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <h3 className="font-bold text-slate-900 text-base sm:text-lg leading-tight">{apt.serviceType}</h3>
+                                                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5">
+                                                                <span className="text-slate-700 font-medium text-sm">{apt.name}</span>
+                                                                <span className="text-slate-300">•</span>
+                                                                <a 
+                                                                    href={`mailto:${apt.email}`} 
+                                                                    onClick={(e) => e.stopPropagation()} 
+                                                                    className="text-blue-600 hover:text-blue-700 text-sm font-medium hover:underline transition-colors"
+                                                                >
+                                                                    {apt.email}
+                                                                </a>
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                    <div>
-                                                        <p className="font-semibold text-slate-900 text-sm">{apt.serviceType}</p>
-                                                        <p className="text-xs text-slate-500">{apt.name} &bull; <a href={`mailto:${apt.email}`} onClick={(e) => e.stopPropagation()} className="text-blue-600 hover:underline">{apt.email}</a></p>
+
+                                                    {/* Right: Status Badge & Actions */}
+                                                    <div className="flex items-center gap-3 ml-16 lg:ml-0">
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); apt.status !== 'completed' && setCompleteTarget({ id: apt.id, name: apt.name, serviceType: apt.serviceType }); }}
+                                                            disabled={apt.status === 'completed'}
+                                                            className={`p-2.5 rounded-xl transition-all duration-200 ${
+                                                                apt.status === 'completed'
+                                                                    ? 'text-slate-300 cursor-not-allowed bg-slate-50'
+                                                                    : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 hover:shadow-md hover:shadow-emerald-500/10'
+                                                            }`}
+                                                            title={apt.status === 'completed' ? 'Already completed' : 'Mark as completed'}
+                                                        >
+                                                            <CheckCircle className="w-5 h-5" />
+                                                        </button>
+                                                        <div className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wide ${
+                                                            apt.status === 'confirmed' ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' :
+                                                            apt.status === 'completed' ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200' :
+                                                            apt.status === 'cancelled' ? 'bg-red-50 text-red-700 ring-1 ring-red-200' : 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+                                                        }`}>
+                                                            <span className={`w-2 h-2 rounded-full ${
+                                                                apt.status === 'confirmed' ? 'bg-emerald-500' :
+                                                                apt.status === 'completed' ? 'bg-blue-500' :
+                                                                apt.status === 'cancelled' ? 'bg-red-500' : 'bg-amber-500 animate-pulse'
+                                                            }`} />
+                                                            {apt.status}
+                                                        </div>
+                                                        <span className="text-sm text-slate-400 font-medium hidden sm:inline">{formatDate(apt.createdAt)}</span>
                                                     </div>
                                                 </div>
-                                                <div className="flex items-center gap-3 ml-13 sm:ml-0">
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); apt.status !== 'completed' && setCompleteTarget({ id: apt.id, name: apt.name, serviceType: apt.serviceType }); }}
-                                                        disabled={apt.status === 'completed'}
-                                                        className={`p-1.5 rounded-lg transition-all ${
-                                                            apt.status === 'completed'
-                                                                ? 'text-slate-300 cursor-not-allowed'
-                                                                : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50'
-                                                        }`}
-                                                        title={apt.status === 'completed' ? 'Already completed' : 'Mark as completed'}
-                                                    >
-                                                        <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
-                                                    </button>
-                                                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${
-                                                        apt.status === 'confirmed' ? 'bg-emerald-100 text-emerald-700' :
-                                                        apt.status === 'completed' ? 'bg-blue-100 text-blue-700' :
-                                                        apt.status === 'cancelled' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
-                                                    }`}>{apt.status}</span>
-                                                    <span className="text-xs text-slate-400">{formatDate(apt.createdAt)}</span>
+
+                                                {/* Details Grid */}
+                                                <div className="mt-5 pt-5 border-t border-slate-100">
+                                                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                                                        {apt.vehicle && (
+                                                            <div className="bg-slate-50/80 rounded-xl p-3">
+                                                                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Vehicle</p>
+                                                                <p className="text-sm font-semibold text-slate-700 truncate">{apt.vehicle}</p>
+                                                            </div>
+                                                        )}
+                                                        {apt.vin && (
+                                                            <div className="bg-slate-50/80 rounded-xl p-3">
+                                                                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">VIN</p>
+                                                                <p className="text-sm font-mono font-semibold text-slate-700 truncate">{apt.vin}</p>
+                                                            </div>
+                                                        )}
+                                                        {apt.preferredDate && (
+                                                            <div className="bg-slate-50/80 rounded-xl p-3">
+                                                                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Date</p>
+                                                                <p className="text-sm font-semibold text-slate-700">{apt.preferredDate}</p>
+                                                            </div>
+                                                        )}
+                                                        {apt.preferredTime && (
+                                                            <div className="bg-slate-50/80 rounded-xl p-3">
+                                                                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Time</p>
+                                                                <p className="text-sm font-semibold text-slate-700">{apt.preferredTime}</p>
+                                                            </div>
+                                                        )}
+                                                        {apt.dealership && (
+                                                            <div className="bg-slate-50/80 rounded-xl p-3">
+                                                                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Dealership</p>
+                                                                <p className="text-sm font-semibold text-slate-700 truncate">{apt.dealership}</p>
+                                                            </div>
+                                                        )}
+                                                        {apt.phone && (
+                                                            <div className="bg-slate-50/80 rounded-xl p-3">
+                                                                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Phone</p>
+                                                                <p className="text-sm font-semibold text-slate-700">{apt.phone}</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Notes Section */}
+                                                {apt.additionalNotes && (
+                                                    <div className="mt-4 p-3 bg-blue-50/50 rounded-xl border border-blue-100">
+                                                        <p className="text-xs text-blue-600 font-medium">
+                                                            <span className="text-blue-400">Note:</span> {apt.additionalNotes}
+                                                        </p>
+                                                    </div>
+                                                )}
+
+                                                {/* Mobile Date */}
+                                                <div className="mt-4 sm:hidden text-xs text-slate-400 font-medium">
+                                                    Created {formatDate(apt.createdAt)}
                                                 </div>
                                             </div>
-                                            <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-slate-500">
-                                                {apt.vehicle && <div><span className="text-slate-400">Vehicle:</span> {apt.vehicle}</div>}
-                                                {apt.vin && <div><span className="text-slate-400">VIN:</span> <span className="font-mono">{apt.vin}</span></div>}
-                                                {apt.preferredDate && <div><span className="text-slate-400">Date:</span> {apt.preferredDate}</div>}
-                                                {apt.preferredTime && <div><span className="text-slate-400">Time:</span> {apt.preferredTime}</div>}
-                                                {apt.dealership && <div><span className="text-slate-400">Dealership:</span> {apt.dealership}</div>}
-                                                {apt.phone && <div><span className="text-slate-400">Phone:</span> {apt.phone}</div>}
-                                            </div>
-                                            {apt.additionalNotes && (
-                                                <p className="mt-2 text-xs text-slate-400 italic truncate">Note: {apt.additionalNotes}</p>
-                                            )}
                                         </div>
                                     ))}
                                 </div>

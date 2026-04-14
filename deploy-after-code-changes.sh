@@ -39,10 +39,36 @@ check_pm2() {
     print_status "PM2 is running"
 }
 
+# Check disk space
+check_disk_space() {
+    local available=$(df / | awk 'NR==2 {print $4}')
+    local min_required=524288  # 512MB in KB
+    
+    if [ "$available" -lt "$min_required" ]; then
+        print_warning "Low disk space detected ($(df -h / | awk 'NR==2 {print $4}') available)"
+        print_status "Cleaning up old build artifacts..."
+        
+        # Clean old .next directories
+        rm -rf /home/ec2-user/vintraxxsmartscan/vintraxxFrontend/.next 2>/dev/null
+        rm -rf /home/ec2-user/vintraxxsmartscan/vintraxxAdmin/.next 2>/dev/null
+        
+        # Clean npm cache
+        npm cache clean --force 2>/dev/null
+        
+        print_status "Cleanup complete"
+    fi
+}
+
 # Build and deploy backend
 deploy_backend() {
     print_status "Building backend..."
     cd /home/ec2-user/vintraxxsmartscan/vintraxxBackend
+    
+    # Install dependencies if node_modules is missing
+    if [ ! -d "node_modules" ]; then
+        print_status "Installing backend dependencies..."
+        npm install
+    fi
     
     # Build backend
     if npm run build; then
@@ -68,6 +94,12 @@ deploy_frontend() {
     print_status "Building frontend..."
     cd /home/ec2-user/vintraxxsmartscan/vintraxxFrontend
     
+    # Install dependencies if node_modules is missing or next not found
+    if [ ! -d "node_modules" ] || [ ! -f "node_modules/.bin/next" ]; then
+        print_status "Installing frontend dependencies..."
+        npm install
+    fi
+    
     # Build frontend
     if npm run build; then
         print_status "Frontend build successful"
@@ -76,12 +108,14 @@ deploy_frontend() {
         exit 1
     fi
     
-    # Copy public folder to standalone build (required for static assets)
+    # Copy public folder and static assets to standalone build
     print_status "Copying static assets..."
-    cp -r public .next/standalone/vintraxxFrontend/ 2>/dev/null || true
+    cp -r public .next/standalone/ 2>/dev/null || true
+    cp -r .next/static .next/standalone/.next/ 2>/dev/null || true
     
-    # Restart frontend service
-    if pm2 restart vintraxx-frontend --update-env; then
+    # Restart frontend service (delete and start fresh to ensure correct mode)
+    pm2 delete vintraxx-frontend 2>/dev/null || true
+    if pm2 start /home/ec2-user/vintraxxsmartscan/ecosystem.config.js --only vintraxx-frontend; then
         print_status "Frontend service restarted"
     else
         print_error "Failed to restart frontend service"
@@ -96,6 +130,12 @@ deploy_admin() {
     print_status "Building admin..."
     cd /home/ec2-user/vintraxxsmartscan/vintraxxAdmin
     
+    # Install dependencies if node_modules is missing or next not found
+    if [ ! -d "node_modules" ] || [ ! -f "node_modules/.bin/next" ]; then
+        print_status "Installing admin dependencies..."
+        npm install
+    fi
+    
     # Build admin
     if npm run build; then
         print_status "Admin build successful"
@@ -104,12 +144,14 @@ deploy_admin() {
         exit 1
     fi
     
-    # Copy public folder to standalone build (required for static assets)
+    # Copy public folder and static assets to standalone build
     print_status "Copying static assets..."
     cp -r public .next/standalone/ 2>/dev/null || true
+    cp -r .next/static .next/standalone/.next/ 2>/dev/null || true
     
-    # Restart admin service
-    if pm2 restart vintraxx-admin --update-env; then
+    # Restart admin service (delete and start fresh to ensure correct mode)
+    pm2 delete vintraxx-admin 2>/dev/null || true
+    if pm2 start /home/ec2-user/vintraxxsmartscan/ecosystem.config.js --only vintraxx-admin; then
         print_status "Admin service restarted"
     else
         print_error "Failed to restart admin service"
@@ -157,6 +199,9 @@ main() {
     echo ""
     
     check_pm2
+    echo ""
+    
+    check_disk_space
     echo ""
     
     deploy_backend

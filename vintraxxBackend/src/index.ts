@@ -61,7 +61,9 @@ const corsOptions = {
     const allowedOrigins = [
       'https://dev.vintraxx.com',
       'https://admin.vintraxx.com',
-      'https://api.vintraxx.com'
+      'https://api.vintraxx.com',
+      'https://capital.vintraxx.com',
+      'https://dealer.vintraxx.com'
     ];
     
     // Add localhost origins for development

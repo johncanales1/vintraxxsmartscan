@@ -23,9 +23,10 @@ module.exports = {
     },
     {
       name: 'vintraxx-frontend',
-      script: './.next/standalone/vintraxxFrontend/server.js',
+      script: './.next/standalone/server.js',
       cwd: '/home/ec2-user/vintraxxsmartscan/vintraxxFrontend',
       interpreter: 'node',
+      exec_mode: 'fork',
       env: {
         NODE_ENV: 'production',
         PORT: 3001,
@@ -47,6 +48,7 @@ module.exports = {
       script: './.next/standalone/server.js',
       cwd: '/home/ec2-user/vintraxxsmartscan/vintraxxAdmin',
       interpreter: 'node',
+      exec_mode: 'fork',
       env: {
         NODE_ENV: 'production',
         PORT: 3002,

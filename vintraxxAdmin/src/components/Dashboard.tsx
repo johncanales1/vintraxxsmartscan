@@ -7,6 +7,8 @@ import { api, DashboardStats } from '@/lib/api';
 import DealerSection from '@/components/sections/DealerSection';
 import RegularSection from '@/components/sections/RegularSection';
 import HistorySection from '@/components/sections/HistorySection';
+import ScheduleSection from '@/components/sections/ScheduleSection';
+import InspectionSection from '@/components/sections/InspectionSection';
 import SettingsSection from '@/components/sections/SettingsSection';
 import BackupModal from '@/components/modals/BackupModal';
 import {
@@ -16,7 +18,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-type Tab = 'overview' | 'dealers' | 'regular' | 'history' | 'settings';
+type Tab = 'overview' | 'dealers' | 'regular' | 'history' | 'schedule' | 'inspection' | 'settings';
 
 export default function Dashboard() {
   const { admin, logout } = useAuth();
@@ -26,6 +28,7 @@ export default function Dashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showBackupModal, setShowBackupModal] = useState(false);
+  const [historyInitialTab, setHistoryInitialTab] = useState<'scans' | 'appraisals'>('scans');
 
   useEffect(() => {
     loadStats();
@@ -47,8 +50,17 @@ export default function Dashboard() {
     { id: 'dealers', label: 'Dealers', icon: <UserCheck size={20} /> },
     { id: 'regular', label: 'Regular Users', icon: <Users size={20} /> },
     { id: 'history', label: 'Scan History', icon: <History size={20} /> },
+    { id: 'schedule', label: 'Schedule', icon: <CalendarDays size={20} /> },
+    { id: 'inspection', label: 'Inspections', icon: <ClipboardList size={20} /> },
     { id: 'settings', label: 'Settings', icon: <Settings size={20} /> },
   ];
+
+  const handleNavigate = (newTab: Tab, options?: { historyTab?: 'scans' | 'appraisals' }) => {
+    if (options?.historyTab) {
+      setHistoryInitialTab(options.historyTab);
+    }
+    setTab(newTab);
+  };
 
 
   return (
@@ -137,10 +149,12 @@ export default function Dashboard() {
         </header>
 
         <div className="p-4 sm:p-6 lg:p-8">
-          {tab === 'overview' && <OverviewTab stats={stats} loading={loading} onNavigate={setTab} />}
+          {tab === 'overview' && <OverviewTab stats={stats} loading={loading} onNavigate={handleNavigate} />}
           {tab === 'dealers' && <DealerSection />}
           {tab === 'regular' && <RegularSection />}
-          {tab === 'history' && <HistorySection />}
+          {tab === 'history' && <HistorySection initialTab={historyInitialTab} />}
+          {tab === 'schedule' && <ScheduleSection />}
+          {tab === 'inspection' && <InspectionSection />}
           {tab === 'settings' && <SettingsSection />}
         </div>
       </main>
@@ -150,7 +164,7 @@ export default function Dashboard() {
   );
 }
 
-function OverviewTab({ stats, loading, onNavigate }: { stats: DashboardStats | null; loading: boolean; onNavigate: (tab: Tab) => void }) {
+function OverviewTab({ stats, loading, onNavigate }: { stats: DashboardStats | null; loading: boolean; onNavigate: (tab: Tab, options?: { historyTab?: 'scans' | 'appraisals' }) => void }) {
   if (loading) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 animate-pulse">
@@ -169,9 +183,9 @@ function OverviewTab({ stats, loading, onNavigate }: { stats: DashboardStats | n
     { label: 'Regular Users', value: stats.totalRegular, icon: <Users size={22} />, color: 'violet', onClick: () => onNavigate('regular') },
     { label: 'Total Scans', value: stats.totalScans, icon: <Car size={22} />, color: 'amber', onClick: () => onNavigate('history') },
     { label: 'Reports Generated', value: stats.totalReports, icon: <FileText size={22} />, color: 'rose', onClick: () => onNavigate('history') },
-    { label: 'Inspections', value: stats.totalInspections, icon: <ClipboardList size={22} />, color: 'cyan', onClick: () => onNavigate('history') },
-    { label: 'Appraisals', value: stats.totalAppraisals, icon: <DollarSign size={22} />, color: 'teal', onClick: () => onNavigate('history') },
-    { label: 'Appointments', value: stats.totalServiceAppointments, icon: <CalendarDays size={22} />, color: 'indigo', onClick: () => onNavigate('history') },
+    { label: 'Inspections', value: stats.totalInspections, icon: <ClipboardList size={22} />, color: 'cyan', onClick: () => onNavigate('inspection') },
+    { label: 'Appraisals', value: stats.totalAppraisals, icon: <DollarSign size={22} />, color: 'teal', onClick: () => onNavigate('history', { historyTab: 'appraisals' }) },
+    { label: 'Schedule', value: stats.totalServiceAppointments, icon: <CalendarDays size={22} />, color: 'indigo', onClick: () => onNavigate('schedule') },
   ];
 
   const colorMap: Record<string, string> = {

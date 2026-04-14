@@ -190,7 +190,6 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
   const wave3Opacity = useRef(new Animated.Value(0.7)).current;
   const wave4Scale = useRef(new Animated.Value(0)).current;
   const wave4Opacity = useRef(new Animated.Value(0.7)).current;
-  const glowAnim = useRef(new Animated.Value(0.3)).current;
   const colorCycleAnim = useRef(new Animated.Value(0)).current;
   const [cancelRequested, setCancelRequested] = useState(false);
   const [stockNumber, setStockNumber] = useState('');
@@ -248,14 +247,6 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
       const w3 = createWaveAnimation(wave3Scale, wave3Opacity, 1200);
       const w4 = createWaveAnimation(wave4Scale, wave4Opacity, 1800);
 
-      // Glow pulsation - using useNativeDriver: false to match color interpolation
-      const glowAnimation = Animated.loop(
-        Animated.sequence([
-          Animated.timing(glowAnim, { toValue: 1, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
-          Animated.timing(glowAnim, { toValue: 0.3, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
-        ])
-      );
-
       // Color cycle: 0→1 = red flow, 1→2 = blue flow, loops
       const colorCycle = Animated.loop(
         Animated.sequence([
@@ -270,24 +261,21 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
       w2.start();
       w3.start();
       w4.start();
-      glowAnimation.start();
       colorCycle.start();
 
       return () => {
         spinAnimation.stop();
         w1.stop(); w2.stop(); w3.stop(); w4.stop();
-        glowAnimation.stop();
         colorCycle.stop();
         spinValue.setValue(0);
         wave1Scale.setValue(0); wave1Opacity.setValue(0.7);
         wave2Scale.setValue(0); wave2Opacity.setValue(0.7);
         wave3Scale.setValue(0); wave3Opacity.setValue(0.7);
         wave4Scale.setValue(0); wave4Opacity.setValue(0.7);
-        glowAnim.setValue(0.3);
         colorCycleAnim.setValue(0);
       };
     }
-  }, [scanStatus, spinValue, wave1Scale, wave1Opacity, wave2Scale, wave2Opacity, wave3Scale, wave3Opacity, wave4Scale, wave4Opacity, glowAnim, colorCycleAnim]);
+  }, [scanStatus, spinValue, wave1Scale, wave1Opacity, wave2Scale, wave2Opacity, wave3Scale, wave3Opacity, wave4Scale, wave4Opacity, colorCycleAnim]);
   const [showDebugModal, setShowDebugModal] = useState(false);
   
     
@@ -737,29 +725,6 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
                     ]}
                   />
                 ))}
-                {/* Glow behind star */}
-                <Animated.View
-                  style={[
-                    styles.starGlow,
-                    {
-                      opacity: glowAnim,
-                      shadowColor: colorCycleAnim.interpolate({
-                        inputRange: [0, 1, 2],
-                        outputRange: ['#DC2626', '#2563EB', '#DC2626'],
-                      }),
-                      backgroundColor: colorCycleAnim.interpolate({
-                        inputRange: [0, 0.5, 1, 1.5, 2],
-                        outputRange: [
-                          'rgba(220,38,38,0.15)',
-                          'rgba(239,68,68,0.10)',
-                          'rgba(255,255,255,0.08)',
-                          'rgba(96,165,250,0.10)',
-                          'rgba(37,99,235,0.15)',
-                        ],
-                      }),
-                    },
-                  ]}
-                />
                 {/* Spinning star image - centered */}
                 <Animated.Image
                   source={require('../assets/images/scan.png')}
@@ -1123,22 +1088,12 @@ const styles = StyleSheet.create({
   },
   waveRing: {
     position: 'absolute',
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
     borderWidth: 2.5,
     borderColor: '#DC2626',
     backgroundColor: 'transparent',
-  },
-  starGlow: {
-    position: 'absolute',
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 30,
-    elevation: 10,
   },
   scanningStar: {
     width: 120,

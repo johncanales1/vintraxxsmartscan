@@ -45,5 +45,19 @@ server {
         proxy_cache_valid 200 1y;
         add_header Cache-Control "public, immutable";
     }
+    
+    # Serve public static files directly
+    location /assets/ {
+        root /home/ec2-user/vintraxxsmartscan/vintraxxFrontend/public;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+    
+    # Serve logo directly
+    location = /logo.png {
+        root /home/ec2-user/vintraxxsmartscan/vintraxxFrontend/public;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
 
 }

@@ -349,3 +349,73 @@ export async function deleteServiceAppointment(id: string) {
   await prisma.serviceAppointment.delete({ where: { id } });
   logger.info(`Admin deleted service appointment: ${id}`);
 }
+
+export async function completeServiceAppointment(id: string) {
+  const apt = await prisma.serviceAppointment.findUnique({ where: { id } });
+  if (!apt) throw new AppError('Service appointment not found', 404);
+  if (apt.status === 'completed') throw new AppError('Appointment is already completed', 400);
+  const updated = await prisma.serviceAppointment.update({
+    where: { id },
+    data: { status: 'completed' },
+  });
+  logger.info(`Admin completed service appointment: ${id}`);
+  return updated;
+}
+
+export async function getAppraisalDetail(id: string) {
+  const appraisal = await prisma.appraisal.findUnique({ where: { id } });
+  if (!appraisal) throw new AppError('Appraisal not found', 404);
+  return appraisal;
+}
+
+export async function sendAdminEmail(to: string, subject: string, body: string) {
+  const nodemailer = (await import('nodemailer')).default;
+  const { env } = await import('../config/env');
+
+  const transporter = nodemailer.createTransport({
+    host: env.SMTP_HOST,
+    port: env.SMTP_PORT,
+    secure: false,
+    auth: {
+      user: env.SMTP_USER,
+      pass: env.SMTP_PASS,
+    },
+  });
+
+  const htmlBody = `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; color: #333; line-height: 1.6; margin: 0; padding: 0; background: #f4f4f4; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: #1B3A5F; color: #fff; padding: 24px; text-align: center; border-radius: 8px 8px 0 0; }
+    .header h1 { margin: 0; font-size: 22px; }
+    .content { background: #ffffff; padding: 28px; border: 1px solid #ddd; border-top: none; border-radius: 0 0 8px 8px; }
+    .footer { text-align: center; padding: 16px; color: #999; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>VinTraxx SmartScan</h1>
+    </div>
+    <div class="content">
+      ${body ? body.replace(/\n/g, '<br/>') : '<p>No message content.</p>'}
+    </div>
+    <div class="footer">
+      <p>&copy; ${new Date().getFullYear()} VinTraxx SmartScan. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  await transporter.sendMail({
+    from: `"${env.EMAIL_FROM_NAME}" <${env.EMAIL_FROM}>`,
+    to,
+    subject,
+    html: htmlBody,
+  });
+
+  logger.info('Admin email sent', { to, subject });
+}

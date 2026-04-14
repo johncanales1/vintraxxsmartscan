@@ -125,6 +125,18 @@ export const api = {
   deleteServiceAppointment: (id: string) =>
     request<{ success: boolean }>(`/service-appointments/${id}`, { method: 'DELETE' }),
 
+  completeServiceAppointment: (id: string) =>
+    request<{ success: boolean; appointment: ServiceAppointment }>(`/service-appointments/${id}/complete`, { method: 'PATCH' }),
+
+  getAppraisalDetail: (id: string) =>
+    request<{ success: boolean; appraisal: AppraisalDetail }>(`/appraisals/${id}`),
+
+  sendEmail: (to: string, subject: string, body: string) =>
+    request<{ success: boolean }>('/send-email', {
+      method: 'POST',
+      body: JSON.stringify({ to, subject, body }),
+    }),
+
   // Verify Password
   verifyPassword: (password: string) =>
     request<{ success: boolean }>('/verify-password', {
@@ -213,6 +225,7 @@ export interface Scan {
   additionalRepairs: string[];
   scannerDeviceId: string | null;
   userFullName: string | null;
+  vehicleOwnerName: string | null;
   vehicleYear: number | null;
   vehicleMake: string | null;
   vehicleModel: string | null;
@@ -297,7 +310,13 @@ export interface Appraisal {
   pdfUrl: string | null;
   photoCount: number;
   userEmail: string | null;
+  userFullName: string | null;
+  vehicleOwnerName: string | null;
   createdAt: string;
+}
+
+export interface AppraisalDetail extends Appraisal {
+  // Full detail includes all fields from Appraisal
 }
 
 export interface ServiceAppointment {

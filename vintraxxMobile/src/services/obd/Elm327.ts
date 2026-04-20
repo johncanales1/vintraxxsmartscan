@@ -3,7 +3,7 @@
 import { BleManager } from '../ble/BleManager';
 import { logger, LogCategory } from '../../utils/Logger';
 import { ObdResponse, ELM327_INIT_COMMANDS, ELM327_RESPONSES } from './types';
-import { normalizeResponse, isErrorResponse } from './parsers';
+import { normalizeResponse, isErrorResponse, parseNegativeResponse } from './parsers';
 
 export class Elm327Service {
   private static instance: Elm327Service;
@@ -130,13 +130,22 @@ export class Elm327Service {
       logger.debug(LogCategory.OBD, `Received response`, { raw, normalized });
 
       const success = !isErrorResponse(normalized);
-      const error = success ? undefined : this.extractError(normalized);
+      // When the ECU explicitly rejected the request (UDS `7F <svc> <nrc>`),
+      // surface the structured NRC so callers can branch on it
+      // (e.g. `0x22` = permanent DTC / wrong state vs `0x11` = not supported).
+      const negative = !success ? parseNegativeResponse(normalized) : null;
+      const error = success
+        ? undefined
+        : negative
+          ? `NRC 0x${negative.nrc}: ${negative.label}`
+          : this.extractError(normalized);
 
       return {
         raw,
         normalized,
         success,
         error,
+        negativeResponse: negative ?? undefined,
       };
     } catch (error) {
       logger.error(LogCategory.OBD, `Command failed: ${command}`, error);

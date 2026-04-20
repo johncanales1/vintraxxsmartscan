@@ -31,6 +31,8 @@ import { apiService } from '../services/api/ApiService';
 import { useAppStore } from '../store/appStore';
 import { launchCamera, launchImageLibrary, CameraOptions, ImageLibraryOptions } from 'react-native-image-picker';
 import type { AiValuationOutput, AppraisalSummaryData } from '../types/api';
+import { useRecentVins } from '../hooks/useRecentVins';
+import { RecentVinChips } from '../components/RecentVinChips';
 
 // Import SVG icons
 import CheckIcon from '../assets/icons/check.svg';
@@ -107,7 +109,8 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
     mileage: null,
   };
 
-  const { user, addSavedAppraisal } = useAppStore();
+  const { user, addSavedAppraisal, selectedVehicle } = useAppStore();
+  const { vins: recentVins, add: addRecentVin } = useRecentVins();
 
   // --- State ---
   const [vinInput, setVinInput] = useState(defaultVehicle.vin !== 'UNKNOWN' ? defaultVehicle.vin : '');
@@ -283,6 +286,34 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
     }
     decodeAndSetVehicle(vin, 'manual');
   }, [vinInput, decodeAndSetVehicle]);
+
+  // Tap-to-fill from Recent VINs chip row — reduces manual typing for
+  // dealers appraising the same trade-in multiple times.
+  const handleSelectRecentVin = useCallback(
+    (vin: string) => {
+      debugLogger.logEvent('Appraiser: Recent VIN selected', { vin });
+      setVinInput(vin);
+      decodeAndSetVehicle(vin, 'manual');
+      addRecentVin({ vin, source: 'manual' });
+    },
+    [decodeAndSetVehicle, addRecentVin],
+  );
+
+  // One-shot prefill: when the user opens the Appraisal tab directly (no
+  // route params), seed the VIN + vehicle from the most-recently-selected
+  // vehicle in the store so they don't have to re-scan.
+  useEffect(() => {
+    if (vinInput || defaultVehicle.vin !== 'UNKNOWN') return;
+    const fallbackVin = selectedVehicle?.vin;
+    if (fallbackVin && fallbackVin.length === 17) {
+      debugLogger.logEvent('Appraiser: Prefilling VIN from selectedVehicle', {
+        vin: fallbackVin,
+      });
+      setVinInput(fallbackVin);
+      decodeAndSetVehicle(fallbackVin, 'manual');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedVehicle]);
 
   const handleCapturePhoto = useCallback((photoId: string) => {
     debugLogger.logEvent('Appraiser: Photo capture initiated', { photoId });
@@ -593,6 +624,10 @@ export const AppraiserScreen: React.FC<AppraiserScreenProps> = ({ navigation, ro
         </View>
         <Text style={styles.cardTitle}>Vehicle Identification</Text>
       </View>
+
+      {/* One-tap recent VINs — tap to fill + decode, saves the dealer from
+          re-typing a 17-char VIN for repeat trade-ins. */}
+      <RecentVinChips vins={recentVins} onPick={(e) => handleSelectRecentVin(e.vin)} />
 
       <View style={styles.vinRow}>
         <TouchableOpacity style={styles.scanVinButton} onPress={handleScanVin} activeOpacity={0.7}>

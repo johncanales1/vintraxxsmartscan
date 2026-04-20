@@ -30,6 +30,19 @@ export interface ObdResponse {
   normalized: string;
   success: boolean;
   error?: string;
+  /**
+   * Structured UDS negative response code when the ECU explicitly rejected
+   * the request (raw bytes like "7F 04 22"). Populated by Elm327.sendRawCommand
+   * so upstream code can react to specific NRCs (e.g. 0x22 "Conditions Not
+   * Correct" vs 0x11 "Service Not Supported").
+   */
+  negativeResponse?: NegativeResponse;
+}
+
+export interface NegativeResponse {
+  serviceId: string; // e.g. "04" (Clear DTC) or "22" (ReadDataByIdentifier)
+  nrc: string;       // e.g. "22"
+  label: string;     // human-readable NRC label (see parsers.ts NRC_LABELS)
 }
 
 export interface ParsedVin {

@@ -214,7 +214,15 @@ export async function sendEmail(req: Request, res: Response, next: NextFunction)
     }
     await adminService.sendAdminEmail(to, subject, body || '');
     res.json({ success: true, message: 'Email sent successfully.' });
-  } catch (err) { next(err); }
+  } catch (err) {
+    // Respond 503 when the email provider is down instead of leaking a 500.
+    const { EmailServiceUnavailableError } = await import('../utils/errors');
+    if (err instanceof EmailServiceUnavailableError) {
+      res.status(503).json({ success: false, code: err.code, error: err.message });
+      return;
+    }
+    next(err);
+  }
 }
 
 // ── Backup ────────────────────────────────────────────────────────────────────

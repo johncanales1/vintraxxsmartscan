@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import path from 'path';
 import { env } from './config/env';
 import { errorHandler } from './middleware/errorHandler';
+import { requestIdMiddleware } from './middleware/requestId';
 import authRoutes from './routes/auth.routes';
 import scanRoutes from './routes/scan.routes';
 import appraisalRoutes from './routes/appraisal.routes';
@@ -11,16 +12,23 @@ import dealerRoutes from './routes/dealer.routes';
 import inspectionRoutes from './routes/inspection.routes';
 import adminRoutes from './routes/admin.routes';
 import scheduleRoutes from './routes/schedule.routes';
+import debugRoutes from './routes/debug.routes';
 import logger from './utils/logger';
+import { getSmtpHealth, verifyTransporterAtBoot } from './services/appraisal-email.service';
 
 const app = express();
 
 // Trust nginx reverse proxy headers for rate limiting
 app.set('trust proxy', 1);
 
+// Attach / propagate X-Request-Id (correlation ID) BEFORE any other middleware
+// so every log line in this request has the same id as the mobile client.
+app.use(requestIdMiddleware);
+
 // Request logging middleware for debugging
 app.use((req, res, next) => {
   logger.info('Incoming request', {
+    requestId: req.requestId,
     method: req.method,
     url: req.url,
     origin: req.headers.origin,
@@ -86,8 +94,8 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
-  exposedHeaders: ['Set-Cookie']
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With', 'X-Request-Id'],
+  exposedHeaders: ['Set-Cookie', 'X-Request-Id']
 };
 app.use(cors(corsOptions));
 
@@ -96,8 +104,15 @@ app.options('*', cors(corsOptions));
 
 app.use(express.json({ limit: '50mb' }));
 
-app.get('/api/v1/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: Date.now() });
+app.get('/api/v1/health', async (req, res) => {
+  const smtp = await getSmtpHealth();
+  res.json({
+    status: smtp.ok ? 'ok' : 'degraded',
+    timestamp: Date.now(),
+    requestId: req.requestId,
+    smtp,
+    env: env.NODE_ENV,
+  });
 });
 
 // Root endpoint - serve API documentation HTML
@@ -118,11 +133,18 @@ app.use('/api/v1/dealer', dealerRoutes);
 app.use('/api/v1/inspection', inspectionRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/schedule', scheduleRoutes);
+app.use('/api/v1/debug', debugRoutes);
 
 app.use(errorHandler);
 
 app.listen(env.PORT, '0.0.0.0', () => {
   logger.info(`VinTraxx backend running on 0.0.0.0:${env.PORT} [${env.NODE_ENV}]`);
+  // Kick off a one-time SMTP verify so ops can see at boot whether the email
+  // provider is healthy. Non-blocking: a failure here does not prevent the
+  // API from serving traffic (persist-first flow still works).
+  void verifyTransporterAtBoot().then((ok) => {
+    logger.info('SMTP readiness check complete', { smtpReady: ok });
+  });
 });
 
 export default app;

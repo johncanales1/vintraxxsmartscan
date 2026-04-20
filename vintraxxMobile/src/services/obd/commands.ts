@@ -390,23 +390,93 @@ export class ObdCommands {
   /**
    * Clear Diagnostic Trouble Codes and reset MIL
    * Mode 04
+   *
+   * Returns a structured result so the UI can display a meaningful reason
+   * instead of a generic "Could not clear" toast:
+   *   - `reason: 'permanent-dtc'` — the ECU reports permanent DTCs via Mode
+   *     0A; permanent codes cannot be cleared by OBD-II spec, the physical
+   *     repair must be made and the monitor re-run first.
+   *   - `reason: 'nrc-22'` — ECU answered `7F 04 22` (Conditions Not Correct),
+   *     typically because the engine is running or the adapter protocol is
+   *     not in the right state.
+   *   - `reason: 'nrc-<hex>'` — any other UDS negative response, with the
+   *     human-readable NRC label in `message`.
+   *   - `reason: 'unknown'` — the adapter failed for a non-NRC reason.
    */
-  async clearDTCs(): Promise<boolean> {
+  async clearDTCs(): Promise<{
+    success: boolean;
+    reason?: 'permanent-dtc' | 'nrc-22' | 'unknown' | string;
+    nrc?: string;
+    message?: string;
+    permanentDtcs?: string[];
+  }> {
     logger.info(LogCategory.OBD, 'Clearing DTCs');
 
+    // ── 1. Pre-check: permanent DTCs block Mode 04 on every compliant ECU ──
+    try {
+      const permanent = await this.readPermanentDTCs();
+      if (permanent.length > 0) {
+        const codes = permanent.map((p) => p.code);
+        logger.warn(LogCategory.OBD, 'Clear DTCs blocked by permanent codes', { codes });
+        return {
+          success: false,
+          reason: 'permanent-dtc',
+          permanentDtcs: codes,
+          message:
+            `Cannot clear — ${codes.length} permanent DTC${codes.length > 1 ? 's' : ''} present (${codes.join(', ')}). ` +
+            'Per OBD-II spec, permanent codes can only clear after the repair is made and the relevant monitor runs successfully.',
+        };
+      }
+    } catch (permanentErr) {
+      // Fall through and try Mode 04 anyway — some adapters don't support 0A.
+      logger.warn(LogCategory.OBD, 'Permanent DTC pre-check failed, proceeding with Mode 04', {
+        error: permanentErr instanceof Error ? permanentErr.message : permanentErr,
+      });
+    }
+
+    // ── 2. Issue Mode 04 and classify the response ─────────────────────────
     try {
       const response = await this.elm327.sendCommand(ObdMode.CLEAR_DTC);
 
       if (response.success) {
         logger.info(LogCategory.OBD, 'DTCs cleared successfully');
-        return true;
-      } else {
-        logger.error(LogCategory.OBD, 'Clear DTCs failed', { error: response.error });
-        return false;
+        return { success: true };
       }
+
+      const nrc = response.negativeResponse?.nrc;
+      if (nrc === '22') {
+        logger.error(LogCategory.OBD, 'Clear DTCs rejected with NRC 0x22', { response: response.normalized });
+        return {
+          success: false,
+          reason: 'nrc-22',
+          nrc,
+          message:
+            'Vehicle rejected clear request (NRC 0x22 Conditions Not Correct). Turn the ignition to ON with the engine OFF, then try again. If the fault is still active, repair is required before clearing.',
+        };
+      }
+      if (nrc) {
+        logger.error(LogCategory.OBD, `Clear DTCs rejected with NRC 0x${nrc}`, {
+          response: response.normalized,
+          label: response.negativeResponse?.label,
+        });
+        return {
+          success: false,
+          reason: `nrc-${nrc.toLowerCase()}`,
+          nrc,
+          message: `Vehicle rejected clear request: ${response.negativeResponse?.label ?? 'unknown'} (NRC 0x${nrc}).`,
+        };
+      }
+
+      logger.error(LogCategory.OBD, 'Clear DTCs failed', { error: response.error });
+      return {
+        success: false,
+        reason: 'unknown',
+        message: response.error || 'The adapter did not confirm the clear command.',
+      };
     } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
       logger.error(LogCategory.OBD, 'Clear DTCs exception', error);
-      return false;
+      return { success: false, reason: 'unknown', message: msg };
     }
   }
 

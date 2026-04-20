@@ -22,6 +22,8 @@ import { typography } from '../theme/typography';
 import { logger, LogCategory } from '../utils/Logger';
 import { apiService } from '../services/api/ApiService';
 import { useAppStore } from '../store/appStore';
+import { useRecentVins } from '../hooks/useRecentVins';
+import { RecentVinChips } from '../components/RecentVinChips';
 
 const PLACEHOLDER_COLOR = '#B0B8C4';
 
@@ -66,6 +68,7 @@ interface FormErrors {
 export const ScheduleScreen: React.FC = () => {
   const navigation = useNavigation();
   const { selectedVehicle } = useAppStore();
+  const { vins: recentVins, add: addRecentVin } = useRecentVins();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showServiceTypePicker, setShowServiceTypePicker] = useState(false);
   const [formData, setFormData] = useState<FormData>({
@@ -117,9 +120,23 @@ export const ScheduleScreen: React.FC = () => {
       onVinScanned: (vin: string) => {
         logger.info(LogCategory.APP, 'ScheduleScreen: VIN received from camera', { vin });
         updateField('vin', vin);
+        // Record source=camera so the Recent VINs chips can distinguish how
+        // each VIN was captured (useful for debugging OCR vs barcode).
+        addRecentVin({ vin, source: 'camera' });
       },
     });
-  }, [navigation]);
+  }, [navigation, addRecentVin]);
+
+  // Tap-to-fill from Recent VINs chip row. Saves the dealer from manually
+  // typing a 17-char VIN for a vehicle they recently scanned or appraised.
+  const handleSelectRecentVin = useCallback(
+    (vin: string) => {
+      logger.info(LogCategory.APP, 'ScheduleScreen: Recent VIN selected', { vin });
+      updateField('vin', vin);
+      addRecentVin({ vin, source: 'manual' });
+    },
+    [addRecentVin],
+  );
 
   const updateField = (field: keyof FormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -230,42 +247,81 @@ export const ScheduleScreen: React.FC = () => {
     }
 
     setIsSubmitting(true);
-    logger.info(LogCategory.APP, 'ScheduleScreen: Submitting schedule request', {
-      serviceType: formData.serviceType,
-      vehicle: formData.vehicle,
-    });
-
-    try {
-      const result = await apiService.submitScheduleRequest({
-        name: formData.name.trim(),
-        email: formData.email.trim(),
-        phone: formData.phone.trim(),
-        dealership: formData.dealership.trim(),
-        vehicle: formData.vehicle.trim(),
-        vin: formData.vin.trim(),
+    // Start a correlation ID so every backend log entry for this submission
+    // shares the same requestId as the mobile logs. Helps us diagnose
+    // production "I never got a confirmation email" reports in seconds.
+    await logger.withRequestId(async () => {
+      logger.info(LogCategory.SCHEDULE, 'ScheduleScreen: Submitting schedule request', {
         serviceType: formData.serviceType,
-        preferredDate: formData.preferredDate,
-        preferredTime: formData.preferredTime,
-        additionalNotes: formData.additionalNotes.trim() || undefined,
+        vehicle: formData.vehicle,
       });
 
-      if (result.success) {
-        Alert.alert(
-          'Request Submitted',
-          'Your service appointment request has been submitted. You will receive a confirmation email shortly.',
-          [{ text: 'OK', onPress: clearForm }]
-        );
-        logger.info(LogCategory.APP, 'ScheduleScreen: Request submitted successfully');
-      } else {
-        Alert.alert('Submission Failed', result.message || 'Failed to submit request. Please try again.');
-        logger.warn(LogCategory.APP, 'ScheduleScreen: Request submission failed', { message: result.message });
+      try {
+        const result = await apiService.submitScheduleRequest({
+          name: formData.name.trim(),
+          email: formData.email.trim(),
+          phone: formData.phone.trim(),
+          dealership: formData.dealership.trim(),
+          vehicle: formData.vehicle.trim(),
+          vin: formData.vin.trim(),
+          serviceType: formData.serviceType,
+          preferredDate: formData.preferredDate,
+          preferredTime: formData.preferredTime,
+          additionalNotes: formData.additionalNotes.trim() || undefined,
+        });
+
+        // Persist a successfully-submitted VIN to Recent VINs (source:manual
+        // since the user typed/pasted it; camera/ocr already saved theirs).
+        if (result.success && formData.vin && formData.vin.length === 17) {
+          addRecentVin({ vin: formData.vin.trim().toUpperCase(), source: 'manual' });
+        }
+
+        if (result.success) {
+          // 207 path — appointment saved but confirmation email failed. Make
+          // this very explicit so the user doesn't retry and create a duplicate.
+          if (result.warning) {
+            Alert.alert(
+              'Appointment Saved',
+              `${result.message ?? 'Your appointment has been booked.'}\n\n${result.warning}`,
+              [{ text: 'OK', onPress: clearForm }],
+            );
+            logger.warn(LogCategory.SCHEDULE, 'ScheduleScreen: Request saved with email-delivery warning', {
+              reason: result.reason,
+              appointmentId: result.appointmentId,
+            });
+          } else {
+            Alert.alert(
+              'Request Submitted',
+              result.message ??
+                'Your service appointment request has been submitted. You will receive a confirmation email shortly.',
+              [{ text: 'OK', onPress: clearForm }],
+            );
+            logger.info(LogCategory.SCHEDULE, 'ScheduleScreen: Request submitted successfully', {
+              appointmentId: result.appointmentId,
+            });
+          }
+        } else if (result.emailServiceDown) {
+          // 503 path — SMTP verified-down. Surface a distinct, actionable
+          // dialog that tells the user the issue is on our side + offers an
+          // alternative contact path instead of spamming retry.
+          Alert.alert(
+            'Email System Temporarily Unavailable',
+            `${result.message}\n\nYour request was not submitted. Please call the service department directly, or try again in a few minutes.`,
+          );
+          logger.error(LogCategory.SCHEDULE, 'ScheduleScreen: Email service reported down', {
+            reason: result.reason,
+          });
+        } else {
+          Alert.alert('Submission Failed', result.message || 'Failed to submit request. Please try again.');
+          logger.warn(LogCategory.SCHEDULE, 'ScheduleScreen: Request submission failed', { message: result.message });
+        }
+      } catch (error) {
+        Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+        logger.error(LogCategory.SCHEDULE, 'ScheduleScreen: Request submission error', error);
+      } finally {
+        setIsSubmitting(false);
       }
-    } catch (error) {
-      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
-      logger.error(LogCategory.APP, 'ScheduleScreen: Request submission error', error);
-    } finally {
-      setIsSubmitting(false);
-    }
+    });
   };
 
   // Using simple text inputs, no need for date/time formatting functions
@@ -383,6 +439,9 @@ export const ScheduleScreen: React.FC = () => {
 
             {/* Section: Vehicle Info */}
             <Text style={styles.sectionTitle}>Vehicle Details</Text>
+
+            {/* One-tap Recent VINs — fills the VIN field without typing. */}
+            <RecentVinChips vins={recentVins} onPick={(e) => handleSelectRecentVin(e.vin)} />
 
             {/* Row: Vehicle / VIN */}
             <View style={styles.row}>

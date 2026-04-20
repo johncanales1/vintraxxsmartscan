@@ -499,9 +499,12 @@ export async function getDealerReportDetail(req: Request, res: Response, next: N
 
 // ================================================================
 // POST /api/v1/dealer/schedule-appointment
-// Send service appointment request email to john@vintraxx.com
+// Persist-first + fire-and-forget email to john@vintraxx.com. Same pattern
+// as `/api/v1/schedule/submit` — the appointment is saved before the email
+// is attempted so an SMTP outage cannot lose the request.
 // ================================================================
 export async function scheduleAppointment(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const requestId = req.requestId ?? 'unknown';
   try {
     const {
       name,
@@ -620,18 +623,11 @@ export async function scheduleAppointment(req: Request, res: Response, next: Nex
 </body>
 </html>`;
 
-    await transporter.sendMail({
-      from: `"${env.EMAIL_FROM_NAME}" <${env.EMAIL_FROM}>`,
-      to: 'john@vintraxx.com',
-      replyTo: email,
-      subject: `Service Appointment Request — ${name} — ${serviceType}`,
-      html: htmlBody,
-    });
-
-    // Save appointment to DB for activity history
+    // ── 1. Persist FIRST — single source of truth, survives SMTP outage ──
     const userId = req.user!.userId;
+    let appointmentId: string;
     try {
-      await prisma.serviceAppointment.create({
+      const saved = await prisma.serviceAppointment.create({
         data: {
           userId,
           name,
@@ -647,15 +643,87 @@ export async function scheduleAppointment(req: Request, res: Response, next: Nex
           status: 'pending',
         },
       });
+      appointmentId = saved.id;
+      logger.info('Dealer schedule appointment persisted', {
+        requestId,
+        appointmentId,
+        userId,
+        name,
+        serviceType,
+      });
     } catch (dbErr) {
-      logger.warn('Failed to save service appointment to DB', { error: (dbErr as Error).message });
+      logger.error('Dealer schedule appointment DB insert failed', {
+        requestId,
+        userId,
+        error: (dbErr as Error).message,
+      });
+      res.status(500).json({
+        success: false,
+        code: 'SCHEDULE_SAVE_FAILED',
+        message: 'Could not save your appointment request. Please try again.',
+      });
+      return;
     }
 
-    logger.info('Schedule appointment email sent', { name, email, serviceType, preferredDate });
+    // ── 2. Fire email in background — never block the response ─────────
+    setImmediate(async () => {
+      let sentAt: Date | null = null;
+      let emailError: string | null = null;
+      try {
+        await transporter.sendMail({
+          from: `"${env.EMAIL_FROM_NAME}" <${env.EMAIL_FROM}>`,
+          to: 'john@vintraxx.com',
+          replyTo: email,
+          subject: `Service Appointment Request — ${name} — ${serviceType}`,
+          html: htmlBody,
+        });
+        sentAt = new Date();
+        logger.info('Dealer schedule admin email sent', {
+          requestId,
+          appointmentId,
+          name,
+          serviceType,
+        });
+      } catch (err) {
+        emailError = (err as Error).message;
+        logger.error('Dealer schedule admin email failed', {
+          requestId,
+          appointmentId,
+          error: emailError,
+        });
+      }
 
-    res.json({ success: true, message: 'Appointment request submitted successfully.' });
+      try {
+        await prisma.serviceAppointment.update({
+          where: { id: appointmentId },
+          data: {
+            adminEmailSentAt: sentAt,
+            emailLastError: emailError ? emailError.slice(0, 1000) : null,
+            emailAttempts: { increment: 1 },
+            status: sentAt ? 'confirmed' : 'email_queued',
+          },
+        });
+      } catch (updateErr) {
+        logger.error('Dealer schedule appointment status update failed', {
+          requestId,
+          appointmentId,
+          error: (updateErr as Error).message,
+        });
+      }
+    });
+
+    // ── 3. Respond success immediately — request is persisted ──────────
+    res.json({
+      success: true,
+      appointmentId,
+      message: 'Appointment request submitted successfully.',
+      emailStatus: 'queued',
+    });
   } catch (error) {
-    logger.error('Schedule appointment email failed', { error: (error as Error).message });
+    logger.error('Dealer schedule appointment failed', {
+      requestId,
+      error: (error as Error).message,
+    });
     next(error);
   }
 }
@@ -713,19 +781,41 @@ export async function sendDealerEmail(req: Request, res: Response, next: NextFun
 </body>
 </html>`;
 
-    await transporter.sendMail({
-      from: `"${env.EMAIL_FROM_NAME}" <${env.EMAIL_FROM}>`,
-      to,
-      replyTo: userEmail,
-      subject,
-      html: htmlBody,
-    });
+    try {
+      await transporter.sendMail({
+        from: `"${env.EMAIL_FROM_NAME}" <${env.EMAIL_FROM}>`,
+        to,
+        replyTo: userEmail,
+        subject,
+        html: htmlBody,
+      });
+    } catch (sendErr) {
+      // Classify SMTP outages so the dealer portal shows a friendly
+      // "temporarily unavailable" banner rather than an ambiguous 500.
+      const { EmailServiceUnavailableError, isSmtpAvailabilityError } = await import('../utils/errors');
+      if (isSmtpAvailabilityError(sendErr)) {
+        throw new EmailServiceUnavailableError(
+          sendErr instanceof Error ? sendErr.message : String(sendErr),
+        );
+      }
+      throw sendErr;
+    }
 
     logger.info('Dealer email sent', { userId, to, subject });
 
     res.json({ success: true, message: 'Email sent successfully.' });
   } catch (error) {
-    logger.error('Dealer send email failed', { error: (error as Error).message });
+    const msg = (error as Error).message;
+    const { EmailServiceUnavailableError } = await import('../utils/errors');
+    logger.error('Dealer send email failed', {
+      requestId: req.requestId,
+      error: msg,
+      classified: error instanceof EmailServiceUnavailableError ? 'EMAIL_UNAVAILABLE' : 'UNKNOWN',
+    });
+    if (error instanceof EmailServiceUnavailableError) {
+      res.status(503).json({ success: false, code: error.code, error: error.message });
+      return;
+    }
     next(error);
   }
 }

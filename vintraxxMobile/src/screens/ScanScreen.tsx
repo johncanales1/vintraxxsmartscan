@@ -45,6 +45,9 @@ import ConnectingIcon from '../assets/icons/connecting.svg';
 import ReadingVinIcon from '../assets/icons/readingvin.svg';
 import ReadingCodeIcon from '../assets/icons/readingcode.svg';
 import BuildingReportIcon from '../assets/icons/buildingreport.svg';
+import CodeResetIcon from '../assets/icons/codereset.svg';
+import ScanInfoIcon from '../assets/icons/scaninfo.svg';
+import { RadialLightRays } from '../components/RadialLightRays';
 
 type ScanStatus = 'idle' | 'scanning' | 'complete';
 
@@ -180,17 +183,8 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
     { id: 'building_report', label: 'Building Report', completeLabel: 'Report Built', status: 'pending', progress: 0 },
   ]);
   
-  // Animation values
+  // Animation value for the spinning star (rotation only).
   const spinValue = useRef(new Animated.Value(0)).current;
-  const wave1Scale = useRef(new Animated.Value(0)).current;
-  const wave1Opacity = useRef(new Animated.Value(0.7)).current;
-  const wave2Scale = useRef(new Animated.Value(0)).current;
-  const wave2Opacity = useRef(new Animated.Value(0.7)).current;
-  const wave3Scale = useRef(new Animated.Value(0)).current;
-  const wave3Opacity = useRef(new Animated.Value(0.7)).current;
-  const wave4Scale = useRef(new Animated.Value(0)).current;
-  const wave4Opacity = useRef(new Animated.Value(0.7)).current;
-  const colorCycleAnim = useRef(new Animated.Value(0)).current;
   const [cancelRequested, setCancelRequested] = useState(false);
   const [stockNumber, setStockNumber] = useState('');
   const [showStockNumber, setShowStockNumber] = useState(false);
@@ -201,81 +195,26 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
   const [errorModalMessage, setErrorModalMessage] = useState<string>('');
   const [errorModalStack, setErrorModalStack] = useState<string>('');
   
-  // Start/stop animations based on scan status
+  // Spin the star while scanning. Native driver is fine since we only animate
+  // rotation (the rays + glow live inside RadialLightRays and animate themselves).
   useEffect(() => {
-    if (scanStatus === 'scanning') {
-      // Smooth spin animation - using useNativeDriver: false to be consistent with other animations
-      const spinAnimation = Animated.loop(
-        Animated.timing(spinValue, {
-          toValue: 1,
-          duration: 4000,
-          easing: Easing.linear,
-          useNativeDriver: false,
-        })
-      );
-
-      // Water wave ripple: each wave starts from center (scale 0) and expands out
-      // IMPORTANT: Using useNativeDriver: false because we mix with color interpolation on same views
-      const createWaveAnimation = (scaleVal: Animated.Value, opacityVal: Animated.Value, delay: number) => {
-        return Animated.loop(
-          Animated.sequence([
-            Animated.delay(delay),
-            Animated.parallel([
-              Animated.timing(scaleVal, {
-                toValue: 2.2,
-                duration: 2400,
-                easing: Easing.out(Easing.cubic),
-                useNativeDriver: false,
-              }),
-              Animated.timing(opacityVal, {
-                toValue: 0,
-                duration: 2400,
-                easing: Easing.out(Easing.cubic),
-                useNativeDriver: false,
-              }),
-            ]),
-            Animated.parallel([
-              Animated.timing(scaleVal, { toValue: 0, duration: 0, useNativeDriver: false }),
-              Animated.timing(opacityVal, { toValue: 0.6, duration: 0, useNativeDriver: false }),
-            ]),
-          ])
-        );
-      };
-
-      const w1 = createWaveAnimation(wave1Scale, wave1Opacity, 0);
-      const w2 = createWaveAnimation(wave2Scale, wave2Opacity, 600);
-      const w3 = createWaveAnimation(wave3Scale, wave3Opacity, 1200);
-      const w4 = createWaveAnimation(wave4Scale, wave4Opacity, 1800);
-
-      // Color cycle: 0→1 = red flow, 1→2 = blue flow, loops
-      const colorCycle = Animated.loop(
-        Animated.sequence([
-          Animated.timing(colorCycleAnim, { toValue: 1, duration: 3000, easing: Easing.linear, useNativeDriver: false }),
-          Animated.timing(colorCycleAnim, { toValue: 2, duration: 3000, easing: Easing.linear, useNativeDriver: false }),
-          Animated.timing(colorCycleAnim, { toValue: 0, duration: 0, useNativeDriver: false }),
-        ])
-      );
-
-      spinAnimation.start();
-      w1.start();
-      w2.start();
-      w3.start();
-      w4.start();
-      colorCycle.start();
-
-      return () => {
-        spinAnimation.stop();
-        w1.stop(); w2.stop(); w3.stop(); w4.stop();
-        colorCycle.stop();
-        spinValue.setValue(0);
-        wave1Scale.setValue(0); wave1Opacity.setValue(0.7);
-        wave2Scale.setValue(0); wave2Opacity.setValue(0.7);
-        wave3Scale.setValue(0); wave3Opacity.setValue(0.7);
-        wave4Scale.setValue(0); wave4Opacity.setValue(0.7);
-        colorCycleAnim.setValue(0);
-      };
+    if (scanStatus !== 'scanning') {
+      return;
     }
-  }, [scanStatus, spinValue, wave1Scale, wave1Opacity, wave2Scale, wave2Opacity, wave3Scale, wave3Opacity, wave4Scale, wave4Opacity, colorCycleAnim]);
+    const spinAnimation = Animated.loop(
+      Animated.timing(spinValue, {
+        toValue: 1,
+        duration: 4000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    spinAnimation.start();
+    return () => {
+      spinAnimation.stop();
+      spinValue.setValue(0);
+    };
+  }, [scanStatus, spinValue]);
   const [showDebugModal, setShowDebugModal] = useState(false);
   
     
@@ -519,7 +458,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
   const handleClearVehicleLight = useCallback(async () => {
     Alert.alert(
       'Clear Vehicle Light',
-      'This will clear all diagnostic trouble codes and turn off the check engine light. Continue?',
+      'This will attempt to clear all non-permanent diagnostic trouble codes and turn off the check engine light. Permanent codes (stored in-permanent memory) can only clear after the fault is physically repaired and the relevant monitor runs. Continue?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -528,13 +467,46 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
           onPress: async () => {
             try {
               logger.info(LogCategory.APP, 'User requested clear vehicle light');
-              const success = await scannerService.clearDTCs();
-              if (success) {
-                Alert.alert('Success', 'Vehicle light cleared successfully. The check engine light should turn off.');
+              const result = await scannerService.clearDTCs();
+              if (result.success) {
+                Alert.alert(
+                  'Success',
+                  'Vehicle light cleared successfully. The check engine light should turn off after the next key cycle.',
+                );
                 logger.info(LogCategory.APP, 'Vehicle light cleared successfully');
+                return;
+              }
+
+              // Structured, user-facing reasons so the user understands WHY
+              // the ECU rejected the clear request.
+              logger.warn(LogCategory.APP, 'Clear vehicle light rejected', {
+                reason: result.reason,
+                nrc: result.nrc,
+                permanentDtcs: result.permanentDtcs,
+              });
+
+              if (result.reason === 'permanent-dtc') {
+                Alert.alert(
+                  'Repair Required',
+                  result.message ??
+                    'Cannot clear — permanent diagnostic codes are stored on this vehicle. Per OBD-II spec, these only clear after the physical repair is made and the relevant readiness monitor runs successfully.',
+                );
+              } else if (result.reason === 'nrc-22') {
+                Alert.alert(
+                  'Vehicle Not Ready',
+                  result.message ??
+                    'Vehicle rejected the clear request (conditions not correct). Turn the ignition to ON with the engine OFF and try again.',
+                );
+              } else if (result.nrc) {
+                Alert.alert(
+                  'Clear Rejected',
+                  result.message ?? `Vehicle rejected clear request (NRC 0x${result.nrc}).`,
+                );
               } else {
-                Alert.alert('Failed', 'Could not clear vehicle light. Please try again.');
-                logger.warn(LogCategory.APP, 'Clear vehicle light returned false');
+                Alert.alert(
+                  'Clear Failed',
+                  result.message ?? 'Could not clear vehicle light. Please try again.',
+                );
               }
             } catch (error) {
               const msg = error instanceof Error ? error.message : 'Unknown error';
@@ -695,37 +667,12 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
 
           {scanStatus === 'scanning' && (
             <View style={styles.progressContainer}>
-              {/* Spinning Star with Water Wave Ripples + Glow */}
+              {/* Spinning star with modern radial light-ray animation */}
               <View style={styles.scanAnimationContainer}>
-                {/* Water wave ripple rings with color cycling */}
-                {[
-                  { scale: wave1Scale, opacity: wave1Opacity },
-                  { scale: wave2Scale, opacity: wave2Opacity },
-                  { scale: wave3Scale, opacity: wave3Opacity },
-                  { scale: wave4Scale, opacity: wave4Opacity },
-                ].map((wave, idx) => (
-                  <Animated.View
-                    key={`wave-${idx}`}
-                    style={[
-                      styles.waveRing,
-                      {
-                        transform: [{ scale: wave.scale }],
-                        opacity: wave.opacity,
-                        borderColor: colorCycleAnim.interpolate({
-                          inputRange: [0, 0.5, 1, 1.5, 2],
-                          outputRange: [
-                            '#DC2626',  // red
-                            '#EF4444',  // light red
-                            '#FFFFFF',  // white (transition)
-                            '#60A5FA',  // light blue
-                            '#2563EB',  // blue
-                          ],
-                        }),
-                      },
-                    ]}
-                  />
-                ))}
-                {/* Spinning star image - centered */}
+                {/* Colored rays + pulsing glow (own animation lifecycle) */}
+                <RadialLightRays size={260} innerRadius={96} active />
+
+                {/* Spinning star image - matches idle size, pivots on visual centroid */}
                 <Animated.Image
                   source={require('../assets/images/scan.png')}
                   style={[
@@ -805,30 +752,63 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
                   : 'No issues detected with your vehicle'}
               </Text>
               <View style={styles.completeButtons}>
-                <Button
-                  title="Clear Vehicle Light"
+                {/* Clear Vehicle Light action card */}
+                <TouchableOpacity
                   onPress={handleClearVehicleLight}
-                  variant="secondary"
-                  size="medium"
-                  fullWidth
-                />
-                <Button
-                  title="View Full Report"
-                  onPress={handleViewFullReport}
-                  variant="primary"
-                  size="large"
-                  fullWidth
-                  style={styles.secondaryButton}
-                />
+                  activeOpacity={0.85}
+                  style={styles.actionCard}
+                >
+                  <View style={styles.actionCardIconBadge}>
+                    <CodeResetIcon width={24} height={24} color={colors.primary.navy} />
+                  </View>
+                  <View style={styles.actionCardTextWrap}>
+                    <Text style={styles.actionCardTitle}>Clear Vehicle Light</Text>
+                    <Text style={styles.actionCardSubtitle}>Turn off the check engine light</Text>
+                  </View>
+                  <Text style={styles.actionCardChevron}>›</Text>
+                </TouchableOpacity>
 
-                {/* Additional Repairs Toggle */}
+                {/* View Full Report primary action card */}
+                <TouchableOpacity
+                  onPress={handleViewFullReport}
+                  activeOpacity={0.9}
+                  style={[styles.actionCard, styles.actionCardPrimary]}
+                >
+                  <View style={styles.actionCardHighlight} pointerEvents="none" />
+                  <View style={[styles.actionCardIconBadge, styles.actionCardIconBadgePrimary]}>
+                    <ScanInfoIcon width={22} height={22} color={colors.text.inverse} />
+                  </View>
+                  <View style={styles.actionCardTextWrap}>
+                    <Text style={[styles.actionCardTitle, styles.actionCardTitlePrimary]}>
+                      View Full Report
+                    </Text>
+                    <Text style={[styles.actionCardSubtitle, styles.actionCardSubtitlePrimary]}>
+                      See diagnostics, costs & repairs
+                    </Text>
+                  </View>
+                  <Text style={[styles.actionCardChevron, styles.actionCardChevronPrimary]}>›</Text>
+                </TouchableOpacity>
+
+                {/* Additional Repairs card */}
                 <View style={styles.additionalRepairsContainer}>
                   <TouchableOpacity
                     style={styles.additionalRepairsToggle}
                     onPress={() => setShowAdditionalRepairs(!showAdditionalRepairs)}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.additionalRepairsToggleText}>Additional Repairs</Text>
+                    <View style={styles.additionalRepairsHeaderLeft}>
+                      <View style={styles.additionalRepairsIconBadge}>
+                        <ToolIcon width={18} height={18} color={colors.primary.navy} />
+                      </View>
+                      <Text style={styles.additionalRepairsToggleText}>Additional Repairs</Text>
+                      {selectedAdditionalRepairs.length > 0 && (
+                        <View style={styles.selectedCountChip}>
+                          <Text style={styles.selectedCountChipText}>
+                            {selectedAdditionalRepairs.length} selected
+                          </Text>
+                        </View>
+                      )}
+                    </View>
                     <View style={[styles.toggleSwitch, showAdditionalRepairs && styles.toggleSwitchOn]}>
                       <View style={[styles.toggleKnob, showAdditionalRepairs && styles.toggleKnobOn]} />
                     </View>
@@ -845,12 +825,16 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
                         'Interior Odor Elimination',
                         'Seat & Upholstery Restoration',
                         'Missing Spare Key',
-                      ].map((item) => {
+                      ].map((item, idx, arr) => {
                         const isSelected = selectedAdditionalRepairs.includes(item);
+                        const isLast = idx === arr.length - 1;
                         return (
                           <TouchableOpacity
                             key={item}
-                            style={styles.repairCheckboxRow}
+                            style={[
+                              styles.repairCheckboxRow,
+                              !isLast && styles.repairCheckboxRowDivider,
+                            ]}
                             onPress={() => {
                               setSelectedAdditionalRepairs((prev) =>
                                 isSelected ? prev.filter((r) => r !== item) : [...prev, item]
@@ -859,9 +843,18 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
                             activeOpacity={0.7}
                           >
                             <View style={[styles.checkbox, isSelected && styles.checkboxChecked]}>
-                              {isSelected && <Text style={styles.checkboxCheck}>✓</Text>}
+                              {isSelected && (
+                                <CheckIcon width={14} height={14} color={colors.text.inverse} />
+                              )}
                             </View>
-                            <Text style={styles.repairCheckboxLabel}>{item}</Text>
+                            <Text
+                              style={[
+                                styles.repairCheckboxLabel,
+                                isSelected && styles.repairCheckboxLabelSelected,
+                              ]}
+                            >
+                              {item}
+                            </Text>
                           </TouchableOpacity>
                         );
                       })}
@@ -1080,24 +1073,20 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   scanAnimationContainer: {
-    width: 220,
-    height: 220,
+    width: 260,
+    height: 260,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: spacing.lg,
   },
-  waveRing: {
-    position: 'absolute',
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    borderWidth: 2.5,
-    borderColor: '#DC2626',
-    backgroundColor: 'transparent',
-  },
   scanningStar: {
-    width: 120,
-    height: 120,
+    width: 180,
+    height: 180,
+    // 5-point star centroid sits ~5% below the image bounding-box centre
+    // (top tip is farther from centre than the two bottom tips). Shift the
+    // rotation pivot down so the star spins cleanly around its visual centre
+    // instead of wobbling.
+    transformOrigin: '50% 55%',
   },
   scanningTitle: {
     ...typography.styles.h3,
@@ -1177,11 +1166,85 @@ const styles = StyleSheet.create({
     width: '100%',
     gap: spacing.md,
   },
-  secondaryButton: {
-    marginTop: spacing.sm,
-  },
   cancelButton: {
     marginTop: spacing.xl,
+  },
+  // Modern action cards (Clear Vehicle Light / View Full Report)
+  actionCard: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background.secondary,
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 3,
+    overflow: 'hidden',
+  },
+  actionCardPrimary: {
+    backgroundColor: colors.primary.red,
+    borderColor: colors.primary.redDark,
+    shadowColor: colors.primary.red,
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  actionCardHighlight: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '50%',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  actionCardIconBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.status.infoLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.md,
+  },
+  actionCardIconBadgePrimary: {
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+  },
+  actionCardTextWrap: {
+    flex: 1,
+  },
+  actionCardTitle: {
+    ...typography.styles.body,
+    color: colors.primary.navy,
+    fontWeight: typography.fontWeight.bold,
+    fontSize: typography.fontSize.md,
+  },
+  actionCardTitlePrimary: {
+    color: colors.text.inverse,
+  },
+  actionCardSubtitle: {
+    ...typography.styles.caption,
+    color: colors.text.secondary,
+    marginTop: 2,
+  },
+  actionCardSubtitlePrimary: {
+    color: 'rgba(255, 255, 255, 0.85)',
+  },
+  actionCardChevron: {
+    fontSize: 30,
+    lineHeight: 30,
+    color: colors.text.muted,
+    marginLeft: spacing.sm,
+    fontWeight: '400',
+  },
+  actionCardChevronPrimary: {
+    color: 'rgba(255, 255, 255, 0.9)',
   },
   mockSection: {
     marginBottom: spacing.lg,
@@ -1224,58 +1287,104 @@ const styles = StyleSheet.create({
     ...typography.styles.bodySmall,
     color: colors.text.secondary,
   },
-  // Additional Repairs
+  // Additional Repairs — modern card style
   additionalRepairsContainer: {
     width: '100%',
-    marginTop: spacing.lg,
+    marginTop: spacing.md,
     backgroundColor: colors.background.secondary,
-    borderRadius: spacing.inputRadius,
-    padding: spacing.md,
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 2,
   },
   additionalRepairsToggle: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  additionalRepairsHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: spacing.sm,
+  },
+  additionalRepairsIconBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.status.infoLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   additionalRepairsToggleText: {
     ...typography.styles.body,
     color: colors.primary.navy,
-    fontWeight: typography.fontWeight.semiBold,
+    fontWeight: typography.fontWeight.bold,
+  },
+  selectedCountChip: {
+    backgroundColor: colors.primary.red,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginLeft: spacing.xs,
+  },
+  selectedCountChipText: {
+    color: colors.text.inverse,
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.bold,
+    letterSpacing: 0.2,
   },
   toggleSwitch: {
     width: 48,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: colors.border.medium,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.border.light,
     justifyContent: 'center',
-    paddingHorizontal: 2,
+    paddingHorizontal: 3,
   },
   toggleSwitchOn: {
-    backgroundColor: colors.primary.navy,
+    backgroundColor: colors.primary.red,
   },
   toggleKnob: {
     width: 22,
     height: 22,
     borderRadius: 11,
     backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
   },
   toggleKnobOn: {
     alignSelf: 'flex-end',
   },
   additionalRepairsList: {
     marginTop: spacing.md,
-    gap: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.light,
+    paddingTop: spacing.xs,
   },
   repairCheckboxRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.xs,
-    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    gap: spacing.md,
+  },
+  repairCheckboxRowDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
   },
   checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: colors.border.medium,
     justifyContent: 'center',
@@ -1294,8 +1403,12 @@ const styles = StyleSheet.create({
   },
   repairCheckboxLabel: {
     ...typography.styles.bodySmall,
-    color: colors.text.primary,
+    color: colors.text.secondary,
     flex: 1,
+  },
+  repairCheckboxLabelSelected: {
+    color: colors.primary.navy,
+    fontWeight: typography.fontWeight.semiBold,
   },
   stockNumberContainer: {
     width: '100%',

@@ -78,15 +78,19 @@ export class DebugLogger {
 
   /**
    * Start a new scan session
-   * Note: Does NOT clear existing logs - preserves BLE connection logs
+   * Note: Does NOT clear existing logs - preserves BLE connection logs.
+   *
+   * Dedupes the `Scan session started` marker — if startSession is called
+   * twice in quick succession (ScannerService + ScanScreen both trigger it)
+   * only the first one emits the event, so the debug log stays readable.
    */
   startSession(): void {
-    // If no session has started yet, set the start time
-    // Otherwise preserve existing session to keep BLE connection logs
-    if (this.sessionStartTime === 0) {
+    const alreadyStarted = this.sessionStartTime !== 0;
+    if (!alreadyStarted) {
       this.sessionStartTime = Date.now();
+      this.logEvent('Scan session started');
     }
-    this.logEvent('Scan session started');
+    // No-op on subsequent calls — preserves BLE logs, avoids duplicate marker.
   }
 
   /**
@@ -473,6 +477,52 @@ export class DebugLogger {
     // Auto-persist on errors or every 50 entries
     if (entry.direction === LogDirection.ERROR || this.logs.length % 50 === 0) {
       this.persistLogs().catch(() => {});
+    }
+  }
+
+  /**
+   * Upload the current log session to the backend `/api/v1/debug/client-log`
+   * endpoint so a VinTraxx engineer can pull it up server-side without the
+   * user having to AirDrop a JSON file. Best-effort; silently no-ops if the
+   * endpoint is unreachable.
+   *
+   * The `apiService` import is inline to avoid a cyclic module dependency
+   * (ApiService imports DebugLogger for network tracing).
+   */
+  async uploadToServer(extra?: { context?: string; userEmail?: string; deviceLabel?: string }): Promise<{
+    ok: boolean;
+    requestId?: string;
+    error?: string;
+  }> {
+    try {
+      const { apiService } = await import('../api/ApiService');
+      const payload = {
+        context: extra?.context ?? 'manual-upload',
+        sessionStart: this.sessionStartTime
+          ? new Date(this.sessionStartTime).toISOString()
+          : null,
+        durationMs: this.getSessionDuration(),
+        stats: this.getStats(),
+        userEmail: extra?.userEmail,
+        deviceLabel: extra?.deviceLabel,
+        entries: this.logs.slice(-500).map((l) => ({
+          timestamp: new Date(l.timestamp).toISOString(),
+          direction: l.direction,
+          category: l.category,
+          message: l.message,
+          rawHex: l.rawHex,
+          parsedText: l.parsedText,
+          error: l.error,
+          metadata: l.metadata,
+        })),
+      };
+      const res = await apiService.postDebugClientLog(payload);
+      this.logEvent('Debug log upload complete', { ok: true, requestId: res.requestId });
+      return { ok: true, requestId: res.requestId };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logError('Debug log upload failed', err);
+      return { ok: false, error: msg };
     }
   }
 

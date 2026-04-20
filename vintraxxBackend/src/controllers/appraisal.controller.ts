@@ -9,6 +9,7 @@ import { env } from '../config/env';
 import logger from '../utils/logger';
 import prisma from '../config/db';
 import fs from 'fs';
+import { EmailServiceUnavailableError } from '../utils/errors';
 
 // In-memory store for appraisals (would be DB in production)
 const appraisalStore = new Map<string, AppraisalSummaryData>();
@@ -251,11 +252,25 @@ export async function emailAppraisal(req: Request, res: Response, next: NextFunc
       message: 'Appraisal email sent successfully',
     });
   } catch (error) {
+    const msg = (error as Error).message;
     logger.error('Appraisal email failed', {
-      error: (error as Error).message,
+      error: msg,
       toEmail: req.body?.toEmail,
+      classified: error instanceof EmailServiceUnavailableError ? 'EMAIL_UNAVAILABLE' : 'UNKNOWN',
     });
-    next(error);
+    if (error instanceof EmailServiceUnavailableError) {
+      res.status(503).json({
+        success: false,
+        code: error.code,
+        message: error.message,
+      });
+      return;
+    }
+    res.status(500).json({
+      success: false,
+      code: 'APPRAISAL_EMAIL_FAILED',
+      message: 'Could not send the appraisal email. Please try again shortly.',
+    });
   }
 }
 
@@ -318,11 +333,25 @@ export async function pdfAppraisal(req: Request, res: Response, next: NextFuncti
       message: 'Appraisal PDF sent to your email',
     });
   } catch (error) {
+    const msg = (error as Error).message;
     logger.error('Appraisal PDF failed', {
-      error: (error as Error).message,
+      error: msg,
       toEmail: req.body?.toEmail,
+      classified: error instanceof EmailServiceUnavailableError ? 'EMAIL_UNAVAILABLE' : 'UNKNOWN',
     });
-    next(error);
+    if (error instanceof EmailServiceUnavailableError) {
+      res.status(503).json({
+        success: false,
+        code: error.code,
+        message: error.message,
+      });
+      return;
+    }
+    res.status(500).json({
+      success: false,
+      code: 'APPRAISAL_PDF_FAILED',
+      message: 'Could not generate or send the appraisal PDF. Please try again shortly.',
+    });
   }
 }
 

@@ -29,6 +29,8 @@
     "react-native-svg": "^15.15.1",
     "react-native-svg-transformer": "^1.5.2",
     "react-native-vision-camera": "^4.7.3",
+    "react-native-vision-camera-v3-text-recognition": "^1.1.1",
+    "react-native-worklets-core": "^1.5.0",
     "zustand": "^5.0.10"
   },
   "devDependencies": {

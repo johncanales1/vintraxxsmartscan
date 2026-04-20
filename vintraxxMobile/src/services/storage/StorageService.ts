@@ -14,7 +14,19 @@ const KEYS = {
   CLEARED_CODES: 'cleared_codes',
   LAST_SCAN_DATE: 'last_scan_date',
   SETTINGS: 'app_settings',
+  RECENT_VINS: 'recent_vins',
 };
+
+const RECENT_VIN_LIMIT = 10;
+
+export interface RecentVinEntry {
+  vin: string;
+  year?: number;
+  make?: string;
+  model?: string;
+  lastUsedAt: string; // ISO timestamp
+  source: 'scan' | 'camera' | 'ocr' | 'manual';
+}
 
 export interface ClearedCode {
   code: string;
@@ -294,6 +306,87 @@ export class StorageService {
       totalClearedCodes: this.getClearedCodes().length,
       lastScanDate: this.getLastScanDate(),
     };
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  // Recent VINs — used by Schedule/Appraiser "Recent VINs" chip list so
+  // the user can fill the field with one tap instead of typing 17 chars.
+  // ────────────────────────────────────────────────────────────────────
+
+  /**
+   * Returns the recent-VIN entries (newest first). Back-fills from saved
+   * reports so a fresh install still shows the user's scan history.
+   */
+  getRecentVins(): RecentVinEntry[] {
+    try {
+      const raw = storage.getString(KEYS.RECENT_VINS);
+      const stored = raw ? (JSON.parse(raw) as RecentVinEntry[]) : [];
+
+      // Seed with reports on first call — so a user that scanned before this
+      // feature shipped still sees their recent VINs.
+      if (stored.length === 0) {
+        const seed = this.getAllReports()
+          .slice(0, RECENT_VIN_LIMIT)
+          .map<RecentVinEntry>((r) => ({
+            vin: r.vehicle.vin,
+            year: r.vehicle.year,
+            make: r.vehicle.make,
+            model: r.vehicle.model,
+            lastUsedAt: new Date(r.scanDate).toISOString(),
+            source: 'scan',
+          }))
+          .filter((e) => e.vin && e.vin.length === 17);
+        if (seed.length > 0) {
+          storage.set(KEYS.RECENT_VINS, JSON.stringify(seed));
+          return seed;
+        }
+      }
+
+      return stored
+        .filter((e) => e && e.vin && e.vin.length === 17)
+        .sort((a, b) => new Date(b.lastUsedAt).getTime() - new Date(a.lastUsedAt).getTime());
+    } catch (error) {
+      logger.error(LogCategory.STORAGE, 'Failed to get recent VINs', error);
+      return [];
+    }
+  }
+
+  /**
+   * Upsert a VIN into the recent-VINs list (dedup, cap at 10, newest first).
+   */
+  addRecentVin(entry: Omit<RecentVinEntry, 'lastUsedAt'> & { lastUsedAt?: string }): void {
+    try {
+      if (!entry.vin || entry.vin.length !== 17) return;
+
+      const now = entry.lastUsedAt ?? new Date().toISOString();
+      const vinUpper = entry.vin.toUpperCase();
+
+      const current = this.getRecentVins();
+      const without = current.filter((e) => e.vin.toUpperCase() !== vinUpper);
+
+      const next: RecentVinEntry[] = [
+        { ...entry, vin: vinUpper, lastUsedAt: now },
+        ...without,
+      ].slice(0, RECENT_VIN_LIMIT);
+
+      storage.set(KEYS.RECENT_VINS, JSON.stringify(next));
+      logger.debug(LogCategory.STORAGE, `Recent VIN saved: ${vinUpper} (${entry.source})`);
+    } catch (error) {
+      logger.error(LogCategory.STORAGE, 'Failed to add recent VIN', error);
+    }
+  }
+
+  /**
+   * Remove a VIN from the recent list (e.g. user long-pressed a chip).
+   */
+  removeRecentVin(vin: string): void {
+    try {
+      const vinUpper = vin.toUpperCase();
+      const next = this.getRecentVins().filter((e) => e.vin.toUpperCase() !== vinUpper);
+      storage.set(KEYS.RECENT_VINS, JSON.stringify(next));
+    } catch (error) {
+      logger.error(LogCategory.STORAGE, 'Failed to remove recent VIN', error);
+    }
   }
 }
 

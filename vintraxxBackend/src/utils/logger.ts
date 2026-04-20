@@ -22,4 +22,13 @@ const logger = winston.createLogger({
   ],
 });
 
+/**
+ * Build a per-request child logger that tags every log line with the
+ * `requestId` (and optional user context). Works with the Express
+ * `requestIdMiddleware`; callers just pass `req` or a custom meta object.
+ */
+export function childLogger(meta: Record<string, unknown>): winston.Logger {
+  return logger.child(meta);
+}
+
 export default logger;

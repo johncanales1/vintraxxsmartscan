@@ -9,10 +9,15 @@ interface DealerUser {
     email: string;
     isDealer: boolean;
     pricePerLaborHour: number | null;
+    fullName?: string | null;
     logoUrl?: string | null;
+    originalLogoUrl?: string | null;
+    qrCodeUrl?: string | null;
     createdAt?: string;
     companyName?: string;
 }
+
+const API_BASE = "https://api.vintraxx.com/api/v1";
 
 export default function CapitalDealerPortalPage() {
     const [searchName, setSearchName] = useState("");
@@ -22,12 +27,33 @@ export default function CapitalDealerPortalPage() {
     const [dealer, setDealer] = useState<DealerUser | null>(null);
 
     useEffect(() => {
+        // Load cached dealer user for instant render
         const storedUser = localStorage.getItem("dealer_user");
         if (storedUser) {
             try {
                 setDealer(JSON.parse(storedUser));
             } catch {}
         }
+
+        // Always refresh from backend to pick up fullName, qrCodeUrl, originalLogoUrl, createdAt
+        const token = localStorage.getItem("dealer_token");
+        if (!token) return;
+
+        (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/dealer/profile`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data.success && data.dealer) {
+                    setDealer(data.dealer);
+                    localStorage.setItem("dealer_user", JSON.stringify(data.dealer));
+                }
+            } catch (err) {
+                console.error("Failed to fetch dealer profile:", err);
+            }
+        })();
     }, []);
 
     const applications = [
@@ -87,15 +113,22 @@ export default function CapitalDealerPortalPage() {
         <>
             <DealerNav 
                 dealerLogo={dealer?.logoUrl}
+                originalLogoUrl={dealer?.originalLogoUrl}
                 dealerName={dealer?.companyName}
                 userEmail={dealer?.email}
                 userId={dealer?.id}
+                fullName={dealer?.fullName}
                 pricePerLaborHour={dealer?.pricePerLaborHour}
+                qrCodeUrl={dealer?.qrCodeUrl}
                 createdAt={dealer?.createdAt}
                 onProfileUpdate={(data) => setDealer(prev => prev ? { 
                     ...prev, 
-                    logoUrl: data.logoUrl || prev.logoUrl,
-                    pricePerLaborHour: data.pricePerLaborHour ?? prev.pricePerLaborHour
+                    logoUrl: data.logoUrl ?? prev.logoUrl,
+                    originalLogoUrl: data.originalLogoUrl ?? prev.originalLogoUrl,
+                    qrCodeUrl: data.qrCodeUrl ?? prev.qrCodeUrl,
+                    pricePerLaborHour: data.pricePerLaborHour ?? prev.pricePerLaborHour,
+                    fullName: data.fullName ?? prev.fullName,
+                    email: data.email ?? prev.email,
                 } : null)}
             />
             <main className="pt-16 min-h-screen bg-slate-50">

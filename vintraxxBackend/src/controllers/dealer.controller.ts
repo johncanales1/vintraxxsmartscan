@@ -239,7 +239,9 @@ export async function updateDealerProfile(req: Request, res: Response, next: Nex
         isDealer: true,
         pricePerLaborHour: true,
         logoUrl: true,
+        originalLogoUrl: true,
         qrCodeUrl: true,
+        createdAt: true,
       },
     });
 

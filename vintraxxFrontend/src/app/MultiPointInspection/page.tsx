@@ -80,8 +80,11 @@ const getDefaultRatings = (): Record<string, 'good' | 'fair' | 'poor' | null> =>
 interface DealerUser {
     id: string;
     email: string;
-    logoUrl?: string;
-    pricePerLaborHour?: number;
+    fullName?: string | null;
+    logoUrl?: string | null;
+    originalLogoUrl?: string | null;
+    qrCodeUrl?: string | null;
+    pricePerLaborHour?: number | null;
     createdAt?: string;
 }
 
@@ -134,6 +137,23 @@ export default function MultiPointInspectionPage() {
         }
     }, [router]);
 
+    const fetchDealerProfile = useCallback(async (token: string) => {
+        try {
+            const res = await fetch(`${API_BASE}/dealer/profile`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data.success && data.dealer) {
+                setDealerUser(data.dealer);
+                // Keep localStorage in sync so other pages have fresh data too
+                localStorage.setItem("dealer_user", JSON.stringify(data.dealer));
+            }
+        } catch (err) {
+            console.error("Failed to fetch dealer profile:", err);
+        }
+    }, []);
+
     useEffect(() => {
         const token = localStorage.getItem("dealer_token");
         if (!token) {
@@ -141,7 +161,7 @@ export default function MultiPointInspectionPage() {
             return;
         }
         
-        // Load dealer user data
+        // Load cached dealer user data first for instant render
         const storedUser = localStorage.getItem("dealer_user");
         if (storedUser) {
             try {
@@ -151,8 +171,10 @@ export default function MultiPointInspectionPage() {
             }
         }
         
+        // Always refresh from backend to pick up fullName, qrCodeUrl, originalLogoUrl, createdAt
+        fetchDealerProfile(token);
         fetchInspections(token);
-    }, [router, fetchInspections]);
+    }, [router, fetchInspections, fetchDealerProfile]);
 
     const resetForm = () => {
         setFormData({
@@ -309,10 +331,22 @@ export default function MultiPointInspectionPage() {
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
             <DealerNav 
                 dealerLogo={dealerUser?.logoUrl}
+                originalLogoUrl={dealerUser?.originalLogoUrl}
                 userEmail={dealerUser?.email}
                 userId={dealerUser?.id}
+                fullName={dealerUser?.fullName}
                 pricePerLaborHour={dealerUser?.pricePerLaborHour}
+                qrCodeUrl={dealerUser?.qrCodeUrl}
                 createdAt={dealerUser?.createdAt}
+                onProfileUpdate={(data) => setDealerUser(prev => prev ? {
+                    ...prev,
+                    logoUrl: data.logoUrl ?? prev.logoUrl,
+                    originalLogoUrl: data.originalLogoUrl ?? prev.originalLogoUrl,
+                    qrCodeUrl: data.qrCodeUrl ?? prev.qrCodeUrl,
+                    pricePerLaborHour: data.pricePerLaborHour ?? prev.pricePerLaborHour,
+                    fullName: data.fullName ?? prev.fullName,
+                    email: data.email ?? prev.email,
+                } : prev)}
             />
             
             <main className="pt-16 sm:pt-20 pb-8 sm:pb-12">

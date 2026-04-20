@@ -4,6 +4,7 @@ import { FullReportData } from '../types';
 import { formatCurrency } from '../utils/helpers';
 import { getEmailLogoHeaderHtml } from '../utils/logos';
 import logger from '../utils/logger';
+import { EmailServiceUnavailableError, isSmtpAvailabilityError } from '../utils/errors';
 
 const transporter = nodemailer.createTransport({
   host: env.SMTP_HOST,
@@ -15,28 +16,64 @@ const transporter = nodemailer.createTransport({
   },
 });
 
- let transporterVerified = false;
+// Shared verify cache — identical pattern to appraisal-email.service.ts so
+// ops has a single mental model for SMTP health across the backend.
+let verifiedAt: number | null = null;
+let lastVerifyFailAt: number | null = null;
+let lastVerifyError: string | null = null;
+const VERIFY_FAIL_TTL_MS = 60 * 1000;
 
- async function ensureTransporterVerified(): Promise<void> {
-   if (transporterVerified) return;
-   try {
-     await transporter.verify();
-     transporterVerified = true;
-     logger.info('SMTP transporter verified', {
-       host: env.SMTP_HOST,
-       port: env.SMTP_PORT,
-       user: env.SMTP_USER,
-     });
-   } catch (error) {
-     logger.error('SMTP transporter verification failed', {
-       host: env.SMTP_HOST,
-       port: env.SMTP_PORT,
-       user: env.SMTP_USER,
-       error: (error as Error).message,
-     });
-     throw error;
-   }
- }
+async function ensureTransporterVerified(): Promise<void> {
+  if (verifiedAt !== null) return;
+
+  const now = Date.now();
+  if (lastVerifyFailAt && now - lastVerifyFailAt < VERIFY_FAIL_TTL_MS && lastVerifyError) {
+    // Fail fast with cached error — SMTP is still in a bad state, don't
+    // hammer SendGrid (and don't make the user wait for a TCP timeout).
+    throw new EmailServiceUnavailableError(lastVerifyError);
+  }
+
+  try {
+    await transporter.verify();
+    verifiedAt = now;
+    lastVerifyFailAt = null;
+    lastVerifyError = null;
+    logger.info('SMTP transporter verified', {
+      host: env.SMTP_HOST,
+      port: env.SMTP_PORT,
+      user: env.SMTP_USER,
+    });
+  } catch (error) {
+    const msg = (error as Error).message;
+    lastVerifyFailAt = now;
+    lastVerifyError = msg;
+    logger.error('SMTP transporter verification failed', {
+      host: env.SMTP_HOST,
+      port: env.SMTP_PORT,
+      user: env.SMTP_USER,
+      error: msg,
+    });
+    if (isSmtpAvailabilityError(error)) {
+      throw new EmailServiceUnavailableError(msg);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Translate raw SMTP send failures into a classified
+ * `EmailServiceUnavailableError` so controller layers can return HTTP 503
+ * with a user-friendly message instead of leaking raw provider errors.
+ */
+function rethrowAsEmailServiceError(error: unknown): never {
+  if (error instanceof EmailServiceUnavailableError) throw error;
+  if (isSmtpAvailabilityError(error)) {
+    throw new EmailServiceUnavailableError(
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+  throw error;
+}
 
 export async function sendReportEmail(
   toEmail: string,
@@ -161,8 +198,9 @@ export async function sendReportEmail(
     logger.error('Failed to send report email', {
       to: toEmail,
       error: (error as Error).message,
+      classified: error instanceof EmailServiceUnavailableError ? 'EMAIL_UNAVAILABLE' : 'UNKNOWN',
     });
-    throw error;
+    rethrowAsEmailServiceError(error);
   }
 }
 
@@ -213,8 +251,9 @@ export async function sendPasswordResetEmail(toEmail: string, resetLink: string)
     logger.error('Failed to send password reset email', {
       to: toEmail,
       error: (error as Error).message,
+      classified: error instanceof EmailServiceUnavailableError ? 'EMAIL_UNAVAILABLE' : 'UNKNOWN',
     });
-    throw error;
+    rethrowAsEmailServiceError(error);
   }
 }
 
@@ -293,7 +332,8 @@ export async function sendOtpEmail(toEmail: string, otp: string): Promise<void> 
       stack: (error as Error).stack,
       smtpHost: env.SMTP_HOST,
       smtpPort: env.SMTP_PORT,
+      classified: error instanceof EmailServiceUnavailableError ? 'EMAIL_UNAVAILABLE' : 'UNKNOWN',
     });
-    throw error;
+    rethrowAsEmailServiceError(error);
   }
 }

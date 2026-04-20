@@ -371,6 +371,7 @@ export async function getAppraisalDetail(id: string) {
 export async function sendAdminEmail(to: string, subject: string, body: string) {
   const nodemailer = (await import('nodemailer')).default;
   const { env } = await import('../config/env');
+  const { EmailServiceUnavailableError, isSmtpAvailabilityError } = await import('../utils/errors');
 
   const transporter = nodemailer.createTransport({
     host: env.SMTP_HOST,
@@ -410,12 +411,23 @@ export async function sendAdminEmail(to: string, subject: string, body: string) 
 </body>
 </html>`;
 
-  await transporter.sendMail({
-    from: `"${env.EMAIL_FROM_NAME}" <${env.EMAIL_FROM}>`,
-    to,
-    subject,
-    html: htmlBody,
-  });
+  try {
+    await transporter.sendMail({
+      from: `"${env.EMAIL_FROM_NAME}" <${env.EMAIL_FROM}>`,
+      to,
+      subject,
+      html: htmlBody,
+    });
+  } catch (err) {
+    // Classify provider outages so the admin controller can respond 503
+    // instead of a generic 500 when SendGrid is exhausted / mis-auth'd.
+    if (isSmtpAvailabilityError(err)) {
+      throw new EmailServiceUnavailableError(
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+    throw err;
+  }
 
   logger.info('Admin email sent', { to, subject });
 }

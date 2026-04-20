@@ -3,7 +3,9 @@ import { z } from 'zod';
 import nodemailer from 'nodemailer';
 import { env } from '../config/env';
 import logger from '../utils/logger';
+import prisma from '../config/db';
 import { getEmailLogoHeaderHtml } from '../utils/logos';
+import { EmailServiceUnavailableError, isSmtpAvailabilityError } from '../utils/errors';
 
 const transporter = nodemailer.createTransport({
   host: env.SMTP_HOST,
@@ -30,7 +32,12 @@ const scheduleRequestSchema = z.object({
 
 type ScheduleRequestData = z.infer<typeof scheduleRequestSchema>;
 
-async function sendScheduleEmailToAdmin(data: ScheduleRequestData): Promise<void> {
+// ──────────────────────────────────────────────────────────────────────
+// Email template helpers (unchanged markup — extracted so the controller
+// body stays focused on the persist-first flow).
+// ──────────────────────────────────────────────────────────────────────
+
+function buildAdminEmail(data: ScheduleRequestData): { subject: string; html: string } {
   const dateStr = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
@@ -39,6 +46,8 @@ async function sendScheduleEmailToAdmin(data: ScheduleRequestData): Promise<void
     minute: '2-digit',
   });
 
+  // `preferredDate` is MM/DD/YYYY from mobile; `new Date(...)` accepts both
+  // that and ISO, so this is safe.
   const preferredDateFormatted = new Date(data.preferredDate).toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
@@ -48,7 +57,7 @@ async function sendScheduleEmailToAdmin(data: ScheduleRequestData): Promise<void
 
   const subject = `New Service Appointment Request - ${data.name} - ${data.serviceType}`;
 
-  const htmlBody = `
+  const html = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -72,7 +81,7 @@ async function sendScheduleEmailToAdmin(data: ScheduleRequestData): Promise<void
     ${getEmailLogoHeaderHtml('New Service Appointment Request', 'VinTraxx SmartScan')}
     <div class="content">
       <p>A new service appointment request has been submitted on <strong>${dateStr}</strong>.</p>
-      
+
       <div class="section-title">Customer Information</div>
       <div class="field">
         <div class="field-label">Name</div>
@@ -127,21 +136,10 @@ async function sendScheduleEmailToAdmin(data: ScheduleRequestData): Promise<void
 </body>
 </html>`;
 
-  await transporter.sendMail({
-    from: `"${env.EMAIL_FROM_NAME}" <${env.EMAIL_FROM}>`,
-    to: 'john@vintraxx.com',
-    subject,
-    html: htmlBody,
-  });
-
-  logger.info('Schedule request email sent to admin', {
-    customerName: data.name,
-    serviceType: data.serviceType,
-    preferredDate: data.preferredDate,
-  });
+  return { subject, html };
 }
 
-async function sendConfirmationEmailToUser(data: ScheduleRequestData): Promise<void> {
+function buildUserConfirmationEmail(data: ScheduleRequestData): { subject: string; html: string } {
   const preferredDateFormatted = new Date(data.preferredDate).toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
@@ -151,7 +149,7 @@ async function sendConfirmationEmailToUser(data: ScheduleRequestData): Promise<v
 
   const subject = `Service Appointment Request Confirmation - ${data.serviceType}`;
 
-  const htmlBody = `
+  const html = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -176,7 +174,7 @@ async function sendConfirmationEmailToUser(data: ScheduleRequestData): Promise<v
       <div class="success-icon">✅</div>
       <p>Dear <strong>${data.name}</strong>,</p>
       <p>Thank you for submitting your service appointment request. We have received your request and will contact you shortly to confirm your appointment.</p>
-      
+
       <div class="highlight-box">
         <div class="field">
           <div class="field-label">Service Type</div>
@@ -208,68 +206,201 @@ async function sendConfirmationEmailToUser(data: ScheduleRequestData): Promise<v
 </body>
 </html>`;
 
-  await transporter.sendMail({
-    from: `"${env.EMAIL_FROM_NAME}" <${env.EMAIL_FROM}>`,
-    to: data.email,
-    subject,
-    html: htmlBody,
-  });
-
-  logger.info('Schedule confirmation email sent to user', {
-    customerEmail: data.email,
-    serviceType: data.serviceType,
-  });
+  return { subject, html };
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// Controller
+// ──────────────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/v1/schedule/submit
+ *
+ * Persist-first / fire-and-forget email flow:
+ *   1. Validate input.
+ *   2. Save a `ServiceAppointment` row (single source of truth; never lost).
+ *   3. Attempt admin + user emails; record outcome per message in the same row.
+ *   4. Return HTTP 200 with `emailStatus` = 'sent' | 'partial' | 'failed'.
+ *      The request is considered SUCCESSFUL as long as it is persisted —
+ *      SMTP downtime no longer fails the user-facing submission.
+ */
 export async function submitScheduleRequest(req: Request, res: Response): Promise<void> {
+  const requestId = req.requestId ?? 'unknown';
+  const userId = req.user?.userId;
+
+  if (!userId) {
+    res.status(401).json({ success: false, message: 'Authentication required' });
+    return;
+  }
+
+  const parseResult = scheduleRequestSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    const errorMessages = parseResult.error.errors.map((e) => e.message).join(', ');
+    logger.warn('Schedule request validation failed', { requestId, errors: errorMessages, userId });
+    res.status(400).json({ success: false, message: errorMessages });
+    return;
+  }
+
+  const data = parseResult.data;
+
+  // ── 1. Persist the request first — this is the source of truth ──────
+  let appointmentId: string;
   try {
-    const userId = req.user?.userId;
-    if (!userId) {
-      res.status(401).json({ success: false, message: 'Authentication required' });
-      return;
-    }
-
-    const parseResult = scheduleRequestSchema.safeParse(req.body);
-    if (!parseResult.success) {
-      const errorMessages = parseResult.error.errors.map(e => e.message).join(', ');
-      logger.warn('Schedule request validation failed', { errors: errorMessages, userId });
-      res.status(400).json({ success: false, message: errorMessages });
-      return;
-    }
-
-    const data = parseResult.data;
-
-    logger.info('Processing schedule request', {
+    const saved = await prisma.serviceAppointment.create({
+      data: {
+        userId,
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        dealership: data.dealership,
+        vehicle: data.vehicle,
+        vin: data.vin,
+        serviceType: data.serviceType,
+        preferredDate: data.preferredDate,
+        preferredTime: data.preferredTime,
+        additionalNotes: data.additionalNotes ?? null,
+        status: 'pending',
+      },
+    });
+    appointmentId = saved.id;
+    logger.info('Schedule request persisted', {
+      requestId,
+      appointmentId,
       userId,
       customerName: data.name,
       serviceType: data.serviceType,
       vehicle: data.vehicle,
+      vin: data.vin,
     });
-
-    // Send email to admin (john@vintraxx.com)
-    await sendScheduleEmailToAdmin(data);
-
-    // Send confirmation email to user
-    await sendConfirmationEmailToUser(data);
-
-    logger.info('Schedule request processed successfully', {
+  } catch (dbErr) {
+    logger.error('Schedule request DB insert failed', {
+      requestId,
       userId,
-      customerName: data.name,
-      serviceType: data.serviceType,
-    });
-
-    res.status(200).json({
-      success: true,
-      message: 'Your appointment request has been submitted successfully. You will receive a confirmation email shortly.',
-    });
-  } catch (error) {
-    logger.error('Schedule request error', {
-      error: (error as Error).message,
-      stack: (error as Error).stack,
+      error: (dbErr as Error).message,
     });
     res.status(500).json({
       success: false,
-      message: 'Failed to process your request. Please try again later.',
+      code: 'SCHEDULE_SAVE_FAILED',
+      message: 'Could not save your appointment request. Please try again.',
+    });
+    return;
+  }
+
+  // ── 2. Fire emails in the background — never block the response ─────
+  // Use setImmediate so the response is flushed before the (potentially slow)
+  // SMTP round trips start. Results are written back to the appointment row.
+  setImmediate(() => {
+    void deliverScheduleEmails(appointmentId, data, requestId);
+  });
+
+  // ── 3. Respond success immediately ──────────────────────────────────
+  res.status(200).json({
+    success: true,
+    appointmentId,
+    message:
+      'Your appointment request has been received. A confirmation email will follow shortly.',
+    emailStatus: 'queued',
+  });
+}
+
+async function deliverScheduleEmails(
+  appointmentId: string,
+  data: ScheduleRequestData,
+  requestId: string,
+): Promise<void> {
+  const adminRecipient = 'john@vintraxx.com';
+  let adminSentAt: Date | null = null;
+  let userSentAt: Date | null = null;
+  const errors: string[] = [];
+
+  // ── Admin email ────────────────────────────────────────────────────
+  try {
+    const { subject, html } = buildAdminEmail(data);
+    await transporter.sendMail({
+      from: `"${env.EMAIL_FROM_NAME}" <${env.EMAIL_FROM}>`,
+      to: adminRecipient,
+      subject,
+      html,
+    });
+    adminSentAt = new Date();
+    logger.info('Schedule admin email sent', {
+      requestId,
+      appointmentId,
+      adminRecipient,
+      customerName: data.name,
+      serviceType: data.serviceType,
+    });
+  } catch (err) {
+    const msg = (err as Error).message;
+    errors.push(`admin: ${msg}`);
+    logger.error('Schedule admin email failed', {
+      requestId,
+      appointmentId,
+      smtpDown: isSmtpAvailabilityError(err),
+      error: msg,
+    });
+  }
+
+  // ── User confirmation email ────────────────────────────────────────
+  try {
+    const { subject, html } = buildUserConfirmationEmail(data);
+    await transporter.sendMail({
+      from: `"${env.EMAIL_FROM_NAME}" <${env.EMAIL_FROM}>`,
+      to: data.email,
+      subject,
+      html,
+    });
+    userSentAt = new Date();
+    logger.info('Schedule user email sent', {
+      requestId,
+      appointmentId,
+      to: data.email,
+    });
+  } catch (err) {
+    const msg = (err as Error).message;
+    errors.push(`user: ${msg}`);
+    logger.error('Schedule user email failed', {
+      requestId,
+      appointmentId,
+      smtpDown: isSmtpAvailabilityError(err),
+      error: msg,
+    });
+  }
+
+  // ── Record outcome back to the appointment row ─────────────────────
+  const newStatus =
+    adminSentAt && userSentAt
+      ? 'confirmed'
+      : adminSentAt || userSentAt
+        ? 'partial_email'
+        : 'email_queued';
+
+  try {
+    await prisma.serviceAppointment.update({
+      where: { id: appointmentId },
+      data: {
+        adminEmailSentAt: adminSentAt,
+        userEmailSentAt: userSentAt,
+        emailLastError: errors.length ? errors.join(' | ').slice(0, 1000) : null,
+        emailAttempts: { increment: 1 },
+        status: newStatus,
+      },
+    });
+  } catch (updateErr) {
+    logger.error('Schedule appointment email-status update failed', {
+      requestId,
+      appointmentId,
+      error: (updateErr as Error).message,
+    });
+  }
+
+  if (errors.length === 0) {
+    logger.info('Schedule request emails delivered', { requestId, appointmentId });
+  } else {
+    logger.warn('Schedule request emails completed with errors', {
+      requestId,
+      appointmentId,
+      errorCount: errors.length,
     });
   }
 }

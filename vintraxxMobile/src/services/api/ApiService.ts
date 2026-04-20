@@ -39,6 +39,15 @@ class ApiService {
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }
+    // End-to-end correlation: if an outer flow started a correlation ID
+    // via `logger.withRequestId(...)`, forward it as `X-Request-Id` so the
+    // backend's requestId middleware reuses it in its logs (instead of
+    // generating a fresh one). Makes it trivial to line up client logs
+    // and server logs when debugging a user report.
+    const activeRid = logger.getRequestId();
+    if (activeRid) {
+      headers['X-Request-Id'] = activeRid;
+    }
     return headers;
   }
 
@@ -611,7 +620,48 @@ class ApiService {
   // ================================================================
 
   /**
-   * Submit a service appointment schedule request
+   * Submit the current DebugLogger session to the backend so support can
+   * pull it up by the returned `requestId` without the user AirDropping a
+   * JSON file. Auth is optional — the backend endpoint is intentionally
+   * open (rate-limited) so a user with a broken token can still report.
+   */
+  async postDebugClientLog(payload: Record<string, any>): Promise<{ ok: boolean; requestId?: string }> {
+    const url = `${API_CONFIG.BASE_URL}/api/v1/debug/client-log`;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const activeRid = logger.getRequestId();
+    if (activeRid) headers['X-Request-Id'] = activeRid;
+    const token = authService.getAuthToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    const rid = res.headers.get('X-Request-Id') ?? activeRid ?? undefined;
+    if (!res.ok) {
+      throw new Error(`Debug upload failed with status ${res.status}`);
+    }
+    try {
+      const body = await res.json();
+      return { ok: true, requestId: body?.requestId ?? rid };
+    } catch {
+      return { ok: true, requestId: rid };
+    }
+  }
+
+  /**
+   * Submit a service appointment schedule request.
+   *
+   * Backend contract (post the "persist-first" refactor):
+   *  - 201 Created      → appointment saved AND confirmation email sent.
+   *  - 207 Multi-Status → appointment saved, but confirmation email failed.
+   *                        Body includes { appointment, warning, reason }.
+   *                        We treat this as success + warning so the UI can
+   *                        tell the user their slot is booked.
+   *  - 503 Service Unavailable → SMTP is verified-down at boot. Distinct UX.
+   *  - Everything else  → hard failure.
    */
   async submitScheduleRequest(data: {
     name: string;
@@ -624,14 +674,28 @@ class ApiService {
     preferredDate: string;
     preferredTime: string;
     additionalNotes?: string;
-  }): Promise<{ success: boolean; message?: string }> {
+  }): Promise<{
+    success: boolean;
+    message?: string;
+    /** Set when the server persisted the appointment but the confirmation
+     *  email failed (HTTP 207 Multi-Status). UI should show a "booked, but
+     *  email failed" state instead of a hard error. */
+    warning?: string;
+    /** Machine-readable reason for warnings — e.g. "email-failed-persistent"
+     *  or "smtp-down". Used by the screen to pick the right copy. */
+    reason?: string;
+    /** True when HTTP 503 indicates SMTP is verified-down. Lets the screen
+     *  suggest alternative contact methods instead of retrying immediately. */
+    emailServiceDown?: boolean;
+    appointmentId?: string;
+  }> {
     try {
       if (!authService.isAuthenticated()) {
-        logger.warn(LogCategory.APP, 'Schedule request failed: User not authenticated');
+        logger.warn(LogCategory.SCHEDULE, 'Schedule request failed: User not authenticated');
         return { success: false, message: 'Please log in to submit a schedule request.' };
       }
 
-      logger.info(LogCategory.APP, 'Submitting schedule request', {
+      logger.info(LogCategory.SCHEDULE, 'Submitting schedule request', {
         serviceType: data.serviceType,
         vehicle: data.vehicle,
         preferredDate: data.preferredDate,
@@ -652,35 +716,81 @@ class ApiService {
         });
       } catch (fetchError) {
         debugLogger.logNetworkError(reqId, fetchError);
-        logger.error(LogCategory.APP, 'Schedule request network error', fetchError);
+        logger.error(LogCategory.SCHEDULE, 'Schedule request network error', fetchError);
         return { success: false, message: 'Unable to connect to server. Please check your internet connection.' };
       }
 
       debugLogger.logNetworkEnd(reqId, response.status);
 
+      // Try to parse the body once — both success and error paths need it.
+      let body: any = null;
+      try {
+        body = await response.json();
+      } catch {
+        body = null;
+      }
+
+      // 207 Multi-Status: persisted OK, email failed. Tell the user we saved
+      // their appointment so they don't retry and create a duplicate.
+      if (response.status === 207) {
+        logger.warn(LogCategory.SCHEDULE, 'Schedule persisted but confirmation email failed', {
+          reason: body?.reason,
+          appointmentId: body?.appointment?.id,
+        });
+        return {
+          success: true,
+          message:
+            body?.message ??
+            'Appointment saved successfully, but we could not send the confirmation email.',
+          warning:
+            body?.warning ??
+            'Your appointment is booked. The confirmation email failed to send — please take a screenshot or call the service department to verify.',
+          reason: body?.reason ?? 'email-failed-persistent',
+          appointmentId: body?.appointment?.id,
+        };
+      }
+
+      // 503: SMTP verified-down at boot. Nothing was persisted (backend
+      // rejects early) so the user should use a different contact method.
+      if (response.status === 503) {
+        const reason = body?.reason ?? 'smtp-down';
+        logger.error(LogCategory.SCHEDULE, 'Email service reported down (503)', {
+          reason,
+          retryAfter: response.headers.get('Retry-After'),
+        });
+        return {
+          success: false,
+          emailServiceDown: true,
+          reason,
+          message:
+            body?.message ??
+            'The appointment system is temporarily unable to send confirmation emails. Please call the service department directly.',
+        };
+      }
+
       if (!response.ok) {
         let errorMessage = `Server error (${response.status})`;
-        try {
-          const errorData = await response.json();
-          if (errorData.message) {
-            errorMessage = errorData.message;
-          }
-        } catch {
-          if (response.status === 401) {
-            errorMessage = 'Session expired. Please log in again.';
-          } else if (response.status >= 500) {
-            errorMessage = 'Server is temporarily unavailable. Please try again later.';
-          }
+        if (body?.message) {
+          errorMessage = body.message;
+        } else if (response.status === 401) {
+          errorMessage = 'Session expired. Please log in again.';
+        } else if (response.status >= 500) {
+          errorMessage = 'Server is temporarily unavailable. Please try again later.';
         }
-        logger.warn(LogCategory.APP, 'Schedule request failed', { status: response.status, errorMessage });
+        logger.warn(LogCategory.SCHEDULE, 'Schedule request failed', { status: response.status, errorMessage });
         return { success: false, message: errorMessage };
       }
 
-      const result = await response.json();
-      logger.info(LogCategory.APP, 'Schedule request submitted successfully');
-      return { success: true, message: result.message };
+      logger.info(LogCategory.SCHEDULE, 'Schedule request submitted successfully', {
+        appointmentId: body?.appointment?.id,
+      });
+      return {
+        success: true,
+        message: body?.message,
+        appointmentId: body?.appointment?.id,
+      };
     } catch (error) {
-      logger.error(LogCategory.APP, 'Unexpected schedule request error', error);
+      logger.error(LogCategory.SCHEDULE, 'Unexpected schedule request error', error);
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       return { success: false, message: `An unexpected error occurred: ${errorMsg}` };
     }

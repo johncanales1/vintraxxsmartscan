@@ -9,6 +9,8 @@ import {
   TouchableOpacity,
   Share,
   Modal,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
@@ -68,15 +70,50 @@ export const DebugDataScreen: React.FC<DebugDataScreenProps> = ({ visible, onClo
     return true;
   });
 
+  const [isUploading, setIsUploading] = useState(false);
+
   const handleExport = async () => {
     try {
       const exportText = debugLogger.exportLogsAsText();
-      await Share.share({
-        title: 'VinTraxx Debug Log',
-        message: exportText,
-      });
+      // `title` is intentionally omitted — iOS share sheet concatenated it to
+      // the body on some receivers (Mail/Files), producing the "double dump"
+      // that support users reported. Mail subject defaults to the app name.
+      await Share.share(
+        { message: exportText },
+        { dialogTitle: 'VinTraxx Debug Log' },
+      );
     } catch (error) {
       console.error('Error sharing debug log:', error);
+    }
+  };
+
+  // Upload the current log session to the backend so support can fetch it by
+  // requestId. Falls back to local Share on failure so the user is never
+  // stuck with unsharable data.
+  const handleUpload = async () => {
+    if (isUploading) return;
+    setIsUploading(true);
+    try {
+      const res = await debugLogger.uploadToServer({ context: 'debug-screen-upload' });
+      if (res.ok) {
+        Alert.alert(
+          'Log Uploaded',
+          res.requestId
+            ? `Reference ID: ${res.requestId}\n\nShare this ID with VinTraxx support so they can locate your logs on the server.`
+            : 'Logs uploaded successfully.',
+          [{ text: 'OK' }],
+        );
+      } else {
+        Alert.alert(
+          'Upload Failed',
+          `Could not upload debug logs: ${res.error ?? 'Unknown error'}.\n\nYou can still use Export to share them directly.`,
+        );
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      Alert.alert('Upload Failed', msg);
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -177,6 +214,17 @@ export const DebugDataScreen: React.FC<DebugDataScreenProps> = ({ visible, onClo
             </TouchableOpacity>
             <TouchableOpacity onPress={handleExport} style={styles.exportButton}>
               <Text style={styles.exportButtonText}>Export</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleUpload}
+              style={[styles.exportButton, styles.uploadButton, isUploading && styles.uploadButtonDisabled]}
+              disabled={isUploading}
+            >
+              {isUploading ? (
+                <ActivityIndicator color="#FFF" size="small" />
+              ) : (
+                <Text style={styles.exportButtonText}>Upload</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -374,6 +422,15 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     backgroundColor: colors.primary.navy + '80',
     borderRadius: 6,
+  },
+  uploadButton: {
+    backgroundColor: (colors.status as any).success ?? '#2F855A',
+    minWidth: 68,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadButtonDisabled: {
+    opacity: 0.55,
   },
   exportButtonText: {
     ...typography.styles.button,

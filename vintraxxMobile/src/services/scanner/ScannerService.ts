@@ -425,9 +425,17 @@ export class ScannerService {
   }
 
   /**
-   * Clear diagnostic trouble codes
+   * Clear diagnostic trouble codes. Returns a structured result the UI can
+   * branch on (see `ObdCommands.clearDTCs` for the shape). Never throws for
+   * logical failures — only for unexpected BLE / init errors.
    */
-  async clearDTCs(): Promise<boolean> {
+  async clearDTCs(): Promise<{
+    success: boolean;
+    reason?: 'permanent-dtc' | 'nrc-22' | 'unknown' | string;
+    nrc?: string;
+    message?: string;
+    permanentDtcs?: string[];
+  }> {
     logger.info(LogCategory.APP, 'Clearing DTCs');
 
     if (!this.obdCommands) {

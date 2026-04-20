@@ -623,3 +623,48 @@ export function isErrorResponse(response: string): boolean {
   
   return false;
 }
+
+/**
+ * ISO 14229 (UDS) Negative Response Codes — subset most common on OBD-II
+ * adapters. Used when the ECU answers `7F <svc> <nrc>` instead of a positive
+ * response, to surface a human-meaningful reason up to the UI layer.
+ */
+export const NRC_LABELS: Record<string, string> = {
+  '10': 'General Reject',
+  '11': 'Service Not Supported',
+  '12': 'Sub-Function Not Supported',
+  '13': 'Incorrect Message Length Or Invalid Format',
+  '14': 'Response Too Long',
+  '21': 'Busy - Repeat Request',
+  '22': 'Conditions Not Correct',
+  '24': 'Request Sequence Error',
+  '25': 'No Response From Subnet Component',
+  '26': 'Failure Prevents Execution Of Requested Action',
+  '31': 'Request Out Of Range',
+  '33': 'Security Access Denied',
+  '35': 'Invalid Key',
+  '36': 'Exceeded Number Of Attempts',
+  '37': 'Required Time Delay Not Expired',
+  '70': 'Upload/Download Not Accepted',
+  '71': 'Transfer Data Suspended',
+  '72': 'General Programming Failure',
+  '73': 'Wrong Block Sequence Counter',
+  '78': 'Response Pending',
+  '7E': 'Sub-Function Not Supported In Active Session',
+  '7F': 'Service Not Supported In Active Session',
+};
+
+/**
+ * Parse the first UDS negative response found in the normalized adapter
+ * response, returning a structured payload or null if none is present.
+ * Example input: "7F 04 22" → `{ serviceId: '04', nrc: '22', label: 'Conditions Not Correct' }`.
+ */
+export function parseNegativeResponse(
+  normalized: string,
+): { serviceId: string; nrc: string; label: string } | null {
+  const match = normalized.toUpperCase().match(/\b7F\s+([0-9A-F]{2})\s+([0-9A-F]{2})\b/);
+  if (!match) return null;
+  const [, serviceId, nrc] = match;
+  const label = NRC_LABELS[nrc] ?? `Unknown NRC 0x${nrc}`;
+  return { serviceId, nrc, label };
+}

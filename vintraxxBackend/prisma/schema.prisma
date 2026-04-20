@@ -188,22 +188,26 @@ model Appraisal {
 }
 
 model ServiceAppointment {
-  id              String   @id @default(uuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id])
-  name            String
-  email           String
-  phone           String?
-  dealership      String?
-  vehicle         String?
-  vin             String?
-  serviceType     String
-  preferredDate   String
-  preferredTime   String?
-  additionalNotes String?
-  status          String   @default("pending")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                 String    @id @default(uuid())
+  userId             String
+  user               User      @relation(fields: [userId], references: [id])
+  name               String
+  email              String
+  phone              String?
+  dealership         String?
+  vehicle            String?
+  vin                String?
+  serviceType        String
+  preferredDate      String
+  preferredTime      String?
+  additionalNotes    String?
+  status             String    @default("pending")
+  adminEmailSentAt   DateTime?
+  userEmailSentAt    DateTime?
+  emailLastError     String?
+  emailAttempts      Int       @default(0)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([userId])
 }

@@ -1,5 +1,7 @@
-// VIN Barcode Scanner Screen for VinTraxx SmartScan
-// Uses react-native-vision-camera to scan VIN barcodes via device camera
+// VIN Barcode + OCR Scanner Screen for VinTraxx SmartScan
+// Uses react-native-vision-camera plus react-native-vision-camera-v3-text-recognition
+// so we can fall back to OCR when a windshield barcode is damaged or obscured
+// (water droplets, glare, worn stickers). Mode is user-toggled.
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
@@ -16,21 +18,33 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  Camera,
+  Camera as VisionCamera,
   useCameraDevice,
   useCameraPermission,
   useCodeScanner,
+  useCameraFormat,
 } from 'react-native-vision-camera';
+// Text-recognition wrapper: exports its own `Camera` forwardRef with an OCR
+// callback + frame processor. We alias it here to keep the barcode path clear.
+import { Camera as OcrCamera } from 'react-native-vision-camera-v3-text-recognition';
+import type { Text as OcrText } from 'react-native-vision-camera-v3-text-recognition/lib/typescript/src/types';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
 import { debugLogger } from '../services/debug/DebugLogger';
+import { storageService } from '../services/storage/StorageService';
+
+type ScanMode = 'barcode' | 'ocr';
 
 interface VinScannerScreenProps {
   navigation: any;
   route: {
     params: {
       onVinScanned: (vin: string) => void;
+      /**
+       * Optional preferred starting mode. Defaults to 'barcode' because it's
+       * fast and exact; user can flip to OCR if the barcode is damaged.
+       */
+      initialMode?: ScanMode;
     };
   };
 }
@@ -44,7 +58,6 @@ const VIN_TRANSLITERATE: Record<string, number> = {
 };
 const VIN_WEIGHTS = [8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2];
 
-// VIN check digit validation (position 9 is check digit per ISO 3779)
 const isValidVinCheckDigit = (vin: string): boolean => {
   if (vin.length !== 17) return false;
   let sum = 0;
@@ -58,31 +71,55 @@ const isValidVinCheckDigit = (vin: string): boolean => {
   return vin[8] === checkChar;
 };
 
-// VIN validation: 17 alphanumeric chars, no I, O, Q
 const isValidVinFormat = (vin: string): boolean => {
   const cleaned = vin.replace(/[^A-HJ-NPR-Z0-9]/gi, '').toUpperCase();
   return cleaned.length === 17 && /^[A-HJ-NPR-Z0-9]{17}$/.test(cleaned);
 };
 
-// Full VIN validation: format + check digit
-const isValidVin = (vin: string): boolean => {
-  return isValidVinFormat(vin) && isValidVinCheckDigit(vin);
-};
+// Barcode set: kept broad — some VIN stickers use PDF417/ITF in addition to
+// the standard Code 39 / Code 128.
+const VIN_CODE_TYPES = [
+  'code-128',
+  'code-39',
+  'code-93',
+  'codabar',
+  'ean-13',
+  'ean-8',
+  'itf',
+  'pdf-417',
+  'qr',
+  'data-matrix',
+  'aztec',
+  'upc-a',
+  'upc-e',
+] as const;
+
+const CONSENSUS_THRESHOLD = 2; // require N identical reads when check digit fails
 
 export const VinScannerScreen: React.FC<VinScannerScreenProps> = ({ navigation, route }) => {
-  const { onVinScanned } = route.params;
+  const { onVinScanned, initialMode = 'barcode' } = route.params;
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice('back');
+
+  // Request a high-resolution format — bumps barcode & OCR accuracy at the
+  // cost of a bit more CPU. Fallback is automatic if no matching format exists.
+  const format = useCameraFormat(device, [
+    { videoResolution: { width: 1920, height: 1080 } },
+    { photoResolution: { width: 1920, height: 1080 } },
+    { fps: 30 },
+  ]);
+
+  const [scanMode, setScanMode] = useState<ScanMode>(initialMode);
   const [scannedVin, setScannedVin] = useState<string | null>(null);
   const [editableVin, setEditableVin] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [checkDigitValid, setCheckDigitValid] = useState(true);
+
+  const cameraRef = useRef<VisionCamera>(null);
   const lastScanTimeRef = useRef<number>(0);
   const scanCooldownMs = 600;
-  // Consensus voting: track scan results to require agreement
   const scanVotesRef = useRef<Map<string, number>>(new Map());
-  const CONSENSUS_THRESHOLD = 2; // require same VIN scanned N times
 
   // Scanning line animation
   const scanLineAnim = useRef(new Animated.Value(0)).current;
@@ -109,36 +146,97 @@ export const VinScannerScreen: React.FC<VinScannerScreenProps> = ({ navigation, 
   }, [scanLineAnim]);
 
   useEffect(() => {
-    debugLogger.logEvent('VIN Scanner: Screen opened');
+    debugLogger.logEvent('VIN Scanner: Screen opened', { mode: scanMode });
     if (!hasPermission) {
       requestPermission().then(granted => {
         debugLogger.logEvent('VIN Scanner: Camera permission', { granted });
       });
     }
-  }, [hasPermission, requestPermission]);
+    // Reset consensus votes when switching modes so a barcode "vote" doesn't
+    // bleed into the OCR session (and vice versa).
+    scanVotesRef.current.clear();
+  }, [hasPermission, requestPermission, scanMode]);
 
-  const acceptVin = useCallback((vin: string, codeType: string, rawValue: string, method: string) => {
-    const valid = isValidVinCheckDigit(vin);
-    setIsProcessing(true);
-    setScannedVin(vin);
-    setEditableVin(vin);
-    setCheckDigitValid(valid);
-    Vibration.vibrate(100);
-    debugLogger.logEvent(`VIN Scanner: ${method}`, {
-      vin,
-      codeType,
-      rawValue,
-      checkDigitValid: valid,
-    });
-  }, []);
+  // ── Shared acceptance path (barcode OR OCR) ────────────────────────────
+  const acceptVin = useCallback(
+    (
+      vin: string,
+      codeType: string,
+      rawValue: string,
+      method: string,
+      source: 'camera' | 'ocr',
+    ) => {
+      const valid = isValidVinCheckDigit(vin);
+      setIsProcessing(true);
+      setScannedVin(vin);
+      setEditableVin(vin);
+      setCheckDigitValid(valid);
+      Vibration.vibrate(100);
+      debugLogger.logEvent(`VIN Scanner: ${method}`, {
+        vin,
+        codeType,
+        rawValue,
+        checkDigitValid: valid,
+        source,
+      });
+      // Cache in recent-VINs so the Appraiser/Schedule chips pick it up
+      // immediately, regardless of whether the user confirms or rescans.
+      storageService.addRecentVin({ vin, source });
+    },
+    [],
+  );
 
+  // Core VIN extraction + consensus voting. Shared by both scan modes so
+  // behaviour is identical regardless of whether the input is a barcode or
+  // OCR text block.
+  const tryAcceptCandidate = useCallback(
+    (raw: string, codeType: string, method: string, source: 'camera' | 'ocr') => {
+      const cleaned = raw.replace(/[^A-HJ-NPR-Z0-9]/gi, '').toUpperCase();
+
+      let candidate: string | null = null;
+      if (isValidVinFormat(cleaned)) {
+        candidate = cleaned;
+      } else {
+        // Barcodes often embed the VIN inside a larger string (e.g. "I ABC...VIN...XYZ")
+        const vinMatch = cleaned.match(/[A-HJ-NPR-Z0-9]{17}/);
+        if (vinMatch) candidate = vinMatch[0];
+      }
+      if (!candidate) return false;
+
+      if (isValidVinCheckDigit(candidate)) {
+        acceptVin(candidate, codeType, raw, method, source);
+        return true;
+      }
+
+      // Consensus voting for weak reads (check digit failed but the scanner
+      // keeps reporting the same thing → probably correct despite the digit).
+      const votes = scanVotesRef.current;
+      const count = (votes.get(candidate) || 0) + 1;
+      votes.set(candidate, count);
+
+      debugLogger.logEvent('VIN Scanner: candidate (check digit failed, voting)', {
+        vin: candidate,
+        votes: count,
+        threshold: CONSENSUS_THRESHOLD,
+        codeType,
+        source,
+      });
+
+      if (count >= CONSENSUS_THRESHOLD) {
+        acceptVin(candidate, codeType, raw, `VIN accepted via consensus (${count} votes)`, source);
+        return true;
+      }
+      return false;
+    },
+    [acceptVin],
+  );
+
+  // ── Barcode scanner (react-native-vision-camera) ──────────────────────
   const codeScanner = useCodeScanner({
-    // Only VIN-relevant barcode types — reduces misreads
-    codeTypes: ['code-128', 'code-39', 'qr', 'data-matrix'],
+    // @ts-expect-error — widened type list is safe; library accepts any string
+    codeTypes: VIN_CODE_TYPES,
     onCodeScanned: (codes) => {
       if (isProcessing || scannedVin) return;
-
-      // Debounce: prevent rapid-fire scanning
       const now = Date.now();
       if (now - lastScanTimeRef.current < scanCooldownMs) return;
       lastScanTimeRef.current = now;
@@ -146,50 +244,64 @@ export const VinScannerScreen: React.FC<VinScannerScreenProps> = ({ navigation, 
       for (const code of codes) {
         const value = code.value;
         if (!value) continue;
-
-        // Try to extract a VIN from the scanned value
-        const cleaned = value.replace(/[^A-HJ-NPR-Z0-9]/gi, '').toUpperCase();
-
-        let candidate: string | null = null;
-        if (isValidVinFormat(cleaned)) {
-          candidate = cleaned;
-        } else {
-          // Some barcodes embed VIN within a larger string
-          const vinMatch = cleaned.match(/[A-HJ-NPR-Z0-9]{17}/);
-          if (vinMatch) candidate = vinMatch[0];
-        }
-
-        if (!candidate) continue;
-
-        // If check digit passes, accept immediately — it's very unlikely to be wrong
-        if (isValidVinCheckDigit(candidate)) {
-          acceptVin(candidate, code.type, value, 'VIN detected (check digit valid)');
-          return;
-        }
-
-        // Check digit failed — use consensus voting (require multiple identical scans)
-        const votes = scanVotesRef.current;
-        const count = (votes.get(candidate) || 0) + 1;
-        votes.set(candidate, count);
-
-        debugLogger.logEvent('VIN Scanner: candidate (check digit failed, voting)', {
-          vin: candidate,
-          votes: count,
-          threshold: CONSENSUS_THRESHOLD,
-          codeType: code.type,
-        });
-
-        if (count >= CONSENSUS_THRESHOLD) {
-          // Enough consistent reads — accept despite check digit failure
-          acceptVin(candidate, code.type, value, `VIN accepted via consensus (${count} votes)`);
-          return;
-        }
+        if (tryAcceptCandidate(value, code.type, 'VIN detected (barcode)', 'camera')) return;
       }
     },
   });
 
+  // ── OCR handler (react-native-vision-camera-v3-text-recognition) ──────
+  // The library delivers text blocks in a `{0:{...},1:{...},...}` shape. We
+  // iterate all block/line/elementText fields, looking for the first valid
+  // 17-char VIN (check digit preferred, consensus otherwise).
+  const handleOcrResult = useCallback(
+    (data: OcrText) => {
+      if (isProcessing || scannedVin) return;
+      const now = Date.now();
+      if (now - lastScanTimeRef.current < scanCooldownMs) return;
+      lastScanTimeRef.current = now;
+
+      // data is keyed by numeric indices; grab the top-level `resultText` if
+      // present, else iterate the blocks.
+      const candidates: string[] = [];
+      const top = (data as any)?.resultText as string | undefined;
+      if (top) candidates.push(top);
+      for (const key of Object.keys(data)) {
+        const block: any = (data as any)[key];
+        if (!block) continue;
+        if (typeof block === 'string') {
+          candidates.push(block);
+          continue;
+        }
+        if (block.blockText) candidates.push(block.blockText);
+        if (block.lineText) candidates.push(block.lineText);
+        if (block.elementText) candidates.push(block.elementText);
+      }
+
+      for (const text of candidates) {
+        if (tryAcceptCandidate(text, 'text-recognition', 'VIN detected (OCR)', 'ocr')) return;
+      }
+    },
+    [isProcessing, scannedVin, tryAcceptCandidate],
+  );
+
+  // ── Tap-to-focus ──────────────────────────────────────────────────────
+  const handleCameraTap = useCallback(
+    async (event: { nativeEvent: { locationX: number; locationY: number } }) => {
+      try {
+        const { locationX, locationY } = event.nativeEvent;
+        await cameraRef.current?.focus({ x: locationX, y: locationY });
+        debugLogger.logEvent('VIN Scanner: tap to focus', { x: locationX, y: locationY });
+      } catch (err) {
+        // Some devices don't support focus() — log but don't alert.
+        debugLogger.logEvent('VIN Scanner: focus failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    },
+    [],
+  );
+
   const handleConfirmVin = useCallback(() => {
-    // Use the (possibly edited) VIN
     const finalVin = editableVin.replace(/[^A-HJ-NPR-Z0-9]/gi, '').toUpperCase();
     if (finalVin && isValidVinFormat(finalVin)) {
       debugLogger.logEvent('VIN Scanner: VIN confirmed by user', {
@@ -197,6 +309,7 @@ export const VinScannerScreen: React.FC<VinScannerScreenProps> = ({ navigation, 
         wasEdited: finalVin !== scannedVin,
         checkDigitValid: isValidVinCheckDigit(finalVin),
       });
+      storageService.addRecentVin({ vin: finalVin, source: 'manual' });
       onVinScanned(finalVin);
       navigation.goBack();
     } else {
@@ -205,13 +318,13 @@ export const VinScannerScreen: React.FC<VinScannerScreenProps> = ({ navigation, 
   }, [editableVin, scannedVin, onVinScanned, navigation]);
 
   const handleRescan = useCallback(() => {
-    debugLogger.logEvent('VIN Scanner: Rescan requested');
+    debugLogger.logEvent('VIN Scanner: Rescan requested', { mode: scanMode });
     setScannedVin(null);
     setEditableVin('');
     setIsProcessing(false);
     setCheckDigitValid(true);
     scanVotesRef.current.clear();
-  }, []);
+  }, [scanMode]);
 
   const handleClose = useCallback(() => {
     debugLogger.logEvent('VIN Scanner: Closed without scan');
@@ -222,14 +335,22 @@ export const VinScannerScreen: React.FC<VinScannerScreenProps> = ({ navigation, 
     Linking.openSettings();
   }, []);
 
-  // Permission not granted
+  const toggleMode = useCallback(() => {
+    setScanMode((prev) => {
+      const next = prev === 'barcode' ? 'ocr' : 'barcode';
+      debugLogger.logEvent('VIN Scanner: mode toggled', { from: prev, to: next });
+      return next;
+    });
+  }, []);
+
+  // ── Render: permission / device / main ────────────────────────────────
   if (!hasPermission) {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <View style={styles.permissionContainer}>
           <Text style={styles.permissionTitle}>Camera Access Required</Text>
           <Text style={styles.permissionText}>
-            VTSmartScan needs camera access to scan VIN barcodes.
+            VTSmartScan needs camera access to scan VIN barcodes or read VIN text.
             Please grant camera permission in Settings.
           </Text>
           <TouchableOpacity style={styles.permissionButton} onPress={handleOpenSettings}>
@@ -243,15 +364,12 @@ export const VinScannerScreen: React.FC<VinScannerScreenProps> = ({ navigation, 
     );
   }
 
-  // No camera device available
   if (!device) {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <View style={styles.permissionContainer}>
           <Text style={styles.permissionTitle}>No Camera Found</Text>
-          <Text style={styles.permissionText}>
-            Unable to find a camera device on this phone.
-          </Text>
+          <Text style={styles.permissionText}>Unable to find a camera device on this phone.</Text>
           <TouchableOpacity style={styles.closeButtonAlt} onPress={handleClose}>
             <Text style={styles.closeButtonAltText}>Go Back</Text>
           </TouchableOpacity>
@@ -260,32 +378,78 @@ export const VinScannerScreen: React.FC<VinScannerScreenProps> = ({ navigation, 
     );
   }
 
+  const isActive = !scannedVin;
+
   return (
     <View style={styles.container}>
-      {/* Camera View */}
-      <Camera
+      <TouchableOpacity
         style={StyleSheet.absoluteFill}
-        device={device}
-        isActive={!scannedVin}
-        codeScanner={codeScanner}
-        torch={torchOn ? 'on' : 'off'}
-      />
+        activeOpacity={1}
+        onPress={handleCameraTap}
+      >
+        {scanMode === 'barcode' ? (
+          <VisionCamera
+            ref={cameraRef}
+            style={StyleSheet.absoluteFill}
+            device={device}
+            format={format}
+            isActive={isActive}
+            codeScanner={codeScanner}
+            torch={torchOn ? 'on' : 'off'}
+          />
+        ) : (
+          // OCR camera — the library forwards standard CameraProps through.
+          // `callback` fires for every processed frame that contains text.
+          <OcrCamera
+            ref={cameraRef as any}
+            style={StyleSheet.absoluteFill}
+            device={device}
+            format={format}
+            isActive={isActive}
+            torch={torchOn ? 'on' : 'off'}
+            options={{ language: 'latin' }}
+            callback={handleOcrResult}
+          />
+        )}
+      </TouchableOpacity>
 
       {/* Overlay */}
-      <View style={styles.overlay}>
+      <View style={styles.overlay} pointerEvents="box-none">
         {/* Top bar */}
         <SafeAreaView edges={['top']}>
           <View style={styles.topBar}>
             <TouchableOpacity onPress={handleClose} style={styles.topBarButton}>
               <Text style={styles.topBarButtonText}>Cancel</Text>
             </TouchableOpacity>
-            <Text style={styles.topBarTitle}>Scan VIN Barcode</Text>
+            <Text style={styles.topBarTitle}>
+              {scanMode === 'barcode' ? 'Scan VIN Barcode' : 'Read VIN Text'}
+            </Text>
             <TouchableOpacity
               onPress={() => setTorchOn(!torchOn)}
               style={[styles.topBarButton, torchOn && styles.torchActive]}
             >
-              <Text style={styles.topBarButtonText}>
-                {torchOn ? '💡 ON' : '💡 OFF'}
+              <Text style={styles.topBarButtonText}>{torchOn ? '💡 ON' : '💡 OFF'}</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Mode toggle segmented control */}
+          <View style={styles.modeToggleWrap}>
+            <TouchableOpacity
+              style={[styles.modeButton, scanMode === 'barcode' && styles.modeButtonActive]}
+              onPress={() => scanMode !== 'barcode' && toggleMode()}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.modeButtonText, scanMode === 'barcode' && styles.modeButtonTextActive]}>
+                Barcode
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modeButton, scanMode === 'ocr' && styles.modeButtonActive]}
+              onPress={() => scanMode !== 'ocr' && toggleMode()}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.modeButtonText, scanMode === 'ocr' && styles.modeButtonTextActive]}>
+                Text (OCR)
               </Text>
             </TouchableOpacity>
           </View>
@@ -293,18 +457,15 @@ export const VinScannerScreen: React.FC<VinScannerScreenProps> = ({ navigation, 
 
         {/* Scan area with darkened mask overlay */}
         <View style={styles.scanAreaContainer}>
-          {/* Dark mask above scan area */}
           <View style={styles.maskOverlay} />
           <View style={styles.scanMiddleRow}>
             <View style={styles.maskSide} />
             <View style={styles.scanArea}>
-              {/* Corner markers */}
               <View style={[styles.corner, styles.cornerTL]} />
               <View style={[styles.corner, styles.cornerTR]} />
               <View style={[styles.corner, styles.cornerBL]} />
               <View style={[styles.corner, styles.cornerBR]} />
 
-              {/* Animated scan line */}
               {!scannedVin && (
                 <Animated.View
                   style={[
@@ -314,7 +475,7 @@ export const VinScannerScreen: React.FC<VinScannerScreenProps> = ({ navigation, 
                         {
                           translateY: scanLineAnim.interpolate({
                             inputRange: [0, 1],
-                            outputRange: [-60, 60],
+                            outputRange: [-80, 80],
                           }),
                         },
                       ],
@@ -325,13 +486,17 @@ export const VinScannerScreen: React.FC<VinScannerScreenProps> = ({ navigation, 
             </View>
             <View style={styles.maskSide} />
           </View>
-          {/* Dark mask below scan area */}
           <View style={styles.maskOverlay} />
 
           <Text style={styles.scanHint}>
             {scannedVin
-              ? '✅ VIN barcode detected!'
-              : 'Hold steady — position the VIN barcode within the frame'}
+              ? '✅ VIN detected!'
+              : scanMode === 'barcode'
+                ? 'Hold steady — align the VIN barcode within the frame'
+                : 'Hold steady — point at the printed 17-char VIN text'}
+          </Text>
+          <Text style={styles.scanHintSub}>
+            {scannedVin ? ' ' : 'Tap screen to focus · Toggle Barcode/OCR above'}
           </Text>
         </View>
 
@@ -379,10 +544,14 @@ export const VinScannerScreen: React.FC<VinScannerScreenProps> = ({ navigation, 
             ) : (
               <View style={styles.instructionsContainer}>
                 <Text style={styles.instructionsText}>
-                  Point camera at the VIN barcode on the vehicle doorjamb, windshield, or registration document.
+                  {scanMode === 'barcode'
+                    ? 'Point camera at the VIN barcode on the doorjamb, windshield, or registration.'
+                    : 'Aim at the printed VIN — dashboard plate, doorjamb label, or title document.'}
                 </Text>
                 <Text style={styles.supportedFormats}>
-                  Supported: Code 128, Code 39, QR Code, Data Matrix
+                  {scanMode === 'barcode'
+                    ? 'Supports: Code 128, Code 39, Code 93, ITF, PDF417, QR, Data Matrix, Aztec'
+                    : 'OCR reads printed text — best results with sharp focus and good lighting'}
                 </Text>
               </View>
             )}
@@ -397,14 +566,8 @@ const CORNER_SIZE = 24;
 const CORNER_WIDTH = 3;
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'space-between',
-  },
+  container: { flex: 1, backgroundColor: '#000' },
+  overlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'space-between' },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -418,82 +581,68 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
     borderRadius: 8,
   },
-  topBarButtonText: {
-    color: '#FFF',
-    fontSize: 14,
-    fontWeight: '600',
+  topBarButtonText: { color: '#FFF', fontSize: 14, fontWeight: '600' },
+  topBarTitle: { color: '#FFF', fontSize: 17, fontWeight: '700' },
+  torchActive: { backgroundColor: 'rgba(255,200,0,0.4)' },
+
+  modeToggleWrap: {
+    flexDirection: 'row',
+    marginHorizontal: spacing.md,
+    marginTop: spacing.xs,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 20,
+    padding: 4,
   },
-  topBarTitle: {
-    color: '#FFF',
-    fontSize: 17,
+  modeButton: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 16,
+  },
+  modeButtonActive: {
+    backgroundColor: '#FFFFFF',
+  },
+  modeButtonText: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 13,
     fontWeight: '700',
+    letterSpacing: 0.4,
   },
-  torchActive: {
-    backgroundColor: 'rgba(255,200,0,0.4)',
+  modeButtonTextActive: {
+    color: colors.primary.navy,
   },
 
-  // Scan area with mask
-  scanAreaContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  maskOverlay: {
-    flex: 1,
-    width: '100%',
-    backgroundColor: 'rgba(0,0,0,0.55)',
-  },
-  scanMiddleRow: {
-    flexDirection: 'row',
-    height: 150,
-  },
-  maskSide: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-  },
+  scanAreaContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  maskOverlay: { flex: 1, width: '100%', backgroundColor: 'rgba(0,0,0,0.55)' },
+  scanMiddleRow: { flexDirection: 'row', height: 180 },
+  maskSide: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
   scanArea: {
     width: 320,
-    height: 150,
+    height: 180,
     position: 'relative',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  corner: {
-    position: 'absolute',
-    width: CORNER_SIZE,
-    height: CORNER_SIZE,
-  },
+  corner: { position: 'absolute', width: CORNER_SIZE, height: CORNER_SIZE },
   cornerTL: {
-    top: 0,
-    left: 0,
-    borderTopWidth: CORNER_WIDTH,
-    borderLeftWidth: CORNER_WIDTH,
-    borderTopColor: '#FFF',
-    borderLeftColor: '#FFF',
+    top: 0, left: 0,
+    borderTopWidth: CORNER_WIDTH, borderLeftWidth: CORNER_WIDTH,
+    borderTopColor: '#FFF', borderLeftColor: '#FFF',
   },
   cornerTR: {
-    top: 0,
-    right: 0,
-    borderTopWidth: CORNER_WIDTH,
-    borderRightWidth: CORNER_WIDTH,
-    borderTopColor: '#FFF',
-    borderRightColor: '#FFF',
+    top: 0, right: 0,
+    borderTopWidth: CORNER_WIDTH, borderRightWidth: CORNER_WIDTH,
+    borderTopColor: '#FFF', borderRightColor: '#FFF',
   },
   cornerBL: {
-    bottom: 0,
-    left: 0,
-    borderBottomWidth: CORNER_WIDTH,
-    borderLeftWidth: CORNER_WIDTH,
-    borderBottomColor: '#FFF',
-    borderLeftColor: '#FFF',
+    bottom: 0, left: 0,
+    borderBottomWidth: CORNER_WIDTH, borderLeftWidth: CORNER_WIDTH,
+    borderBottomColor: '#FFF', borderLeftColor: '#FFF',
   },
   cornerBR: {
-    bottom: 0,
-    right: 0,
-    borderBottomWidth: CORNER_WIDTH,
-    borderRightWidth: CORNER_WIDTH,
-    borderBottomColor: '#FFF',
-    borderRightColor: '#FFF',
+    bottom: 0, right: 0,
+    borderBottomWidth: CORNER_WIDTH, borderRightWidth: CORNER_WIDTH,
+    borderBottomColor: '#FFF', borderRightColor: '#FFF',
   },
   scanLine: {
     width: '90%',
@@ -510,13 +659,17 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.7)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
+    paddingHorizontal: spacing.lg,
+  },
+  scanHintSub: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 4,
+    paddingHorizontal: spacing.lg,
   },
 
-  // Bottom section
-  bottomSection: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
-  },
+  bottomSection: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
   resultContainer: {
     backgroundColor: 'rgba(0,0,0,0.8)',
     borderRadius: 16,
@@ -530,14 +683,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: spacing.xs,
-  },
-  resultVin: {
-    color: '#FFF',
-    fontSize: 20,
-    fontWeight: '800',
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    letterSpacing: 2,
-    marginBottom: spacing.lg,
   },
   resultVinInput: {
     color: '#FFF',
@@ -559,11 +704,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: spacing.sm,
   },
-  resultButtons: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    width: '100%',
-  },
+  resultButtons: { flexDirection: 'row', gap: spacing.md, width: '100%' },
   rescanButton: {
     flex: 1,
     backgroundColor: 'rgba(255,255,255,0.2)',
@@ -571,11 +712,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     alignItems: 'center',
   },
-  rescanButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  rescanButtonText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
   confirmButton: {
     flex: 2,
     backgroundColor: colors.status.success || '#34C759',
@@ -583,11 +720,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     alignItems: 'center',
   },
-  confirmButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
+  confirmButtonText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   instructionsContainer: {
     backgroundColor: 'rgba(0,0,0,0.7)',
     borderRadius: 12,
@@ -607,7 +740,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
 
-  // Permission screens
   permissionContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -636,11 +768,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     marginBottom: spacing.md,
   },
-  permissionButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
+  permissionButtonText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   closeButtonAlt: {
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.xl,

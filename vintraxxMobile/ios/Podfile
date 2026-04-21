@@ -5,7 +5,10 @@ require Pod::Executable.execute_command('node', ['-p',
     {paths: [process.argv[1]]},
   )', __dir__]).strip
 
-platform :ios, min_ios_version_supported
+# GoogleMLKit 7.0+ (needed so MLKitCommon ~> 12/14 is used, which depends on
+# GoogleUtilities ~> 8.0 and is compatible with GoogleSignIn 9.x) requires
+# iOS 15.5, so we bump above the React Native default of 15.1.
+platform :ios, '15.5'
 prepare_react_native_project!
 
 linkage = ENV['USE_FRAMEWORKS']
@@ -22,6 +25,17 @@ target 'VTSmartScan' do
     # An absolute path to your application root.
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
+
+  # Pin GoogleMLKit subspecs so CocoaPods does not resolve the old
+  # MLKitTextRecognitionChinese 1.0.0-beta1 (which drags in MLKitCommon 3.1.0
+  # requiring GoogleUtilities ~> 7.0 and conflicts with GoogleSignIn 9.x that
+  # needs GoogleUtilities ~> 8.0). GoogleMLKit 9.0.0 pulls in MLKitCommon
+  # ~> 14.0 which uses GoogleUtilities ~> 8.0.
+  pod 'GoogleMLKit/TextRecognition', '~> 9.0'
+  pod 'GoogleMLKit/TextRecognitionChinese', '~> 9.0'
+  pod 'GoogleMLKit/TextRecognitionDevanagari', '~> 9.0'
+  pod 'GoogleMLKit/TextRecognitionJapanese', '~> 9.0'
+  pod 'GoogleMLKit/TextRecognitionKorean', '~> 9.0'
 
   post_install do |installer|
     react_native_post_install(

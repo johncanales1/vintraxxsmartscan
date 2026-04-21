@@ -1,0 +1,19 @@
+diff --git a/node_modules/react-native-vision-camera-v3-text-recognition/ios/VisionCameraV3TextRecognition.m b/node_modules/react-native-vision-camera-v3-text-recognition/ios/VisionCameraV3TextRecognition.mm
+similarity index 98%
+rename from node_modules/react-native-vision-camera-v3-text-recognition/ios/VisionCameraV3TextRecognition.m
+rename to node_modules/react-native-vision-camera-v3-text-recognition/ios/VisionCameraV3TextRecognition.mm
+index 69d1c4d..b047b16 100644
+--- a/node_modules/react-native-vision-camera-v3-text-recognition/ios/VisionCameraV3TextRecognition.m
++++ b/node_modules/react-native-vision-camera-v3-text-recognition/ios/VisionCameraV3TextRecognition.mm
+@@ -6,9 +6,9 @@
+ #import <MLKitTextRecognitionCommon/MLKitTextRecognitionCommon.h>
+ #import <VisionCamera/FrameProcessorPlugin.h>
+ #import <VisionCamera/FrameProcessorPluginRegistry.h>
+-#import <VisionCameraProxy.h>
++#import <VisionCamera/VisionCameraProxyHolder.h>
+ #import <VisionCamera/Frame.h>
+-@import MLKitVision;
++#import <MLKitVision/MLKitVision.h>
+ @interface VisionCameraTextRecognitionV3Plugin : FrameProcessorPlugin
+ 
+ @property(nonatomic, strong) MLKTextRecognizer *textRecognizer;

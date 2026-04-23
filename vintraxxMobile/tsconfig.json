@@ -1,5 +1,5 @@
 {
-  "extends": "./node_modules/@react-native/typescript-config/tsconfig.json",
+  "extends": "@react-native/typescript-config/tsconfig.json",
   "compilerOptions": {
     "types": ["jest", "node"],
     "skipLibCheck": true

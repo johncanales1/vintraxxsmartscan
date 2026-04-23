@@ -412,7 +412,42 @@ export class ObdCommands {
   }> {
     logger.info(LogCategory.OBD, 'Clearing DTCs');
 
-    // ── 1. Pre-check: permanent DTCs block Mode 04 on every compliant ECU ──
+    // ── 1. Reset protocol state left over from the scan ────────────────────
+    // The scan's odometer step pins the adapter to a physically-addressed
+    // header (e.g. ATSH77E / ATCRA 7E8) and enables ATAL + ATCFC1 for
+    // multi-frame ISO-TP responses. Both Mode 0A (permanent DTC pre-check)
+    // and Mode 04 (clear) must be sent with functional addressing
+    // (ATSH7DF, no receive filter, default timing + CAN formatting) —
+    // otherwise the engine ECU never sees the request and the adapter
+    // reports NO DATA, which manifests as: the permanent-DTC pre-check
+    // silently returns [] (false negative), then Mode 04 silently fails,
+    // and the user just sees "the button does not work".
+    //
+    // We best-effort-reset the state up-front so BOTH commands below run
+    // on a clean adapter, and log every step so the exported debug log
+    // narrates the fix.
+    logger.info(LogCategory.OBD, 'Clear DTCs: resetting protocol state before 0A/04');
+    try {
+      const atat1 = await this.elm327.sendCommand('ATAT1');
+      logger.debug(LogCategory.OBD, 'Clear DTCs setup: ATAT1', {
+        ok: atat1.success, normalized: atat1.normalized,
+      });
+      const atcaf1 = await this.elm327.sendCommand('ATCAF1');
+      logger.debug(LogCategory.OBD, 'Clear DTCs setup: ATCAF1', {
+        ok: atcaf1.success, normalized: atcaf1.normalized,
+      });
+      const headerOk = await this.trySetAtshHeader('7DF');
+      logger.debug(LogCategory.OBD, 'Clear DTCs setup: ATSH7DF (functional)', { ok: headerOk });
+      const filterOk = await this.trySetAtcraFilter(null);
+      logger.debug(LogCategory.OBD, 'Clear DTCs setup: ATCRA cleared', { ok: filterOk });
+    } catch (setupErr) {
+      // Non-fatal — fall through and try the commands anyway.
+      logger.warn(LogCategory.OBD, 'Clear DTCs setup failed, attempting 0A/04 regardless', {
+        error: setupErr instanceof Error ? setupErr.message : setupErr,
+      });
+    }
+
+    // ── 2. Pre-check: permanent DTCs block Mode 04 on every compliant ECU ──
     try {
       const permanent = await this.readPermanentDTCs();
       if (permanent.length > 0) {
@@ -434,7 +469,7 @@ export class ObdCommands {
       });
     }
 
-    // ── 2. Issue Mode 04 and classify the response ─────────────────────────
+    // ── 3. Issue Mode 04 and classify the response ─────────────────────────
     try {
       const response = await this.elm327.sendCommand(ObdMode.CLEAR_DTC);
 
@@ -467,11 +502,19 @@ export class ObdCommands {
         };
       }
 
-      logger.error(LogCategory.OBD, 'Clear DTCs failed', { error: response.error });
+      // No NRC — typically "NO DATA" or a timeout. Include the raw adapter
+      // reply (trimmed) in the user-visible message so support can diagnose.
+      const rawSnippet = (response.normalized || response.raw || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+      logger.error(LogCategory.OBD, 'Clear DTCs failed (no NRC)', { error: response.error, raw: rawSnippet });
       return {
         success: false,
         reason: 'unknown',
-        message: response.error || 'The adapter did not confirm the clear command.',
+        message:
+          response.error
+            ? `${response.error}${rawSnippet ? ` (reply: ${rawSnippet})` : ''}`
+            : rawSnippet
+              ? `The adapter did not confirm the clear command (reply: ${rawSnippet}). Ensure the ignition is ON with the engine OFF and try again.`
+              : 'The adapter did not confirm the clear command. Ensure the ignition is ON with the engine OFF and try again.',
       };
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error';

@@ -410,9 +410,13 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
                 </View>
                 <Text style={styles.repairDesc}>{rec.description}</Text>
                 <View style={styles.repairCosts}>
-                  <Text style={styles.repairCostItem}>Labor: ${rec.estimatedCost.labor.toLocaleString()}</Text>
-                  <Text style={styles.repairCostItem}>Parts: ${rec.estimatedCost.parts.toLocaleString()}</Text>
-                  <Text style={styles.repairCostTotal}>Total: ${rec.estimatedCost.total.toLocaleString()}</Text>
+                  <View style={styles.repairCostsRow}>
+                    <Text style={styles.repairCostItem}>Labor: ${rec.estimatedCost.labor.toLocaleString()}</Text>
+                    <Text style={styles.repairCostItem}>Parts: ${rec.estimatedCost.parts.toLocaleString()}</Text>
+                  </View>
+                  <View style={styles.repairTotalRow}>
+                    <Text style={styles.repairCostTotal}>Total: ${rec.estimatedCost.total.toLocaleString()}</Text>
+                  </View>
                 </View>
               </View>
             ))}
@@ -427,9 +431,13 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
                 <Text style={styles.repairTitle}>{repair.name}</Text>
                 <Text style={styles.repairDesc}>{repair.description}</Text>
                 <View style={styles.repairCosts}>
-                  <Text style={styles.repairCostItem}>Labor ({repair.laborHours}h): ${repair.laborCost.toLocaleString()}</Text>
-                  <Text style={styles.repairCostItem}>Parts: ${repair.partsCost.toLocaleString()}</Text>
-                  <Text style={styles.repairCostTotal}>Total: ${repair.totalCost.toLocaleString()}</Text>
+                  <View style={styles.repairCostsRow}>
+                    <Text style={styles.repairCostItem}>Labor ({repair.laborHours}h): ${repair.laborCost.toLocaleString()}</Text>
+                    <Text style={styles.repairCostItem}>Parts: ${repair.partsCost.toLocaleString()}</Text>
+                  </View>
+                  <View style={styles.repairTotalRow}>
+                    <Text style={styles.repairCostTotal}>Total: ${repair.totalCost.toLocaleString()}</Text>
+                  </View>
                 </View>
               </View>
             ))}
@@ -1043,14 +1051,31 @@ const styles = StyleSheet.create({
   priorityText: { fontSize: 11, fontWeight: typography.fontWeight.semiBold, textTransform: 'uppercase' },
   repairDesc: { ...typography.styles.caption, color: colors.text.secondary, marginBottom: spacing.sm },
   repairCosts: {
-    flexDirection: 'row',
-    gap: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.border.light,
     paddingTop: spacing.sm,
+    gap: spacing.xs,
   },
-  repairCostItem: { ...typography.styles.caption, color: colors.text.muted },
-  repairCostTotal: { ...typography.styles.caption, color: colors.primary.navy, fontWeight: typography.fontWeight.semiBold },
+  repairCostsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  repairTotalRow: {
+    alignItems: 'flex-end',
+  },
+  repairCostItem: {
+    ...typography.styles.caption,
+    color: colors.text.muted,
+    flexShrink: 1,
+  },
+  repairCostTotal: {
+    ...typography.styles.caption,
+    color: colors.primary.navy,
+    fontWeight: typography.fontWeight.semiBold,
+    fontSize: typography.fontSize.sm,
+  },
   // Emissions
   emissionsRow: {
     flexDirection: 'row',

@@ -800,19 +800,27 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
                       <View style={styles.additionalRepairsIconBadge}>
                         <ToolIcon width={18} height={18} color={colors.primary.navy} />
                       </View>
-                      <Text style={styles.additionalRepairsToggleText}>Additional Repairs</Text>
-                      {selectedAdditionalRepairs.length > 0 && (
-                        <View style={styles.selectedCountChip}>
-                          <Text style={styles.selectedCountChipText}>
-                            {selectedAdditionalRepairs.length} selected
-                          </Text>
-                        </View>
-                      )}
+                      <Text
+                        style={styles.additionalRepairsToggleText}
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                      >
+                        Additional Repairs
+                      </Text>
                     </View>
                     <View style={[styles.toggleSwitch, showAdditionalRepairs && styles.toggleSwitchOn]}>
                       <View style={[styles.toggleKnob, showAdditionalRepairs && styles.toggleKnobOn]} />
                     </View>
                   </TouchableOpacity>
+                  {selectedAdditionalRepairs.length > 0 && (
+                    <View style={styles.selectedCountChipRow}>
+                      <View style={styles.selectedCountChip}>
+                        <Text style={styles.selectedCountChipText}>
+                          {selectedAdditionalRepairs.length} selected
+                        </Text>
+                      </View>
+                    </View>
+                  )}
                   {showAdditionalRepairs && (
                     <View style={styles.additionalRepairsList}>
                       {[
@@ -868,7 +876,12 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
                     onPress={() => setShowStockNumber(!showStockNumber)}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.stockNumberToggleText}>Stock Number</Text>
+                    <View style={styles.stockNumberHeaderLeft}>
+                      <View style={styles.stockNumberIconBadge}>
+                        <BuildingReportIcon width={18} height={18} color={colors.primary.navy} />
+                      </View>
+                      <Text style={styles.stockNumberToggleText}>Stock Number</Text>
+                    </View>
                     <View style={[styles.toggleSwitch, showStockNumber && styles.toggleSwitchOn]}>
                       <View style={[styles.toggleKnob, showStockNumber && styles.toggleKnobOn]} />
                     </View>
@@ -905,8 +918,17 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
                 {/* Vehicle Owner Name - display only (entered before scan) */}
                 {vehicleOwnerName.trim() ? (
                   <View style={styles.stockNumberContainer}>
-                    <Text style={styles.stockNumberToggleText}>Vehicle Owner</Text>
-                    <Text style={[styles.stockNumberValid, { marginTop: 4 }]}>{vehicleOwnerName}</Text>
+                    <View style={styles.stockNumberHeaderLeft}>
+                      <View style={styles.stockNumberIconBadge}>
+                        <ReadingVinIcon width={18} height={18} color={colors.primary.navy} />
+                      </View>
+                      <Text style={styles.stockNumberToggleText}>Vehicle Owner</Text>
+                    </View>
+                    <Text
+                      style={[styles.stockNumberValid, { marginTop: 6, marginLeft: 40 }]}
+                    >
+                      {vehicleOwnerName}
+                    </Text>
                   </View>
                 ) : null}
               </View>
@@ -1327,12 +1349,18 @@ const styles = StyleSheet.create({
     color: colors.primary.navy,
     fontWeight: typography.fontWeight.bold,
   },
+  selectedCountChipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.xs,
+    marginLeft: 32 + spacing.sm, // align with text (icon badge width + gap)
+  },
   selectedCountChip: {
     backgroundColor: colors.primary.red,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
     borderRadius: 10,
-    marginLeft: spacing.xs,
+    alignSelf: 'flex-start',
   },
   selectedCountChipText: {
     color: colors.text.inverse,
@@ -1412,14 +1440,36 @@ const styles = StyleSheet.create({
   },
   stockNumberContainer: {
     width: '100%',
-    marginTop: spacing.lg,
+    marginTop: spacing.md,
     backgroundColor: colors.background.secondary,
-    borderRadius: spacing.inputRadius,
-    padding: spacing.md,
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 2,
   },
   stockNumberToggle: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  stockNumberHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: spacing.sm,
+  },
+  stockNumberIconBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.status.infoLight,
+    justifyContent: 'center',
     alignItems: 'center',
   },
   stockNumberToggleText: {

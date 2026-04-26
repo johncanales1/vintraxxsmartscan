@@ -1,19 +1,26 @@
-// VIN Barcode Scanner Screen for VinTraxx SmartScan.
+// VIN Barcode + OCR Scanner Screen for VinTraxx SmartScan.
 //
-// Intentionally SINGLE MODE (barcode). The previous build offered a
-// barcode/OCR toggle backed by react-native-vision-camera-v3-text-recognition,
-// but that library's frame-processor pipeline hard-crashes the app on
-// React Native 0.83 + New Architecture (Fabric) when the OcrCamera is
-// mounted — which is exactly what the user reported on the "Text (OCR)"
-// tab. We removed the toggle to stop the crash; a follow-up PR will reintroduce
-// OCR via a photo-based library (e.g. @react-native-ml-kit/text-recognition)
-// wired through the `handleOcrFallback` seam below.
+// Hybrid detection — barcodes AND printed-text VINs are detected automatically:
+//   • `useCodeScanner` (vision-camera) runs continuously for Code 39 / 128 /
+//     PDF417 / Data Matrix / QR / EAN / etc.
+//   • In parallel, every OCR_INTERVAL_MS the camera silently snaps a still
+//     photo and runs @react-native-ml-kit/text-recognition over it. Any
+//     17-char VIN substring found in the OCR text is fed through the same
+//     candidate / consensus pipeline as barcodes.
+//   • First valid VIN wins. Manual "Type VIN" entry is still available as
+//     a fallback.
 //
-// UX matches LaserAppraiser: full-screen camera, dark mask, horizontal red
-// scan line animated inside a rectangular crop, torch + camera-switch +
-// close buttons, a minimal "Scan barcodes or VIN" hint, and a "Type VIN"
-// fallback that opens a manual-entry sheet.
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+// ML Kit is photo-based (Promise on a still image) so it does NOT use the
+// vision-camera frame processor — that's why this re-introduces OCR safely
+// on RN 0.83 + New Architecture (Fabric). The previous frame-processor
+// based attempt (react-native-vision-camera-v3-text-recognition) crashed
+// here, which is why it had been removed.
+//
+// UI: minimalist (Apple Wallet / Google Pay style). No scan-box overlay.
+// Floating glass top header (title + close), brand-color corner ticks at
+// the focus area, floating status pill, glass bottom dock with three icon
+// buttons (torch · type VIN · flip camera), and a tap-to-focus pulse.
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -27,6 +34,8 @@ import {
   Linking,
   Vibration,
   Modal,
+  ActivityIndicator,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -36,6 +45,8 @@ import {
   useCodeScanner,
   useCameraFormat,
 } from 'react-native-vision-camera';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import TextRecognition from '@react-native-ml-kit/text-recognition';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { debugLogger } from '../services/debug/DebugLogger';
@@ -99,6 +110,17 @@ const VIN_CODE_TYPES = [
 ] as const;
 
 const CONSENSUS_THRESHOLD = 2;
+
+// ── OCR loop tuning ───────────────────────────────────────────────────
+// Cadence chosen as a balance: fast enough to feel instant once the user
+// frames the VIN, slow enough that the camera HW pipeline keeps up and
+// battery / heat are not a concern. Empirically ~1.5 s gives the OCR
+// engine time to return on mid-range Android devices.
+const OCR_INTERVAL_MS = 1500;
+// Skip OCR snapshots for this long after camera mount so the autofocus
+// + auto-exposure pipeline has time to settle. Snapshots taken before
+// settle are blurry and waste a cycle.
+const OCR_WARMUP_MS = 800;
 
 // ── ErrorBoundary ─────────────────────────────────────────────────────
 // Native-side camera failures (device init, frame processor, etc.) can
@@ -172,6 +194,11 @@ const VinScannerScreenInner: React.FC<VinScannerScreenProps> = ({ navigation, ro
   const [checkDigitValid, setCheckDigitValid] = useState(true);
   const [manualEntryVisible, setManualEntryVisible] = useState(false);
   const [manualVinInput, setManualVinInput] = useState('');
+  // Drives the floating status pill copy ("Reading text…") so the user
+  // gets feedback while ML Kit is processing a snapshot.
+  const [isOcrInFlight, setIsOcrInFlight] = useState(false);
+  // Tap-to-focus pulse location.
+  const [tapPoint, setTapPoint] = useState<{ x: number; y: number } | null>(null);
 
   const cameraRef = useRef<VisionCamera>(null);
   const lastScanTimeRef = useRef<number>(0);
@@ -182,28 +209,44 @@ const VinScannerScreenInner: React.FC<VinScannerScreenProps> = ({ navigation, ro
   const lastFrameLogRef = useRef<number>(0);
   const vinAcceptedRef = useRef<boolean>(false);
 
-  // ── Animated scan line ─────────────────────────────────────────────
-  const scanLineAnim = useRef(new Animated.Value(0)).current;
+  // OCR loop housekeeping — kept in refs so the interval closure can read
+  // the latest values without triggering a restart on every state change.
+  const ocrIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const ocrInFlightRef = useRef<boolean>(false);
+  const ocrAttemptsRef = useRef<number>(0);
+  const scannedVinRef = useRef<string | null>(null);
+  const manualEntryVisibleRef = useRef<boolean>(false);
+  const isProcessingRef = useRef<boolean>(false);
+  useEffect(() => { scannedVinRef.current = scannedVin; }, [scannedVin]);
+  useEffect(() => { manualEntryVisibleRef.current = manualEntryVisible; }, [manualEntryVisible]);
+  useEffect(() => { isProcessingRef.current = isProcessing; }, [isProcessing]);
+
+  // ── Animations ─────────────────────────────────────────────────────
+  // Subtle pulse on the focus corner ticks while idle/scanning.
+  const tickPulseAnim = useRef(new Animated.Value(0)).current;
+  // Tap-to-focus pulse — expanding ring at the user's last tap location.
+  const focusPulseAnim = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(scanLineAnim, {
+        Animated.timing(tickPulseAnim, {
           toValue: 1,
-          duration: 1800,
+          duration: 1400,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
-        Animated.timing(scanLineAnim, {
+        Animated.timing(tickPulseAnim, {
           toValue: 0,
-          duration: 1800,
+          duration: 1400,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
-      ])
+      ]),
     );
     loop.start();
     return () => loop.stop();
-  }, [scanLineAnim]);
+  }, [tickPulseAnim]);
 
   // ── Lifecycle + permission ─────────────────────────────────────────
   useEffect(() => {
@@ -221,6 +264,7 @@ const VinScannerScreenInner: React.FC<VinScannerScreenProps> = ({ navigation, ro
       debugLogger.logEvent('VIN Scanner: unmount', {
         vinAccepted: vinAcceptedRef.current,
         durationMs: Date.now() - mountedAtRef.current,
+        ocrAttempts: ocrAttemptsRef.current,
       });
     };
     // Intentionally only on mount — permission side-effects guarded above.
@@ -337,11 +381,84 @@ const VinScannerScreenInner: React.FC<VinScannerScreenProps> = ({ navigation, ro
     },
   });
 
-  // ── Tap-to-focus ──────────────────────────────────────────────────
+  // ── OCR loop (photo-based ML Kit) ─────────────────────────────────
+  // Snaps a still image and runs Latin-script text recognition on it.
+  // Photo-based (not frame-processor) so it does NOT trigger the
+  // Fabric/New-Architecture crash that disabled the previous OCR path.
+  const runOcrSnapshot = useCallback(async () => {
+    if (
+      ocrInFlightRef.current ||
+      isProcessingRef.current ||
+      scannedVinRef.current ||
+      manualEntryVisibleRef.current
+    ) return;
+    const cam = cameraRef.current;
+    if (!cam) return;
+    ocrInFlightRef.current = true;
+    setIsOcrInFlight(true);
+    ocrAttemptsRef.current += 1;
+    try {
+      // Use 'off' for the takePhoto flash — the parent <Camera> already
+      // drives the torch via the `torch` prop, so a second flash here
+      // would wash out OCR and disturb the user.
+      const photo = await cam.takePhoto({
+        flash: 'off',
+        enableShutterSound: false,
+      });
+      const uri = photo.path.startsWith('file://')
+        ? photo.path
+        : `file://${photo.path}`;
+      const result = await TextRecognition.recognize(uri);
+      const fullText =
+        result?.text ||
+        result?.blocks?.map((b) => b.text).join(' ') ||
+        '';
+      if (fullText) {
+        tryAcceptCandidate(fullText, 'ocr', 'VIN detected (OCR)');
+      }
+    } catch (err) {
+      debugLogger.logEvent('VIN Scanner: OCR snapshot failed', {
+        error: err instanceof Error ? err.message : String(err),
+        attempt: ocrAttemptsRef.current,
+      });
+    } finally {
+      ocrInFlightRef.current = false;
+      setIsOcrInFlight(false);
+    }
+  }, [tryAcceptCandidate]);
+
+  // Drive the OCR loop. Re-armed any time the camera/permission/scannedVin
+  // boundary changes — clears itself when a VIN is accepted so we don't
+  // keep waking the camera after success. Uses an initial warmup so the
+  // autofocus/auto-exposure pipeline has time to settle.
+  useEffect(() => {
+    if (!device || !hasPermission) return;
+    if (scannedVin) return;
+    const warmup = setTimeout(() => {
+      ocrIntervalRef.current = setInterval(runOcrSnapshot, OCR_INTERVAL_MS);
+    }, OCR_WARMUP_MS);
+    return () => {
+      clearTimeout(warmup);
+      if (ocrIntervalRef.current) {
+        clearInterval(ocrIntervalRef.current);
+        ocrIntervalRef.current = null;
+      }
+    };
+  }, [device, hasPermission, scannedVin, runOcrSnapshot]);
+
+  // ── Tap-to-focus + visual focus pulse ─────────────────────────────
   const handleCameraTap = useCallback(
     async (event: { nativeEvent: { locationX: number; locationY: number } }) => {
+      const { locationX, locationY } = event.nativeEvent;
+      setTapPoint({ x: locationX, y: locationY });
+      focusPulseAnim.setValue(0);
+      Animated.timing(focusPulseAnim, {
+        toValue: 1,
+        duration: 600,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start();
       try {
-        const { locationX, locationY } = event.nativeEvent;
         await cameraRef.current?.focus({ x: locationX, y: locationY });
       } catch (err) {
         debugLogger.logEvent('VIN Scanner: focus failed', {
@@ -349,7 +466,7 @@ const VinScannerScreenInner: React.FC<VinScannerScreenProps> = ({ navigation, ro
         });
       }
     },
-    [],
+    [focusPulseAnim],
   );
 
   // ── Actions ───────────────────────────────────────────────────────
@@ -422,10 +539,13 @@ const VinScannerScreenInner: React.FC<VinScannerScreenProps> = ({ navigation, ro
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <View style={styles.permissionContainer}>
+          <View style={styles.permissionIconWrap}>
+            <Ionicons name="camera-outline" size={36} color={colors.primary.navy} />
+          </View>
           <Text style={styles.permissionTitle}>Camera Access Required</Text>
           <Text style={styles.permissionText}>
-            VTSmartScan needs camera access to scan VIN barcodes.
-            Please grant camera permission in Settings.
+            VTSmartScan needs camera access to scan VIN barcodes and printed
+            VIN labels. Please grant camera permission in Settings.
           </Text>
           <TouchableOpacity style={styles.permissionButton} onPress={handleOpenSettings}>
             <Text style={styles.permissionButtonText}>Open Settings</Text>
@@ -442,6 +562,9 @@ const VinScannerScreenInner: React.FC<VinScannerScreenProps> = ({ navigation, ro
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <View style={styles.permissionContainer}>
+          <View style={styles.permissionIconWrap}>
+            <Ionicons name="alert-circle-outline" size={36} color={colors.primary.red} />
+          </View>
           <Text style={styles.permissionTitle}>No Camera Found</Text>
           <Text style={styles.permissionText}>
             Unable to find a camera device on this phone.
@@ -456,14 +579,23 @@ const VinScannerScreenInner: React.FC<VinScannerScreenProps> = ({ navigation, ro
 
   const isActive = !scannedVin;
 
+  // Status pill copy/icon driven by current OCR/scan state.
+  const statusContent: {
+    icon: string;
+    label: string;
+    tone: 'idle' | 'busy' | 'success';
+  } = scannedVin
+    ? { icon: 'checkmark-circle', label: 'VIN found', tone: 'success' }
+    : isOcrInFlight
+    ? { icon: 'scan-outline', label: 'Reading text…', tone: 'busy' }
+    : { icon: 'scan-outline', label: 'Looking for VIN…', tone: 'idle' };
+
   return (
     <View style={styles.container}>
-      {/* Camera preview (fills the screen) */}
-      <TouchableOpacity
-        style={StyleSheet.absoluteFill}
-        activeOpacity={1}
-        onPress={handleCameraTap}
-      >
+      {/* Camera preview fills the screen. Pressable captures tap-to-focus
+          without the extra TouchableOpacity wrapper that used to swallow
+          double-taps and activeOpacity flashes. */}
+      <Pressable style={StyleSheet.absoluteFill} onPress={handleCameraTap}>
         <VisionCamera
           ref={cameraRef}
           style={StyleSheet.absoluteFill}
@@ -472,75 +604,114 @@ const VinScannerScreenInner: React.FC<VinScannerScreenProps> = ({ navigation, ro
           isActive={isActive}
           codeScanner={codeScanner}
           torch={torchOn ? 'on' : 'off'}
+          photo={true}
         />
-      </TouchableOpacity>
+      </Pressable>
 
-      {/* Overlay — mask + corners + scan line + buttons */}
+      {/* Tap-to-focus pulse — soft expanding ring at the touch point. */}
+      {tapPoint && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.focusPulse,
+            {
+              left: tapPoint.x - 36,
+              top: tapPoint.y - 36,
+              opacity: focusPulseAnim.interpolate({
+                inputRange: [0, 0.2, 1],
+                outputRange: [0, 0.9, 0],
+              }),
+              transform: [
+                {
+                  scale: focusPulseAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.6, 1.5],
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
+      )}
+
+      {/* Soft vignette layers keep overlay UI legible without the harsh
+          boxed dark mask that used to hide most of the preview. */}
+      <View pointerEvents="none" style={styles.topVignette} />
+      <View pointerEvents="none" style={styles.bottomVignette} />
+
+      {/* Overlay UI: glass top header, center ticks/status, glass dock. */}
       <View style={styles.overlay} pointerEvents="box-none">
-        {/* Top bar — close button on the right (LaserAppraiser style) */}
+        {/* ── Top header (glass) ─────────────────────────────────────── */}
         <SafeAreaView edges={['top']} pointerEvents="box-none">
-          <View style={styles.topBar}>
-            <View style={styles.topBarSpacer} />
-            <Text style={styles.topBarTitle}>Scan VIN</Text>
+          <View style={styles.topHeader}>
+            <View style={styles.brandDot} />
+            <Text style={styles.topHeaderTitle}>Scan VIN</Text>
             <TouchableOpacity
               onPress={handleClose}
-              style={styles.closeCircle}
+              style={styles.headerCloseButton}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               accessibilityLabel="Close scanner"
+              activeOpacity={0.7}
             >
-              <Text style={styles.closeCircleText}>×</Text>
+              <Ionicons name="close" size={22} color="#FFF" />
             </TouchableOpacity>
           </View>
         </SafeAreaView>
 
-        {/* Scan crop — dark mask above/below/sides, clear centre rectangle */}
-        <View style={styles.scanAreaContainer}>
-          <View style={styles.maskOverlay} />
-          <View style={styles.scanMiddleRow}>
-            <View style={styles.maskSide} />
-            <View style={styles.scanArea}>
-              <View style={[styles.corner, styles.cornerTL]} />
-              <View style={[styles.corner, styles.cornerTR]} />
-              <View style={[styles.corner, styles.cornerBL]} />
-              <View style={[styles.corner, styles.cornerBR]} />
+        {/* ── Center: pulsing corner ticks + status pill ─────────────── */}
+        <View style={styles.centerArea} pointerEvents="box-none">
+          {!scannedVin && (
+            <Animated.View
+              style={[
+                styles.cornerTickWrap,
+                {
+                  opacity: tickPulseAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.55, 1],
+                  }),
+                },
+              ]}
+              pointerEvents="none"
+            >
+              <View style={[styles.tick, styles.tickTL]} />
+              <View style={[styles.tick, styles.tickTR]} />
+              <View style={[styles.tick, styles.tickBL]} />
+              <View style={[styles.tick, styles.tickBR]} />
+            </Animated.View>
+          )}
 
-              {!scannedVin && (
-                <Animated.View
-                  style={[
-                    styles.scanLine,
-                    {
-                      transform: [
-                        {
-                          translateY: scanLineAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [-80, 80],
-                          }),
-                        },
-                      ],
-                    },
-                  ]}
+          <View style={styles.statusPillWrap} pointerEvents="none">
+            <View
+              style={[
+                styles.statusPill,
+                statusContent.tone === 'success' && styles.statusPillSuccess,
+                statusContent.tone === 'busy' && styles.statusPillBusy,
+              ]}
+            >
+              {statusContent.tone === 'busy' ? (
+                <ActivityIndicator size="small" color="#FFF" style={styles.statusSpinner} />
+              ) : (
+                <Ionicons
+                  name={statusContent.icon}
+                  size={16}
+                  color="#FFF"
                 />
               )}
+              <Text style={styles.statusPillText}>{statusContent.label}</Text>
             </View>
-            <View style={styles.maskSide} />
+            {!scannedVin && (
+              <Text style={styles.helperText}>
+                Point at the VIN barcode or label · Tap to focus
+              </Text>
+            )}
           </View>
-          <View style={styles.maskOverlay} />
-
-          <Text style={styles.scanHint}>
-            {scannedVin ? 'VIN detected' : 'Scan barcodes or VIN'}
-          </Text>
-          {!scannedVin && (
-            <Text style={styles.scanHintSub}>
-              Align the VIN barcode within the frame · Tap to focus
-            </Text>
-          )}
         </View>
 
-        {/* Bottom section — action buttons OR result editor */}
+        {/* ── Bottom: glass dock OR result card ─────────────────────── */}
         <SafeAreaView edges={['bottom']} pointerEvents="box-none">
           {scannedVin ? (
             <View style={styles.bottomSection}>
-              <View style={styles.resultContainer}>
+              <View style={styles.resultCard}>
                 <Text style={styles.resultLabel}>Scanned VIN</Text>
                 <TextInput
                   style={styles.resultVinInput}
@@ -556,9 +727,12 @@ const VinScannerScreenInner: React.FC<VinScannerScreenProps> = ({ navigation, ro
                   selectTextOnFocus
                 />
                 {!checkDigitValid && (
-                  <Text style={styles.checkDigitWarning}>
-                    VIN check digit invalid — verify before confirming
-                  </Text>
+                  <View style={styles.checkDigitWarningRow}>
+                    <Ionicons name="warning" size={14} color="#FFD60A" />
+                    <Text style={styles.checkDigitWarning}>
+                      VIN check digit invalid — verify before confirming
+                    </Text>
+                  </View>
                 )}
                 <View style={styles.resultButtons}>
                   <TouchableOpacity
@@ -566,106 +740,149 @@ const VinScannerScreenInner: React.FC<VinScannerScreenProps> = ({ navigation, ro
                     onPress={handleRescan}
                     activeOpacity={0.7}
                   >
+                    <Ionicons name="refresh" size={16} color="#FFF" />
                     <Text style={styles.rescanButtonText}>Re-scan</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.confirmButton}
                     onPress={handleConfirmVin}
-                    activeOpacity={0.7}
+                    activeOpacity={0.85}
                   >
+                    <Ionicons name="checkmark" size={18} color="#FFF" />
                     <Text style={styles.confirmButtonText}>Use This VIN</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             </View>
           ) : (
-            <View style={styles.bottomActionBar}>
-              <TouchableOpacity
-                onPress={() => setTorchOn((v) => !v)}
-                style={[styles.actionPill, torchOn && styles.actionPillActive]}
-                activeOpacity={0.8}
-                accessibilityLabel="Toggle flashlight"
-              >
-                <Text style={styles.actionPillIcon}>{torchOn ? '●' : '○'}</Text>
-                <Text style={styles.actionPillLabel}>
-                  {torchOn ? 'Light On' : 'Light Off'}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={handleTypeVin}
-                style={styles.actionPill}
-                activeOpacity={0.8}
-                accessibilityLabel="Type VIN manually"
-              >
-                <Text style={styles.actionPillIcon}>⌨</Text>
-                <Text style={styles.actionPillLabel}>Type VIN</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={handleFlipCamera}
-                style={styles.actionPill}
-                activeOpacity={0.8}
-                accessibilityLabel="Flip camera"
-              >
-                <Text style={styles.actionPillIcon}>⟳</Text>
-                <Text style={styles.actionPillLabel}>Flip</Text>
-              </TouchableOpacity>
+            <View style={styles.bottomDockWrap} pointerEvents="box-none">
+              <View style={styles.bottomDock}>
+                <DockButton
+                  icon={torchOn ? 'flashlight' : 'flashlight-outline'}
+                  label={torchOn ? 'Light On' : 'Light Off'}
+                  active={torchOn}
+                  onPress={() => setTorchOn((v) => !v)}
+                  accessibilityLabel="Toggle flashlight"
+                />
+                <DockButton
+                  icon="keypad-outline"
+                  label="Type VIN"
+                  onPress={handleTypeVin}
+                  accessibilityLabel="Type VIN manually"
+                />
+                <DockButton
+                  icon="camera-reverse-outline"
+                  label="Flip"
+                  onPress={handleFlipCamera}
+                  accessibilityLabel="Flip camera"
+                />
+              </View>
             </View>
           )}
         </SafeAreaView>
       </View>
 
-      {/* Manual entry modal — "Type VIN" fallback path */}
+      {/* Manual entry bottom sheet — "Type VIN" fallback path */}
       <Modal
         visible={manualEntryVisible}
         transparent
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setManualEntryVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Enter VIN</Text>
-            <Text style={styles.modalSubtitle}>17 characters, no I, O, or Q</Text>
+        <Pressable
+          style={styles.sheetBackdrop}
+          onPress={() => setManualEntryVisible(false)}
+        >
+          {/* Inner Pressable absorbs taps so tapping inside the sheet
+              does not dismiss the modal via the backdrop handler. */}
+          <Pressable style={styles.sheetCard} onPress={() => {}}>
+            <View style={styles.sheetGrabber} />
+            <Text style={styles.sheetTitle}>Enter VIN manually</Text>
+            <Text style={styles.sheetSubtitle}>
+              17 characters · letters and digits · no I, O, or Q
+            </Text>
             <TextInput
-              style={styles.modalInput}
+              style={styles.sheetInput}
               value={manualVinInput}
               onChangeText={(text) =>
                 setManualVinInput(text.replace(/[^A-HJ-NPR-Z0-9]/gi, '').toUpperCase())
               }
               placeholder="e.g. 1HGBH41JXMN109186"
-              placeholderTextColor="#B0B8C4"
+              placeholderTextColor={colors.text.muted}
               maxLength={17}
               autoCapitalize="characters"
               autoCorrect={false}
               autoFocus
             />
-            <View style={styles.modalButtonRow}>
+            <View style={styles.sheetMeter}>
+              <View
+                style={[
+                  styles.sheetMeterFill,
+                  { width: `${(manualVinInput.length / 17) * 100}%` },
+                ]}
+              />
+            </View>
+            <Text style={styles.sheetCounter}>{manualVinInput.length} / 17</Text>
+            <View style={styles.sheetButtonRow}>
               <TouchableOpacity
-                style={styles.modalCancelButton}
+                style={styles.sheetCancelButton}
                 onPress={() => setManualEntryVisible(false)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.modalCancelText}>Cancel</Text>
+                <Text style={styles.sheetCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
-                  styles.modalSubmitButton,
-                  !isValidVinFormat(manualVinInput) && styles.modalSubmitButtonDisabled,
+                  styles.sheetSubmitButton,
+                  !isValidVinFormat(manualVinInput) && styles.sheetSubmitButtonDisabled,
                 ]}
                 onPress={handleManualSubmit}
                 disabled={!isValidVinFormat(manualVinInput)}
-                activeOpacity={0.7}
+                activeOpacity={0.85}
               >
-                <Text style={styles.modalSubmitText}>Use VIN</Text>
+                <Text style={styles.sheetSubmitText}>Use VIN</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     </View>
   );
 };
+
+// ── Dock icon button ─────────────────────────────────────────────────
+// Extracted to keep the main component readable. `active` tints the
+// button yellow (used for the torch on-state).
+interface DockButtonProps {
+  icon: string;
+  label: string;
+  active?: boolean;
+  onPress: () => void;
+  accessibilityLabel: string;
+}
+const DockButton: React.FC<DockButtonProps> = ({
+  icon,
+  label,
+  active,
+  onPress,
+  accessibilityLabel,
+}) => (
+  <TouchableOpacity
+    style={[styles.dockButton, active && styles.dockButtonActive]}
+    onPress={onPress}
+    activeOpacity={0.7}
+    accessibilityLabel={accessibilityLabel}
+  >
+    <Ionicons
+      name={icon}
+      size={22}
+      color={active ? '#1E3A5F' : '#FFF'}
+    />
+    <Text style={[styles.dockButtonLabel, active && styles.dockButtonLabelActive]}>
+      {label}
+    </Text>
+  </TouchableOpacity>
+);
 
 // Public component wraps the inner screen with the error boundary so
 // native-side camera crashes never take the whole app down.
@@ -676,166 +893,237 @@ export const VinScannerScreen: React.FC<VinScannerScreenProps> = (props) => (
 );
 
 // ── Styles ────────────────────────────────────────────────────────────
-const CORNER_SIZE = 28;
-const CORNER_WIDTH = 4;
-const SCAN_BOX_WIDTH = 320;
-const SCAN_BOX_HEIGHT = 180;
+const TICK_SIZE = 22;
+const TICK_STROKE = 2.5;
+const TICK_BOX_WIDTH = 280;
+const TICK_BOX_HEIGHT = 110;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   overlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'space-between' },
 
-  // ── Top bar ────────────────────────────────────────────────────────
-  topBar: {
+  // ── Soft vignette layers (legibility without a hard mask) ──────────
+  topVignette: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 180,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  bottomVignette: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 220,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+
+  // ── Top header (glass) ─────────────────────────────────────────────
+  topHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    marginHorizontal: spacing.base,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.base,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(20, 24, 32, 0.55)',
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
   },
-  topBarSpacer: { width: 40, height: 40 },
-  topBarTitle: {
-    color: '#FFF',
-    fontSize: 17,
-    fontWeight: '700',
-    textShadowColor: 'rgba(0,0,0,0.6)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-  closeCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.primary.red || '#FF3B30',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
+  brandDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.primary.red,
+    shadowColor: colors.primary.red,
+    shadowOpacity: 0.7,
     shadowRadius: 4,
-    elevation: 6,
-  },
-  closeCircleText: {
-    color: '#FFF',
-    fontSize: 28,
-    fontWeight: '400',
-    lineHeight: 28,
-    marginTop: -2,
-  },
-
-  // ── Scan crop ──────────────────────────────────────────────────────
-  scanAreaContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  maskOverlay: { flex: 1, width: '100%', backgroundColor: 'rgba(0,0,0,0.55)' },
-  scanMiddleRow: { flexDirection: 'row', height: SCAN_BOX_HEIGHT },
-  maskSide: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
-  scanArea: {
-    width: SCAN_BOX_WIDTH,
-    height: SCAN_BOX_HEIGHT,
-    position: 'relative',
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
-  corner: { position: 'absolute', width: CORNER_SIZE, height: CORNER_SIZE },
-  cornerTL: {
-    top: 0, left: 0,
-    borderTopWidth: CORNER_WIDTH, borderLeftWidth: CORNER_WIDTH,
-    borderTopColor: '#FFF', borderLeftColor: '#FFF',
-  },
-  cornerTR: {
-    top: 0, right: 0,
-    borderTopWidth: CORNER_WIDTH, borderRightWidth: CORNER_WIDTH,
-    borderTopColor: '#FFF', borderRightColor: '#FFF',
-  },
-  cornerBL: {
-    bottom: 0, left: 0,
-    borderBottomWidth: CORNER_WIDTH, borderLeftWidth: CORNER_WIDTH,
-    borderBottomColor: '#FFF', borderLeftColor: '#FFF',
-  },
-  cornerBR: {
-    bottom: 0, right: 0,
-    borderBottomWidth: CORNER_WIDTH, borderRightWidth: CORNER_WIDTH,
-    borderBottomColor: '#FFF', borderRightColor: '#FFF',
-  },
-  scanLine: {
-    width: '92%',
-    height: 2,
-    backgroundColor: colors.primary.red || '#FF3B30',
-    opacity: 0.9,
-    shadowColor: colors.primary.red || '#FF3B30',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 6,
   },
-  scanHint: {
+  topHeaderTitle: {
     color: '#FFF',
     fontSize: 16,
     fontWeight: '600',
+    letterSpacing: 0.3,
+    flex: 1,
     textAlign: 'center',
-    marginTop: spacing.lg,
-    textShadowColor: 'rgba(0,0,0,0.7)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-    paddingHorizontal: spacing.lg,
+    marginLeft: -10,
   },
-  scanHintSub: {
-    color: 'rgba(255,255,255,0.75)',
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: 6,
-    paddingHorizontal: spacing.lg,
+  headerCloseButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
   },
 
-  // ── Bottom action bar (idle state) ─────────────────────────────────
-  bottomActionBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+  // ── Center: corner ticks + status pill ─────────────────────────────
+  centerArea: {
+    flex: 1,
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    gap: spacing.sm,
+    justifyContent: 'center',
   },
-  actionPill: {
+  cornerTickWrap: {
+    width: TICK_BOX_WIDTH,
+    height: TICK_BOX_HEIGHT,
+    position: 'relative',
+  },
+  tick: {
+    position: 'absolute',
+    width: TICK_SIZE,
+    height: TICK_SIZE,
+  },
+  tickTL: {
+    top: 0,
+    left: 0,
+    borderTopWidth: TICK_STROKE,
+    borderLeftWidth: TICK_STROKE,
+    borderColor: colors.primary.red,
+    borderTopLeftRadius: 6,
+  },
+  tickTR: {
+    top: 0,
+    right: 0,
+    borderTopWidth: TICK_STROKE,
+    borderRightWidth: TICK_STROKE,
+    borderColor: colors.primary.red,
+    borderTopRightRadius: 6,
+  },
+  tickBL: {
+    bottom: 0,
+    left: 0,
+    borderBottomWidth: TICK_STROKE,
+    borderLeftWidth: TICK_STROKE,
+    borderColor: colors.primary.red,
+    borderBottomLeftRadius: 6,
+  },
+  tickBR: {
+    bottom: 0,
+    right: 0,
+    borderBottomWidth: TICK_STROKE,
+    borderRightWidth: TICK_STROKE,
+    borderColor: colors.primary.red,
+    borderBottomRightRadius: 6,
+  },
+
+  // ── Status pill (floats below ticks) ───────────────────────────────
+  statusPillWrap: {
+    position: 'absolute',
+    bottom: -68,
+    alignItems: 'center',
+  },
+  statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: spacing.md,
+    gap: 8,
+    paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 22,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    borderRadius: 20,
+    backgroundColor: 'rgba(20, 24, 32, 0.7)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
+    borderColor: 'rgba(255,255,255,0.14)',
   },
-  actionPillActive: {
-    backgroundColor: 'rgba(255,200,0,0.45)',
-    borderColor: 'rgba(255,200,0,0.6)',
+  statusPillBusy: {
+    backgroundColor: 'rgba(37, 99, 235, 0.6)',
+    borderColor: 'rgba(255,255,255,0.18)',
   },
-  actionPillIcon: {
-    color: '#FFF',
-    fontSize: 15,
-    fontWeight: '700',
+  statusPillSuccess: {
+    backgroundColor: 'rgba(22, 163, 74, 0.9)',
+    borderColor: 'rgba(255,255,255,0.18)',
   },
-  actionPillLabel: {
+  statusSpinner: {
+    transform: [{ scale: 0.85 }],
+  },
+  statusPillText: {
     color: '#FFF',
     fontSize: 13,
     fontWeight: '600',
     letterSpacing: 0.3,
   },
+  helperText: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 10,
+    textAlign: 'center',
+    paddingHorizontal: spacing.lg,
+  },
 
-  // ── Bottom result editor (after scan) ──────────────────────────────
-  bottomSection: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
-  resultContainer: {
-    backgroundColor: 'rgba(0,0,0,0.82)',
-    borderRadius: 16,
-    padding: spacing.lg,
+  // ── Tap-to-focus pulse ─────────────────────────────────────────────
+  focusPulse: {
+    position: 'absolute',
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 2,
+    borderColor: colors.primary.red,
+    backgroundColor: 'transparent',
+  },
+
+  // ── Bottom dock (idle state) ───────────────────────────────────────
+  bottomDockWrap: {
+    paddingHorizontal: spacing.base,
+    paddingBottom: spacing.sm,
     alignItems: 'center',
+  },
+  bottomDock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 10,
+    borderRadius: 28,
+    backgroundColor: 'rgba(20, 24, 32, 0.65)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    minWidth: 280,
+  },
+  dockButton: {
+    width: 84,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 18,
+    gap: 4,
+  },
+  dockButtonActive: {
+    backgroundColor: '#FFD60A',
+  },
+  dockButtonLabel: {
+    color: '#FFF',
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  dockButtonLabelActive: {
+    color: '#1E3A5F',
+  },
+
+  // ── Result card (after VIN accepted) ───────────────────────────────
+  bottomSection: {
+    paddingHorizontal: spacing.base,
+    paddingBottom: spacing.sm,
+  },
+  resultCard: {
+    backgroundColor: 'rgba(20, 24, 32, 0.85)',
+    borderRadius: 22,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
   },
   resultLabel: {
     color: 'rgba(255,255,255,0.7)',
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 1.4,
     marginBottom: spacing.xs,
   },
   resultVinInput: {
@@ -847,101 +1135,145 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     textAlign: 'center',
     borderBottomWidth: 2,
-    borderBottomColor: 'rgba(255,255,255,0.4)',
+    borderBottomColor: 'rgba(255,255,255,0.32)',
     paddingVertical: spacing.sm,
-    width: '100%',
+  },
+  checkDigitWarningRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginBottom: spacing.sm,
   },
   checkDigitWarning: {
     color: '#FFD60A',
     fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
-    marginBottom: spacing.sm,
   },
-  resultButtons: { flexDirection: 'row', gap: spacing.md, width: '100%' },
+  resultButtons: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    width: '100%',
+    marginTop: 6,
+  },
   rescanButton: {
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 12,
-    paddingVertical: spacing.md,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderRadius: 14,
+    paddingVertical: spacing.md,
   },
-  rescanButtonText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
+  rescanButtonText: { color: '#FFF', fontSize: 15, fontWeight: '600' },
   confirmButton: {
     flex: 2,
-    backgroundColor: colors.status.success || '#34C759',
-    borderRadius: 12,
-    paddingVertical: spacing.md,
+    flexDirection: 'row',
     alignItems: 'center',
-  },
-  confirmButtonText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
-
-  // ── Manual entry modal ─────────────────────────────────────────────
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: spacing.xl,
+    gap: 6,
+    backgroundColor: colors.status.success,
+    borderRadius: 14,
+    paddingVertical: spacing.md,
   },
-  modalCard: {
+  confirmButtonText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+
+  // ── Manual entry bottom sheet ──────────────────────────────────────
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+  },
+  sheetCard: {
     backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: spacing.lg,
-    width: '100%',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xl,
   },
-  modalTitle: {
+  sheetGrabber: {
+    alignSelf: 'center',
+    width: 42,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#D1D5DB',
+    marginBottom: spacing.md,
+  },
+  sheetTitle: {
     fontSize: 20,
     fontWeight: '700',
     color: colors.primary.navy,
     marginBottom: 4,
   },
-  modalSubtitle: {
+  sheetSubtitle: {
     fontSize: 13,
     color: colors.text.muted,
     marginBottom: spacing.md,
   },
-  modalInput: {
+  sheetInput: {
     backgroundColor: '#F8FAFC',
     borderWidth: 1,
     borderColor: colors.border.light,
-    borderRadius: 10,
+    borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: Platform.OS === 'ios' ? 14 : 10,
-    fontSize: 16,
+    fontSize: 18,
+    fontWeight: '700',
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    letterSpacing: 1.5,
+    letterSpacing: 2,
     color: colors.text.primary,
-    marginBottom: spacing.md,
   },
-  modalButtonRow: {
+  sheetMeter: {
+    height: 4,
+    width: '100%',
+    backgroundColor: colors.border.light,
+    borderRadius: 2,
+    marginTop: 12,
+    overflow: 'hidden',
+  },
+  sheetMeterFill: {
+    height: '100%',
+    backgroundColor: colors.primary.navy,
+    borderRadius: 2,
+  },
+  sheetCounter: {
+    fontSize: 11,
+    color: colors.text.muted,
+    fontWeight: '600',
+    textAlign: 'right',
+    marginTop: 4,
+    marginBottom: spacing.md,
+    letterSpacing: 0.3,
+  },
+  sheetButtonRow: {
     flexDirection: 'row',
     gap: spacing.sm,
     justifyContent: 'flex-end',
   },
-  modalCancelButton: {
+  sheetCancelButton: {
     paddingVertical: 12,
-    paddingHorizontal: 18,
-    borderRadius: 24,
+    paddingHorizontal: 20,
+    borderRadius: 26,
     backgroundColor: '#FFF',
     borderWidth: 1,
     borderColor: colors.border.medium,
   },
-  modalCancelText: {
+  sheetCancelText: {
     fontSize: 15,
     fontWeight: '600',
     color: colors.text.secondary,
   },
-  modalSubmitButton: {
+  sheetSubmitButton: {
     paddingVertical: 12,
-    paddingHorizontal: 22,
-    borderRadius: 24,
+    paddingHorizontal: 24,
+    borderRadius: 26,
     backgroundColor: colors.primary.navy,
   },
-  modalSubmitButtonDisabled: {
-    opacity: 0.5,
-  },
-  modalSubmitText: {
+  sheetSubmitButtonDisabled: { opacity: 0.45 },
+  sheetSubmitText: {
     fontSize: 15,
     fontWeight: '700',
     color: '#FFF',
@@ -954,6 +1286,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing.xl,
     backgroundColor: colors.background.primary,
+  },
+  permissionIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    marginBottom: spacing.lg,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 1,
   },
   permissionTitle: {
     fontSize: 22,
@@ -971,7 +1319,7 @@ const styles = StyleSheet.create({
   },
   permissionButton: {
     backgroundColor: colors.primary.navy,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.xl,
     marginBottom: spacing.md,

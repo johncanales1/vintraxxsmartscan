@@ -635,16 +635,20 @@ const VinScannerScreenInner: React.FC<VinScannerScreenProps> = ({ navigation, ro
       )}
 
       {/* Soft vignette layers keep overlay UI legible without the harsh
-          boxed dark mask that used to hide most of the preview. */}
+          boxed dark mask that used to hide most of the preview. The bands
+          are intentionally thin and fade inward — they must NOT creep into
+          the viewfinder / status-pill area, which was the root cause of
+          the "messy overlap" layout reported during field testing. */}
       <View pointerEvents="none" style={styles.topVignette} />
       <View pointerEvents="none" style={styles.bottomVignette} />
 
-      {/* Overlay UI: glass top header, center ticks/status, glass dock. */}
+      {/* Overlay UI: glass top header, center ticks+status (one flow), glass dock.
+          No absolute-positioned status pill — everything lives in the normal
+          flex flow so the dock can never eat the helper text. */}
       <View style={styles.overlay} pointerEvents="box-none">
         {/* ── Top header (glass) ─────────────────────────────────────── */}
         <SafeAreaView edges={['top']} pointerEvents="box-none">
           <View style={styles.topHeader}>
-            <View style={styles.brandDot} />
             <Text style={styles.topHeaderTitle}>Scan VIN</Text>
             <TouchableOpacity
               onPress={handleClose}
@@ -658,7 +662,7 @@ const VinScannerScreenInner: React.FC<VinScannerScreenProps> = ({ navigation, ro
           </View>
         </SafeAreaView>
 
-        {/* ── Center: pulsing corner ticks + status pill ─────────────── */}
+        {/* ── Center: corner ticks + status pill as a single vertical stack ─ */}
         <View style={styles.centerArea} pointerEvents="box-none">
           {!scannedVin && (
             <Animated.View
@@ -900,7 +904,10 @@ const TICK_BOX_HEIGHT = 110;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
-  overlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'space-between' },
+  // The overlay is a plain column: header → viewfinder → dock. space-between
+  // plus flex:1 on centerArea guarantees the dock owns the bottom and the
+  // ticks+pill stay comfortably in the middle without ever overlapping it.
+  overlay: { ...StyleSheet.absoluteFillObject, flexDirection: 'column', justifyContent: 'space-between' },
 
   // ── Soft vignette layers (legibility without a hard mask) ──────────
   topVignette: {
@@ -908,8 +915,8 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 180,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    height: 120,
+    backgroundColor: 'rgba(0,0,0,0.35)',
   },
   bottomVignette: {
     position: 'absolute',
@@ -921,6 +928,9 @@ const styles = StyleSheet.create({
   },
 
   // ── Top header (glass) ─────────────────────────────────────────────
+  // Title is centered; close button is pinned to the right. A 34pt invisible
+  // spacer on the left keeps the title optically centered without needing
+  // the old brand dot (which clashed with the iOS recording indicator).
   topHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -934,24 +944,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
   },
-  brandDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.primary.red,
-    shadowColor: colors.primary.red,
-    shadowOpacity: 0.7,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 0 },
-  },
   topHeaderTitle: {
     color: '#FFF',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '700',
     letterSpacing: 0.3,
     flex: 1,
     textAlign: 'center',
-    marginLeft: -10,
+    marginLeft: 34, // same width as close button → keeps title centered
   },
   headerCloseButton: {
     width: 34,
@@ -964,11 +964,18 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.18)',
   },
 
-  // ── Center: corner ticks + status pill ─────────────────────────────
+  // ── Center: corner ticks + status pill (natural flow) ──────────────
+  // Column-flex so ticks and pill stack cleanly; paddingVertical gives the
+  // pill breathing room below the ticks AND guarantees a gap from the
+  // bottom dock no matter the device height. This replaces the old
+  // `position:absolute; bottom:-68` pill that collided with the dock.
   centerArea: {
     flex: 1,
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.base,
   },
   cornerTickWrap: {
     width: TICK_BOX_WIDTH,
@@ -1013,11 +1020,13 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 6,
   },
 
-  // ── Status pill (floats below ticks) ───────────────────────────────
+  // ── Status pill (sits in flow under the ticks) ─────────────────────
+  // No `position:absolute` — the wrap participates in the centerArea column
+  // so it always has a fixed gap from the dock below. `marginTop` separates
+  // it visually from the ticks.
   statusPillWrap: {
-    position: 'absolute',
-    bottom: -68,
     alignItems: 'center',
+    marginTop: 32,
   },
   statusPill: {
     flexDirection: 'row',
@@ -1068,9 +1077,12 @@ const styles = StyleSheet.create({
   },
 
   // ── Bottom dock (idle state) ───────────────────────────────────────
+  // paddingTop creates a guaranteed gap above the dock so the helper text
+  // / status pill can never tuck behind the dock pill on shorter screens.
   bottomDockWrap: {
     paddingHorizontal: spacing.base,
-    paddingBottom: spacing.sm,
+    paddingTop: spacing.base,
+    paddingBottom: spacing.base,
     alignItems: 'center',
   },
   bottomDock: {
@@ -1109,7 +1121,8 @@ const styles = StyleSheet.create({
   // ── Result card (after VIN accepted) ───────────────────────────────
   bottomSection: {
     paddingHorizontal: spacing.base,
-    paddingBottom: spacing.sm,
+    paddingTop: spacing.base,
+    paddingBottom: spacing.base,
   },
   resultCard: {
     backgroundColor: 'rgba(20, 24, 32, 0.85)',

@@ -104,6 +104,20 @@ app.options('*', cors(corsOptions));
 
 app.use(express.json({ limit: '50mb' }));
 
+/**
+ * Mask a sender address (user@host → u***@host) for inclusion in /health.
+ * We want ops to verify the configured sender after SMTP-key rotation without
+ * leaking a full mailbox to anyone who can hit the endpoint.
+ */
+function maskEmail(email: string | undefined): string | null {
+  if (!email) return null;
+  const [local, domain] = email.split('@');
+  if (!domain) return '***';
+  const maskedLocal =
+    local.length <= 2 ? '*'.repeat(local.length) : `${local[0]}***${local[local.length - 1]}`;
+  return `${maskedLocal}@${domain}`;
+}
+
 app.get('/api/v1/health', async (req, res) => {
   const smtp = await getSmtpHealth();
   res.json({
@@ -111,6 +125,12 @@ app.get('/api/v1/health', async (req, res) => {
     timestamp: Date.now(),
     requestId: req.requestId,
     smtp,
+    mail: {
+      host: env.SMTP_HOST,
+      port: env.SMTP_PORT,
+      from: maskEmail(env.EMAIL_FROM),
+      fromName: env.EMAIL_FROM_NAME,
+    },
     env: env.NODE_ENV,
   });
 });

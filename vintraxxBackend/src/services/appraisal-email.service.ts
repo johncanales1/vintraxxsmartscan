@@ -304,6 +304,9 @@ export async function sendAppraisalEmail(
       response: info.response,
       accepted: info.accepted,
       rejected: info.rejected,
+      envelopeFrom: info.envelope?.from,
+      envelopeTo: info.envelope?.to,
+      hasPdf: Boolean(pdfPath),
     });
   } catch (error) {
     const msg = (error as Error).message;

@@ -182,6 +182,35 @@ export async function valuateVehicle(req: Request, res: Response, next: NextFunc
       logger.warn('Failed to persist appraisal to DB', { appraisalId, error: (dbErr as Error).message });
     }
 
+    // Fire-and-forget: generate a baseline PDF for every new appraisal so the
+    // frontend and admin dashboard always have a "View PDF" link — matches
+    // how OBD scan reports work. The /email and /pdf endpoints will reuse
+    // this file instead of re-rendering. Photos are added later when the
+    // user emails a photo-enriched PDF via /pdf.
+    setImmediate(() => {
+      generateAppraisalPdf(appraisalData)
+        .then(async (pdfPath) => {
+          try {
+            await prisma.appraisal.update({
+              where: { id: appraisalId },
+              data: { pdfUrl: pdfPath },
+            });
+            logger.info('Baseline appraisal PDF generated', { appraisalId, pdfPath });
+          } catch (updateErr) {
+            logger.warn('Failed to store baseline appraisal pdfUrl', {
+              appraisalId,
+              error: (updateErr as Error).message,
+            });
+          }
+        })
+        .catch((pdfErr) => {
+          logger.warn('Baseline appraisal PDF generation failed (non-fatal)', {
+            appraisalId,
+            error: (pdfErr as Error).message,
+          });
+        });
+    });
+
     logger.info('Appraisal valuation completed and stored', {
       appraisalId,
       vin: input.vin,
@@ -240,11 +269,45 @@ export async function emailAppraisal(req: Request, res: Response, next: NextFunc
       appraisalStore.set(appraisalData.appraisalId, appraisalData);
     }
 
-    await sendAppraisalEmail(toEmail, appraisalData);
+    // Reuse the baseline PDF that /valuate generated in the background so the
+    // "Email Appraisal" flow always attaches a PDF. If /valuate's background
+    // job hasn't finished yet (race on very fast re-send) we generate one now
+    // so we never send a PDF-less email for a row that should have one.
+    let pdfPath: string | null = null;
+    try {
+      const existing = await prisma.appraisal.findUnique({
+        where: { id: appraisalData.appraisalId },
+        select: { pdfUrl: true },
+      });
+      if (existing?.pdfUrl && fs.existsSync(existing.pdfUrl)) {
+        pdfPath = existing.pdfUrl;
+      } else {
+        pdfPath = await generateAppraisalPdf(appraisalData);
+        await prisma.appraisal.update({
+          where: { id: appraisalData.appraisalId },
+          data: { pdfUrl: pdfPath },
+        }).catch((dbErr) => {
+          logger.warn('emailAppraisal: could not persist late-generated pdfUrl', {
+            appraisalId: appraisalData.appraisalId,
+            error: (dbErr as Error).message,
+          });
+        });
+      }
+    } catch (pdfErr) {
+      // Non-fatal: we still send the email (HTML-only) if PDF generation fails.
+      logger.warn('emailAppraisal: PDF generation failed, falling back to HTML-only email', {
+        appraisalId: appraisalData.appraisalId,
+        error: (pdfErr as Error).message,
+      });
+      pdfPath = null;
+    }
+
+    await sendAppraisalEmail(toEmail, appraisalData, pdfPath);
 
     logger.info('Appraisal email sent successfully', {
       appraisalId: appraisalData.appraisalId,
       toEmail,
+      hasPdf: Boolean(pdfPath),
     });
 
     res.json({
@@ -300,15 +363,37 @@ export async function pdfAppraisal(req: Request, res: Response, next: NextFuncti
       appraisalStore.set(appraisalData.appraisalId, appraisalData);
     }
 
-    // Generate PDF
-    const pdfPath = await generateAppraisalPdf(appraisalData);
+    // If the user didn't add photos and /valuate already produced a baseline
+    // PDF we reuse that file to avoid writing duplicates. When photos ARE
+    // attached the PDF is content-different, so we regenerate.
+    const hasPhotos = Array.isArray(appraisalData.photos) && appraisalData.photos.length > 0;
+    let pdfPath: string;
+    if (!hasPhotos) {
+      const existing = await prisma.appraisal.findUnique({
+        where: { id: appraisalData.appraisalId },
+        select: { pdfUrl: true },
+      }).catch(() => null);
+      if (existing?.pdfUrl && fs.existsSync(existing.pdfUrl)) {
+        pdfPath = existing.pdfUrl;
+        logger.info('Reusing baseline appraisal PDF (no photos attached)', {
+          appraisalId: appraisalData.appraisalId,
+          pdfPath,
+        });
+      } else {
+        pdfPath = await generateAppraisalPdf(appraisalData);
+      }
+    } else {
+      pdfPath = await generateAppraisalPdf(appraisalData);
+    }
 
-    logger.info('Appraisal PDF generated', {
+    logger.info('Appraisal PDF ready', {
       appraisalId: appraisalData.appraisalId,
       pdfPath,
+      hasPhotos,
+      photoCount: appraisalData.photos?.length || 0,
     });
 
-    // Update DB record with pdfUrl
+    // Update DB record with pdfUrl (and photoCount when photos are present)
     try {
       await prisma.appraisal.update({
         where: { id: appraisalData.appraisalId },

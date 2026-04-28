@@ -469,11 +469,31 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
               logger.info(LogCategory.APP, 'User requested clear vehicle light');
               const result = await scannerService.clearDTCs();
               if (result.success) {
-                Alert.alert(
-                  'Success',
-                  'Vehicle light cleared successfully. The check engine light should turn off after the next key cycle.',
-                );
-                logger.info(LogCategory.APP, 'Vehicle light cleared successfully');
+                // Multi-ECU vehicles can return MIXED replies — some modules
+                // accept the clear and others reject it. The service layer
+                // marks that case with `partial: true` and composes a
+                // detailed `message`; we surface it under a different title
+                // so the user understands the outcome isn't a failure but
+                // also isn't a full-bus clear.
+                if (result.partial) {
+                  Alert.alert(
+                    'Partially Cleared',
+                    result.message ??
+                      'Some vehicle modules accepted the clear request and others did not. The check-engine light should turn off after the next key cycle if the engine module accepted.',
+                  );
+                  logger.info(LogCategory.APP, 'Vehicle light partially cleared', {
+                    positiveEcus: result.positiveEcus,
+                    negativeEcus: result.negativeEcus,
+                  });
+                } else {
+                  Alert.alert(
+                    'Success',
+                    'Vehicle light cleared successfully. The check engine light should turn off after the next key cycle.',
+                  );
+                  logger.info(LogCategory.APP, 'Vehicle light cleared successfully', {
+                    positiveEcus: result.positiveEcus,
+                  });
+                }
                 return;
               }
 

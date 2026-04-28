@@ -76,6 +76,59 @@ function extractAllHexBytes(normalized: string): string[] {
   return allHexBytes;
 }
 
+/**
+ * Classify a Mode-04 (Clear DTC) response on a per-ECU basis.
+ *
+ * Real-world CAN vehicles often return a MIXED reply when the scan-tool
+ * functionally addresses `7DF`: the engine ECU (`7E8`) and transmission
+ * (`7EE`) may answer positively (`<ECU> 01 44`) while the ABS (`7EA`) and
+ * body (`7ED`) modules answer negatively (`<ECU> 03 7F 04 22` —
+ * "Conditions Not Correct"). The previous code treated the entire reply as
+ * a single negative response the moment it saw `7F 04 22` anywhere, which
+ * reported "clear failed" to the user even though the engine ECU — the one
+ * controlling the dashboard MIL — had cleared.
+ *
+ * This helper walks each ECU's byte stream in order and tags it:
+ *   • Positive if it emits a `44` byte that is NOT the NRC value of a
+ *     preceding `7F 04 XX` frame.
+ *   • Negative if it emits `7F 04 <nrc>`.
+ * The caller decides the overall outcome (full success / partial / full
+ * rejection) from the two sets.
+ */
+export interface PerEcuClearOutcome {
+  positive: string[];
+  negative: Array<{ ecuId: string; nrc: string }>;
+}
+
+function classifyClearDtcResponse(normalized: string): PerEcuClearOutcome {
+  const perEcu = extractPerEcuBytes(normalized);
+  const positive: string[] = [];
+  const negative: Array<{ ecuId: string; nrc: string }> = [];
+
+  for (const [ecuId, bytes] of Object.entries(perEcu)) {
+    let isNegative = false;
+    let isPositive = false;
+    // Walk the byte sequence, respecting "7F 04 <nrc>" triples so we never
+    // mistake an NRC value of 0x44 for a positive Mode-04 response.
+    for (let i = 0; i < bytes.length; i++) {
+      if (bytes[i] === '7F' && bytes[i + 1] === '04' && bytes[i + 2] !== undefined) {
+        negative.push({ ecuId, nrc: bytes[i + 2] });
+        isNegative = true;
+        i += 2; // skip the NRC byte
+        continue;
+      }
+      if (bytes[i] === '44') {
+        isPositive = true;
+      }
+    }
+    if (isPositive && !isNegative) {
+      positive.push(ecuId);
+    }
+  }
+
+  return { positive, negative };
+}
+
 type OdometerReadAbortSignal = { aborted: boolean };
 
 interface OdometerDIDConfig {
@@ -405,10 +458,13 @@ export class ObdCommands {
    */
   async clearDTCs(): Promise<{
     success: boolean;
+    partial?: boolean;
     reason?: 'permanent-dtc' | 'nrc-22' | 'unknown' | string;
     nrc?: string;
     message?: string;
     permanentDtcs?: string[];
+    positiveEcus?: string[];
+    negativeEcus?: Array<{ ecuId: string; nrc: string }>;
   }> {
     logger.info(LogCategory.OBD, 'Clearing DTCs');
 
@@ -469,36 +525,109 @@ export class ObdCommands {
       });
     }
 
-    // ── 3. Issue Mode 04 and classify the response ─────────────────────────
+    // ── 3. Issue Mode 04 and classify the response on a per-ECU basis ──────
+    // Multi-ECU vehicles frequently return MIXED replies — some modules
+    // accept the clear (`<ECU> 01 44`) while others reject it
+    // (`<ECU> 03 7F 04 22`). The decision tree below treats "at least one
+    // ECU accepted" as a partial success and surfaces the engine-ECU outcome
+    // as the authoritative signal for the dashboard MIL.
     try {
       const response = await this.elm327.sendCommand(ObdMode.CLEAR_DTC);
+      const outcome = classifyClearDtcResponse(response.normalized || '');
 
-      if (response.success) {
-        logger.info(LogCategory.OBD, 'DTCs cleared successfully');
-        return { success: true };
+      logger.info(LogCategory.OBD, 'Mode 04 per-ECU outcome', {
+        positive: outcome.positive,
+        negative: outcome.negative,
+        elm327Success: response.success,
+      });
+
+      // Some ECUs accepted — treat as at least partial success. The engine
+      // ECU (`7E8` or its extended equivalents) is what controls the MIL;
+      // if it accepted we can promise the check-engine light will turn off.
+      if (outcome.positive.length > 0) {
+        const engineEcuIds = ['7E8', '7E9', '7E0', '7E1'];
+        let engineAccepted = false;
+        for (let i = 0; i < outcome.positive.length; i++) {
+          if (engineEcuIds.indexOf(outcome.positive[i]) >= 0) {
+            engineAccepted = true;
+            break;
+          }
+        }
+        const isPartial = outcome.negative.length > 0;
+
+        if (!isPartial) {
+          logger.info(LogCategory.OBD, 'DTCs cleared successfully (all ECUs)', {
+            ecus: outcome.positive,
+          });
+          return {
+            success: true,
+            positiveEcus: outcome.positive,
+          };
+        }
+
+        const negativeIds = outcome.negative.map((n) => n.ecuId);
+        const negativeNrcs: string[] = [];
+        for (let i = 0; i < outcome.negative.length; i++) {
+          const nrcVal = outcome.negative[i].nrc;
+          if (negativeNrcs.indexOf(nrcVal) < 0) {
+            negativeNrcs.push(nrcVal);
+          }
+        }
+        logger.warn(LogCategory.OBD, 'DTCs cleared on some ECUs (partial)', {
+          positive: outcome.positive,
+          rejected: negativeIds,
+          nrcs: negativeNrcs,
+          engineAccepted,
+        });
+        const conditionsNotCorrectHint = negativeNrcs.indexOf('22') >= 0
+          ? ' (conditions not correct — typically the engine must be off with ignition on).'
+          : '.';
+        return {
+          success: true,
+          partial: true,
+          positiveEcus: outcome.positive,
+          negativeEcus: outcome.negative,
+          message:
+            `Cleared on ${outcome.positive.length} of ${outcome.positive.length + outcome.negative.length} modules` +
+            (engineAccepted
+              ? ' (engine module accepted — the check-engine light should turn off after the next key cycle).'
+              : '.') +
+            ` ${outcome.negative.length} module${outcome.negative.length > 1 ? 's' : ''} rejected the clear request` +
+            conditionsNotCorrectHint +
+            ' Those modules may hold permanent codes that require a physical repair before they can clear.',
+        };
       }
 
-      const nrc = response.negativeResponse?.nrc;
-      if (nrc === '22') {
-        logger.error(LogCategory.OBD, 'Clear DTCs rejected with NRC 0x22', { response: response.normalized });
+      // No positive responses anywhere — treat as a full rejection.
+      // Prefer the structured NRC from Elm327Service if it parsed one; else
+      // fall back to the first NRC we saw in the per-ECU classification.
+      const fallbackNrc =
+        response.negativeResponse?.nrc ?? outcome.negative[0]?.nrc;
+
+      if (fallbackNrc === '22') {
+        logger.error(LogCategory.OBD, 'Clear DTCs rejected with NRC 0x22 on all ECUs', {
+          response: response.normalized,
+        });
         return {
           success: false,
           reason: 'nrc-22',
-          nrc,
+          nrc: fallbackNrc,
+          negativeEcus: outcome.negative.length ? outcome.negative : undefined,
           message:
             'Vehicle rejected clear request (NRC 0x22 Conditions Not Correct). Turn the ignition to ON with the engine OFF, then try again. If the fault is still active, repair is required before clearing.',
         };
       }
-      if (nrc) {
-        logger.error(LogCategory.OBD, `Clear DTCs rejected with NRC 0x${nrc}`, {
+      if (fallbackNrc) {
+        logger.error(LogCategory.OBD, `Clear DTCs rejected with NRC 0x${fallbackNrc}`, {
           response: response.normalized,
           label: response.negativeResponse?.label,
         });
         return {
           success: false,
-          reason: `nrc-${nrc.toLowerCase()}`,
-          nrc,
-          message: `Vehicle rejected clear request: ${response.negativeResponse?.label ?? 'unknown'} (NRC 0x${nrc}).`,
+          reason: `nrc-${fallbackNrc.toLowerCase()}`,
+          nrc: fallbackNrc,
+          negativeEcus: outcome.negative.length ? outcome.negative : undefined,
+          message: `Vehicle rejected clear request: ${response.negativeResponse?.label ?? `NRC 0x${fallbackNrc}`}.`,
         };
       }
 

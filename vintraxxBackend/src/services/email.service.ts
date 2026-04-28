@@ -193,6 +193,8 @@ export async function sendReportEmail(
       accepted: info.accepted,
       rejected: info.rejected,
       pending: (info as any).pending,
+      envelopeFrom: info.envelope?.from,
+      envelopeTo: info.envelope?.to,
     });
   } catch (error) {
     logger.error('Failed to send report email', {

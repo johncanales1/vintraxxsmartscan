@@ -431,10 +431,13 @@ export class ScannerService {
    */
   async clearDTCs(): Promise<{
     success: boolean;
+    partial?: boolean;
     reason?: 'permanent-dtc' | 'nrc-22' | 'unknown' | string;
     nrc?: string;
     message?: string;
     permanentDtcs?: string[];
+    positiveEcus?: string[];
+    negativeEcus?: Array<{ ecuId: string; nrc: string }>;
   }> {
     logger.info(LogCategory.APP, 'Clearing DTCs');
 

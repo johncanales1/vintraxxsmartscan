@@ -1,0 +1,24 @@
+diff --git a/node_modules/@react-native-ml-kit/text-recognition/RNMLKitTextRecognition.podspec b/node_modules/@react-native-ml-kit/text-recognition/RNMLKitTextRecognition.podspec
+index 421bcfc..5b18191 100644
+--- a/node_modules/@react-native-ml-kit/text-recognition/RNMLKitTextRecognition.podspec
++++ b/node_modules/@react-native-ml-kit/text-recognition/RNMLKitTextRecognition.podspec
+@@ -22,14 +22,14 @@ Pod::Spec.new do |s|
+ 
+   s.dependency "React"
+   # To recognize Latin script
+-  s.dependency 'GoogleMLKit/TextRecognition', '8.0.0'
++  s.dependency 'GoogleMLKit/TextRecognition', '~> 9.0'
+   # To recognize Chinese script
+-  s.dependency 'GoogleMLKit/TextRecognitionChinese', '8.0.0'
++  s.dependency 'GoogleMLKit/TextRecognitionChinese', '~> 9.0'
+   # To recognize Devanagari script
+-  s.dependency 'GoogleMLKit/TextRecognitionDevanagari', '8.0.0'
++  s.dependency 'GoogleMLKit/TextRecognitionDevanagari', '~> 9.0'
+   # To recognize Japanese script
+-  s.dependency 'GoogleMLKit/TextRecognitionJapanese', '8.0.0'
++  s.dependency 'GoogleMLKit/TextRecognitionJapanese', '~> 9.0'
+   # To recognize Korean script
+-  s.dependency 'GoogleMLKit/TextRecognitionKorean', '8.0.0'
++  s.dependency 'GoogleMLKit/TextRecognitionKorean', '~> 9.0'
+ end
+ 

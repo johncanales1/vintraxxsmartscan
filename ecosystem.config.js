@@ -53,7 +53,7 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 3002,
         HOSTNAME: '0.0.0.0',
-        NEXT_PUBLIC_API_URL: 'https://api.vintraxx.com',
+        NEXT_PUBLIC_API_URL: 'https://api.vintraxx.com/api/v1/admin',
         NEXT_PUBLIC_ADMIN_URL: 'https://admin.vintraxx.com'
       },
       instances: 1,

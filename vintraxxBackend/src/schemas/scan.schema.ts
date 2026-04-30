@@ -28,6 +28,12 @@ export const scanSubmissionSchema = z.object({
     stockNumber: z.string().optional(),
     additionalRepairs: z.array(z.string()).optional(),
     scannerDeviceId: z.string().optional(),
+    // HIGH #12: the controller already destructures these fields and writes
+    // them to Scan.userFullName / Scan.vehicleOwnerName. Declaring them here
+    // keeps the schema authoritative and prevents accidental data loss if
+    // anyone tightens validation to .strict() later.
+    userFullName: z.string().max(120).optional(),
+    vehicleOwnerName: z.string().max(120).optional(),
   }),
 });
 

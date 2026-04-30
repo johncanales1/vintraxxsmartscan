@@ -151,35 +151,35 @@ class ApiService {
 
       // Handle HTTP error status codes
       if (!response.ok) {
-        // Try to parse error response as JSON
-        let errorMessage = `Server error (${response.status})`;
+        // Backend may return `{ message }` (controllers) or `{ error }` (the
+        // global `errorHandler` middleware). Read both, then fall back to a
+        // friendly per-status default. The friendly fallbacks are NOT inside
+        // the catch — they apply whether the body parsed or not. (Bug #H4 / #H7)
+        let parsed: any = null;
         try {
-          const errorData = await response.json();
-          if (errorData.message) {
-            errorMessage = errorData.message;
-          }
-          logger.warn(LogCategory.APP, 'Scan submission failed with HTTP error', {
-            status: response.status,
-            errorData,
-          });
+          parsed = await response.json();
         } catch {
-          // Response is not JSON (e.g., HTML error page, 502 gateway error)
-          logger.warn(LogCategory.APP, 'Scan submission failed with non-JSON response', {
-            status: response.status,
-            statusText: response.statusText,
-          });
-          
-          // Provide user-friendly messages for common HTTP errors
-          if (response.status === 401) {
-            errorMessage = 'Session expired. Please log in again.';
-          } else if (response.status === 403) {
-            errorMessage = 'Access denied. Please check your account status.';
-          } else if (response.status === 404) {
-            errorMessage = 'Service not available. Please try again later.';
-          } else if (response.status >= 500) {
-            errorMessage = 'Server is temporarily unavailable. Please try again later.';
-          }
+          /* non-JSON body (HTML error page, 502, etc.) */
         }
+        let errorMessage = `Server error (${response.status})`;
+        if (parsed?.message) {
+          errorMessage = parsed.message;
+        } else if (parsed?.error) {
+          errorMessage = parsed.error;
+        } else if (response.status === 401) {
+          errorMessage = 'Session expired. Please log in again.';
+        } else if (response.status === 403) {
+          errorMessage = 'Access denied. Please check your account status.';
+        } else if (response.status === 404) {
+          errorMessage = 'Service not available. Please try again later.';
+        } else if (response.status >= 500) {
+          errorMessage = 'Server is temporarily unavailable. Please try again later.';
+        }
+        logger.warn(LogCategory.APP, 'Scan submission failed', {
+          status: response.status,
+          errorMessage,
+          parsed,
+        });
         return { success: false, message: errorMessage };
       }
 
@@ -254,27 +254,38 @@ class ApiService {
 
         // Handle HTTP error status codes
         if (!response.ok) {
-          let errorMessage = `Server error (${response.status})`;
+          // Backend may return `{ message }` or `{ error }`; read both and
+          // hoist friendly fallbacks out of the catch so they apply whether
+          // the body parsed or not. (Bug #H4 / #H7)
+          let parsed: any = null;
           try {
-            const errorData = await response.json();
-            if (errorData.message) {
-              errorMessage = errorData.message;
-            }
+            parsed = await response.json();
           } catch {
-            if (response.status === 401) {
-              return { success: false, message: 'Session expired. Please log in again.' };
-            } else if (response.status >= 500) {
-              errorMessage = 'Server is temporarily unavailable.';
-            }
+            /* non-JSON body */
           }
-          
-          // For server errors, retry; for client errors, fail immediately
+          let errorMessage = `Server error (${response.status})`;
+          if (parsed?.message) {
+            errorMessage = parsed.message;
+          } else if (parsed?.error) {
+            errorMessage = parsed.error;
+          } else if (response.status === 401) {
+            errorMessage = 'Session expired. Please log in again.';
+          } else if (response.status >= 500) {
+            errorMessage = 'Server is temporarily unavailable.';
+          }
+
+          // 401 is terminal — no retry, the JWT is bad. Other 4xx are also
+          // terminal (404, 403, etc.). Only 5xx without a parsed error are
+          // worth retrying.
+          if (response.status === 401) {
+            return { success: false, message: errorMessage };
+          }
           if (response.status >= 500 && attempt < maxAttempts - 1) {
-            logger.warn(LogCategory.APP, `Poll server error on attempt ${attempt + 1}, retrying...`);
+            logger.warn(LogCategory.APP, `Poll server error on attempt ${attempt + 1}, retrying...`, { errorMessage });
             await new Promise(resolve => setTimeout(resolve, interval));
             continue;
           }
-          
+
           return { success: false, message: errorMessage };
         }
 
@@ -301,7 +312,8 @@ class ApiService {
 
         if (!data.success) {
           logger.warn(LogCategory.APP, `Poll attempt ${attempt + 1} failed`, data);
-          return { success: false, message: data.message || 'Failed to fetch report.' };
+          // Read both `message` and `error` (Bug #H4)
+          return { success: false, message: data.message || data.error || 'Failed to fetch report.' };
         }
 
         onStatusUpdate?.(data.status);
@@ -312,8 +324,13 @@ class ApiService {
         }
 
         if (data.status === 'failed') {
-          logger.error(LogCategory.APP, 'Report processing failed');
-          return { success: false, message: data.message || 'Report processing failed on server.' };
+          // Backend's getReport returns the cause as `error` (the scan row's
+          // errorMessage); `message` may also be present. (Bug #H4)
+          logger.error(LogCategory.APP, 'Report processing failed', { error: data.error, message: data.message });
+          return {
+            success: false,
+            message: data.message || data.error || 'Report processing failed on server.',
+          };
         }
 
         // Still processing, wait and retry
@@ -654,14 +671,16 @@ class ApiService {
   /**
    * Submit a service appointment schedule request.
    *
-   * Backend contract (post the "persist-first" refactor):
-   *  - 201 Created      → appointment saved AND confirmation email sent.
-   *  - 207 Multi-Status → appointment saved, but confirmation email failed.
-   *                        Body includes { appointment, warning, reason }.
-   *                        We treat this as success + warning so the UI can
-   *                        tell the user their slot is booked.
-   *  - 503 Service Unavailable → SMTP is verified-down at boot. Distinct UX.
-   *  - Everything else  → hard failure.
+   * Backend contract (persist-first / fire-and-forget):
+   *  - 200 OK            → appointment saved; confirmation email is queued
+   *                          and dispatched asynchronously by a background job.
+   *                          Response body: { success, appointmentId, message }.
+   *  - 4xx / 5xx          → hard failure.
+   *
+   * The legacy 207 Multi-Status / 503 Service-Unavailable branches were
+   * removed because the backend no longer returns either status — email
+   * outcomes are recorded server-side and surfaced via the dashboard.
+   * (Bug #H1 / #H2)
    */
   async submitScheduleRequest(data: {
     name: string;
@@ -677,16 +696,6 @@ class ApiService {
   }): Promise<{
     success: boolean;
     message?: string;
-    /** Set when the server persisted the appointment but the confirmation
-     *  email failed (HTTP 207 Multi-Status). UI should show a "booked, but
-     *  email failed" state instead of a hard error. */
-    warning?: string;
-    /** Machine-readable reason for warnings — e.g. "email-failed-persistent"
-     *  or "smtp-down". Used by the screen to pick the right copy. */
-    reason?: string;
-    /** True when HTTP 503 indicates SMTP is verified-down. Lets the screen
-     *  suggest alternative contact methods instead of retrying immediately. */
-    emailServiceDown?: boolean;
     appointmentId?: string;
   }> {
     try {
@@ -730,48 +739,15 @@ class ApiService {
         body = null;
       }
 
-      // 207 Multi-Status: persisted OK, email failed. Tell the user we saved
-      // their appointment so they don't retry and create a duplicate.
-      if (response.status === 207) {
-        logger.warn(LogCategory.SCHEDULE, 'Schedule persisted but confirmation email failed', {
-          reason: body?.reason,
-          appointmentId: body?.appointment?.id,
-        });
-        return {
-          success: true,
-          message:
-            body?.message ??
-            'Appointment saved successfully, but we could not send the confirmation email.',
-          warning:
-            body?.warning ??
-            'Your appointment is booked. The confirmation email failed to send — please take a screenshot or call the service department to verify.',
-          reason: body?.reason ?? 'email-failed-persistent',
-          appointmentId: body?.appointment?.id,
-        };
-      }
-
-      // 503: SMTP verified-down at boot. Nothing was persisted (backend
-      // rejects early) so the user should use a different contact method.
-      if (response.status === 503) {
-        const reason = body?.reason ?? 'smtp-down';
-        logger.error(LogCategory.SCHEDULE, 'Email service reported down (503)', {
-          reason,
-          retryAfter: response.headers.get('Retry-After'),
-        });
-        return {
-          success: false,
-          emailServiceDown: true,
-          reason,
-          message:
-            body?.message ??
-            'The appointment system is temporarily unable to send confirmation emails. Please call the service department directly.',
-        };
-      }
-
       if (!response.ok) {
+        // Backend's `errorHandler` returns `{ success, error }`; route-level
+        // controllers may return `{ success, message }` for validation
+        // failures. Read both so the user sees the real reason. (Bug #H4)
         let errorMessage = `Server error (${response.status})`;
         if (body?.message) {
           errorMessage = body.message;
+        } else if (body?.error) {
+          errorMessage = body.error;
         } else if (response.status === 401) {
           errorMessage = 'Session expired. Please log in again.';
         } else if (response.status >= 500) {
@@ -781,13 +757,15 @@ class ApiService {
         return { success: false, message: errorMessage };
       }
 
+      // Backend response: { success, appointmentId, message, emailStatus }.
+      // Bug #H1: the field is flat `appointmentId`, not nested under `appointment`.
       logger.info(LogCategory.SCHEDULE, 'Schedule request submitted successfully', {
-        appointmentId: body?.appointment?.id,
+        appointmentId: body?.appointmentId,
       });
       return {
         success: true,
         message: body?.message,
-        appointmentId: body?.appointment?.id,
+        appointmentId: body?.appointmentId,
       };
     } catch (error) {
       logger.error(LogCategory.SCHEDULE, 'Unexpected schedule request error', error);

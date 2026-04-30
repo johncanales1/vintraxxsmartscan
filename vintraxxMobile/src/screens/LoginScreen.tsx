@@ -73,7 +73,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
 
-  const { setUser, setIsAuthenticated } = useAppStore();
+  const { setUser, setUserDevice, setDeviceSetupCompleted } = useAppStore();
 
   // Resend cooldown timer
   useEffect(() => {
@@ -245,8 +245,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
         const authResponse = await authService.googleAuth(idToken);
         if (authResponse.success && authResponse.user) {
           logger.info(LogCategory.APP, 'Google sign-in successful');
+          // Bug #H5: rehydrate device-pairing state into the store from
+          // AuthService (which restored it from `devicePairingByEmail`).
+          // Bug #M6: setUser already sets isAuthenticated; no extra call.
+          setUserDevice(authService.getUserDevice());
+          setDeviceSetupCompleted(authResponse.user.deviceSetupCompleted);
           setUser(authResponse.user);
-          setIsAuthenticated(true);
         } else {
           setErrorMessage(authResponse.message || 'Google sign-in failed.');
         }
@@ -273,7 +277,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
     } finally {
       setGoogleLoading(false);
     }
-  }, [setUser, setIsAuthenticated]);
+  }, [setUser, setUserDevice, setDeviceSetupCompleted]);
 
   // Forgot Password handler
   const handleForgotPassword = useCallback(async () => {
@@ -434,7 +438,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
     try {
       let response;
       if (isRegistered) {
-        response = await authService.login(email.trim(), password, wantDealer || undefined, dealerPrice);
+        // Bug #M1: returning-user login NEVER carries dealer fields. The
+        // backend strips them (`loginSchema` only accepts {email, password})
+        // so sending them was always a no-op; we now match the contract.
+        response = await authService.login(email.trim(), password);
       } else {
         // Pass logo and QR code images for new dealer registration
         response = await authService.register(
@@ -450,9 +457,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
       if (response.success && response.user) {
         logger.info(LogCategory.APP, `${isRegistered ? 'Login' : 'Registration'} successful, isDealer: ${response.user.isDealer}`);
-        // Update Zustand store - RootNavigator will reactively show the correct screen
+        // Update Zustand store - RootNavigator will reactively show the correct screen.
+        // Bug #H5: also rehydrate the device pairing AuthService restored from
+        // `devicePairingByEmail` so a previously-paired user skips DeviceSetup.
+        // Bug #M6: setUser already sets isAuthenticated; no extra call.
+        setUserDevice(authService.getUserDevice());
+        setDeviceSetupCompleted(response.user.deviceSetupCompleted);
         setUser(response.user);
-        setIsAuthenticated(true);
         // Navigation is handled automatically by conditional rendering in RootNavigator
       } else {
         setErrorMessage(response.message || 'Authentication failed.');
@@ -464,7 +475,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [password, confirmPassword, isRegistered, email, navigation, setUser, setIsAuthenticated, wantDealer, pricePerLaborHour, logoUri, qrCodeUri, fullName]);
+  }, [password, confirmPassword, isRegistered, email, navigation, setUser, setUserDevice, setDeviceSetupCompleted, wantDealer, pricePerLaborHour, logoUri, qrCodeUri, fullName]);
 
   // Resend OTP
   const handleResendOtp = useCallback(async () => {
@@ -870,16 +881,23 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
                   </View>
                 )}
 
-                {/* Dealer toggle link */}
-                <TouchableOpacity
-                  onPress={() => setWantDealer(!wantDealer)}
-                  style={styles.dealerLinkContainer}
-                  disabled={isLoading}
-                >
-                  <Text style={styles.dealerLinkText}>
-                    {wantDealer ? 'Sign in as Regular User' : 'Do you want to sign in as Dealer?'}
-                  </Text>
-                </TouchableOpacity>
+                {/* Dealer toggle link — only on registration. (Bug #M1)
+                    Backend's `loginSchema` silently strips `isDealer` /
+                    `pricePerLaborHour` from /auth/login (privilege-escalation
+                    guard), so showing this toggle for returning users was
+                    misleading: it changed nothing server-side. Dealer status
+                    is set at registration and managed server-side thereafter. */}
+                {!isRegistered && (
+                  <TouchableOpacity
+                    onPress={() => setWantDealer(!wantDealer)}
+                    style={styles.dealerLinkContainer}
+                    disabled={isLoading}
+                  >
+                    <Text style={styles.dealerLinkText}>
+                      {wantDealer ? 'Sign in as Regular User' : 'Do you want to sign in as Dealer?'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
 
                 <Button
                   title={isRegistered ? 'Sign In' : 'Create Account'}

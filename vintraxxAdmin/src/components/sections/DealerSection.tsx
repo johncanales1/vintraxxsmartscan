@@ -7,11 +7,25 @@ import UserDetailModal from '@/components/modals/UserDetailModal';
 import CreateUserModal from '@/components/modals/CreateUserModal';
 import ConfirmDeleteModal from '@/components/modals/ConfirmDeleteModal';
 import {
-  Search, Plus, Trash2, Eye, Edit2, UserCheck, Smartphone, Car, Mail, Calendar, DollarSign, RefreshCw
+  Search, Plus, Trash2, Eye, Edit2, UserCheck, Smartphone, Car, Mail, Calendar, DollarSign, RefreshCw, Radio,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-export default function DealerSection() {
+/**
+ * `onNavigate` lets the dealer card and the embedded UserDetailModal
+ * route to GPS sections pre-filtered by the dealer's id. The Dashboard
+ * owns the actual tab/state — we pass it through unchanged.
+ */
+type NavigateFn = (
+  tab: 'gps-terminals' | 'gps-alarms',
+  options?: { ownerUserId?: string },
+) => void;
+
+interface DealerSectionProps {
+  onNavigate?: NavigateFn;
+}
+
+export default function DealerSection({ onNavigate }: DealerSectionProps = {}) {
   const [dealers, setDealers] = useState<User[]>([]);
   const [filtered, setFiltered] = useState<User[]>([]);
   const [search, setSearch] = useState('');
@@ -139,6 +153,26 @@ export default function DealerSection() {
                   <Smartphone size={14} />
                   <span>{dealer._count.usedScannerDevices} devices &middot; {dealer._count.usedVins} VINs</span>
                 </div>
+                {/*
+                  GPS terminals chip — only render when the user has at least
+                  one terminal AND we have a navigate handler. The chip routes
+                  the admin to /gps-terminals?ownerUserId=… so they land on a
+                  pre-filtered list of just this dealer's vehicles.
+                 */}
+                {(dealer._count.gpsTerminals ?? 0) > 0 && onNavigate && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onNavigate('gps-terminals', { ownerUserId: dealer.id });
+                    }}
+                    className="flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+                  >
+                    <Radio size={14} />
+                    <span className="underline-offset-2 hover:underline">
+                      {dealer._count.gpsTerminals} GPS terminal{dealer._count.gpsTerminals === 1 ? '' : 's'}
+                    </span>
+                  </button>
+                )}
                 <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
                   <Calendar size={14} />
                   <span>Joined {new Date(dealer.createdAt).toLocaleDateString()}</span>
@@ -162,6 +196,10 @@ export default function DealerSection() {
           loading={detailLoading}
           onClose={() => { setShowDetailModal(false); setSelectedUser(null); }}
           onRefresh={loadDealers}
+          // Forwarding the Dashboard navigate fn lets the modal route the
+          // admin to GPS sections (terminals / alarms) pre-filtered by
+          // this user's id when the user clicks an in-modal GPS chip.
+          onNavigate={onNavigate}
         />
       )}
 

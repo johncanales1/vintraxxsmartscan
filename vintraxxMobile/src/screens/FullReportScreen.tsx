@@ -26,17 +26,32 @@ import { useAppStore } from '../store/appStore';
 import { getFuelSystemStatusLabel, getSecondaryAirStatusLabel } from '../services/obd/utils';
 import type { FullReportData } from '../types/api';
 
+/**
+ * `FullReportScreen` accepts two distinct entry shapes:
+ *
+ *   • BLE scan flow (the original path) — supplies `scanResult` + `vehicle`
+ *     and the screen owns the submit→poll pipeline.
+ *   • GPS-DTC AI bridge (Phase 5) — supplies an already-resolved
+ *     `prefetchedReport` plus the `scanId` it was polled from. The screen
+ *     skips submit/poll and renders directly. We keep `scanResult`+`vehicle`
+ *     optional so the type system enforces "one or the other" at the
+ *     RootStackParamList layer instead of inside the component body.
+ */
 interface FullReportScreenProps {
   navigation: any;
   route: {
     params: {
-      scanResult: ScanResult;
-      vehicle: Vehicle;
+      scanResult?: ScanResult;
+      vehicle?: Vehicle;
       conditionReport?: ConditionReport;
       stockNumber?: string;
       additionalRepairs?: string[];
       vehicleOwnerName?: string;
       scannerOwnerName?: string;
+      /** Pre-fetched report (AI bridge entry); skips submit/poll when set. */
+      prefetchedReport?: FullReportData;
+      /** ScanId the prefetched report was polled from (for retry). */
+      prefetchedScanId?: string;
     };
   };
 }
@@ -44,10 +59,30 @@ interface FullReportScreenProps {
 type ProcessingStatus = 'submitting' | 'processing' | 'completed' | 'failed';
 
 export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, route }) => {
-  const { scanResult, vehicle, conditionReport, stockNumber, additionalRepairs, vehicleOwnerName, scannerOwnerName } = route.params;
-  const [status, setStatus] = useState<ProcessingStatus>('submitting');
-  const [statusMessage, setStatusMessage] = useState('Submitting scan data...');
-  const [reportData, setReportData] = useState<FullReportData | null>(null);
+  const {
+    scanResult,
+    vehicle,
+    conditionReport,
+    stockNumber,
+    additionalRepairs,
+    vehicleOwnerName,
+    scannerOwnerName,
+    prefetchedReport,
+    prefetchedScanId,
+  } = route.params;
+  // When entering via the AI bridge we already have the final report and
+  // can short-circuit to the completed state. Otherwise the original BLE
+  // flow remains: submit → poll → render.
+  const isPrefetched = !!prefetchedReport;
+  const [status, setStatus] = useState<ProcessingStatus>(
+    isPrefetched ? 'completed' : 'submitting',
+  );
+  const [statusMessage, setStatusMessage] = useState(
+    isPrefetched ? '' : 'Submitting scan data...',
+  );
+  const [reportData, setReportData] = useState<FullReportData | null>(
+    prefetchedReport ?? null,
+  );
   const [errorMessage, setErrorMessage] = useState('');
   const [reportSaved, setReportSaved] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -99,6 +134,19 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
 
   // Submit and poll pipeline
   useEffect(() => {
+    // AI-bridge entry already has the final report — skip submit/poll.
+    if (isPrefetched) return;
+    // Defensive: BLE entry MUST supply scanResult. Surface a clear error
+    // instead of crashing on `payload.codes` access.
+    if (!scanResult) {
+      logger.error(
+        LogCategory.APP,
+        'FullReportScreen: missing scanResult and no prefetchedReport',
+      );
+      setStatus('failed');
+      setErrorMessage('Internal error: scan data unavailable.');
+      return;
+    }
     let cancelled = false;
 
     const processReport = async () => {
@@ -160,14 +208,30 @@ export const FullReportScreen: React.FC<FullReportScreenProps> = ({ navigation, 
 
     processReport();
     return () => { cancelled = true; };
-  }, [scanResult]);
+  }, [scanResult, isPrefetched]);
 
   const handleRetry = () => {
+    setErrorMessage('');
+    setReportSaved(false);
+    if (isPrefetched && prefetchedScanId) {
+      // AI-bridge retry — just re-poll the existing scan.
+      setStatus('processing');
+      setStatusMessage('Re-checking report...');
+      void (async () => {
+        const pollResult = await apiService.pollReport(prefetchedScanId);
+        if (pollResult.success && pollResult.data) {
+          setReportData(pollResult.data);
+          setStatus('completed');
+        } else {
+          setStatus('failed');
+          setErrorMessage(pollResult.message || 'Report processing failed.');
+        }
+      })();
+      return;
+    }
     setStatus('submitting');
     setStatusMessage('Submitting scan data...');
-    setErrorMessage('');
     setReportData(null);
-    setReportSaved(false);
     navigation.replace('FullReport', { scanResult, vehicle, conditionReport });
   };
 

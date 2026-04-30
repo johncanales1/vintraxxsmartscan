@@ -93,7 +93,12 @@ export interface FullReportData {
     severity: 'critical' | 'moderate' | 'minor' | 'info';
     category: string;
     possibleCauses: string[];
-    repairEstimate: { low: number; high: number };
+    /**
+     * HIGH #19: low/high is a meaningful ±10% band around labor (NOT
+     * parts-only vs parts+labor). `total` is the AI point estimate so
+     * clients that want a single number don't have to recompute it.
+     */
+    repairEstimate: { low: number; high: number; total: number };
     urgency: 'immediate' | 'soon' | 'monitor';
   }>;
   repairRecommendations: Array<{

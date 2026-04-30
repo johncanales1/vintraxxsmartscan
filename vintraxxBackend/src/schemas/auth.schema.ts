@@ -27,15 +27,22 @@ export const registerSchema = z.object({
     pricePerLaborHour: z.number().positive().optional(),
     logoUrl: z.string().optional(),
     qrCodeUrl: z.string().optional(),
+    // HIGH #12: the controller already reads `fullName` off the body and
+    // persists it; without this it was technically allowed because zod
+    // strips unknown keys silently, but a future tightening to .strict()
+    // would have broken registration. Make the contract honest.
+    fullName: z.string().min(1).max(120).optional(),
   }),
 });
 
 export const loginSchema = z.object({
+  // CRITICAL #1: isDealer / pricePerLaborHour intentionally NOT accepted here.
+  // Dealer promotion is admin-controlled. A client that still sends them gets
+  // a normal 200 — Zod strips unknown keys silently — but the controller no
+  // longer reads them either way.
   body: z.object({
     email: z.string().email('Invalid email address'),
     password: z.string().min(1, 'Password is required'),
-    isDealer: z.boolean().optional(),
-    pricePerLaborHour: z.number().positive().optional(),
   }),
 });
 

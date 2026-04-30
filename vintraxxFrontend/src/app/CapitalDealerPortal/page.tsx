@@ -3,6 +3,9 @@
 import { useState, useEffect } from "react";
 import { Phone, ArrowRight, QrCode, DollarSign, CircleCheckBig, Clock, TrendingUp, Activity, FileText, Mail, Monitor, Settings, Search, Trash2 } from "lucide-react";
 import { DealerNav } from "@/components/shared-assets/navigation/dealer-nav";
+import { API_BASE } from "@/lib/api-config";
+import { gpsWs } from "@/app/VinTraxxSmartScanDashboard/_lib/gpsWs";
+import { useRouter } from "next/navigation";
 
 interface DealerUser {
     id: string;
@@ -17,16 +20,28 @@ interface DealerUser {
     companyName?: string;
 }
 
-const API_BASE = "https://api.vintraxx.com/api/v1";
-
 export default function CapitalDealerPortalPage() {
+    const router = useRouter();
     const [searchName, setSearchName] = useState("");
     const [searchEmail, setSearchEmail] = useState("");
     const [searchPhone, setSearchPhone] = useState("");
     const [statusFilter, setStatusFilter] = useState("All");
     const [dealer, setDealer] = useState<DealerUser | null>(null);
+    const [authChecked, setAuthChecked] = useState(false);
 
+    // Auth gate: identical pattern to the dashboard layout. If no token,
+    // bounce to /login. If the profile fetch returns 401/403, the token is
+    // stale — clear it and bounce.
     useEffect(() => {
+        const token =
+            typeof window !== "undefined"
+                ? localStorage.getItem("dealer_token")
+                : null;
+        if (!token) {
+            router.replace("/login");
+            return;
+        }
+
         // Load cached dealer user for instant render
         const storedUser = localStorage.getItem("dealer_user");
         if (storedUser) {
@@ -35,15 +50,18 @@ export default function CapitalDealerPortalPage() {
             } catch {}
         }
 
-        // Always refresh from backend to pick up fullName, qrCodeUrl, originalLogoUrl, createdAt
-        const token = localStorage.getItem("dealer_token");
-        if (!token) return;
-
         (async () => {
             try {
                 const res = await fetch(`${API_BASE}/dealer/profile`, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
+                if (res.status === 401 || res.status === 403) {
+                    try { gpsWs.disconnect(); } catch { /* no-op */ }
+                    localStorage.removeItem("dealer_token");
+                    localStorage.removeItem("dealer_user");
+                    router.replace("/login");
+                    return;
+                }
                 if (!res.ok) return;
                 const data = await res.json();
                 if (data.success && data.dealer) {
@@ -52,21 +70,27 @@ export default function CapitalDealerPortalPage() {
                 }
             } catch (err) {
                 console.error("Failed to fetch dealer profile:", err);
+            } finally {
+                setAuthChecked(true);
             }
         })();
-    }, []);
+    }, [router]);
 
+    // NOTE: this page is currently a UI mock-up — the financing back-end
+    // for VinTraxx Capital is not yet wired in. The rows below are sample
+    // placeholders only. They contain NO real customer data. Once the
+    // backend lender API is available, replace this with a real fetch.
     const applications = [
-        { id: 1, name: "Lauren Kelley", email: "lkelley1384@gmail.com", phone: "210-445-7776", createdOn: "13 Mar 2026", status: "FinWise Bank, sub-serviced by American First Finance Funded" },
-        { id: 2, name: "Lauren Kelley", email: "lkelley1384@gmail.com", phone: "210-445-7776", createdOn: "13 Mar 2026", status: "Application Started" },
-        { id: 3, name: "Matthew Longoria", email: "mlongoria757@gmail.com", phone: "979-362-4965", createdOn: "13 Mar 2026", status: "FinWise Bank, sub-serviced by American First Finance Pre Qualified" },
-        { id: 4, name: "Matthew Longoria", email: "mlongoria757@gmail.com", phone: "979-362-4965", createdOn: "13 Mar 2026", status: "Phone Verified" },
-        { id: 5, name: "Paul Machin", email: "paul@vintraxx.com", phone: "864-238-1234", createdOn: "12 Mar 2026", status: "Application Started" },
-        { id: 6, name: "Justin Altstatt Altstatt", email: "altstattjustin154@gmail.com", phone: "832-768-3002", createdOn: "6 Mar 2026", status: "FinWise Bank, sub-serviced by American First Finance Funded" },
-        { id: 7, name: "Justin Altstatt", email: "altstattjustin154@gmail.com", phone: "832-768-3002", createdOn: "6 Mar 2026", status: "Application Started" },
-        { id: 8, name: "Justin Altstatt", email: "altstattjustin154@gmail.com", phone: "832-802-1459", createdOn: "6 Mar 2026", status: "Application Started" },
-        { id: 9, name: "Stephanie Skinner", email: "klgkne@yahoo.com", phone: "832-802-1459", createdOn: "6 Mar 2026", status: "FinWise Bank, sub-serviced by American First Finance Denied" },
-        { id: 10, name: "Melissa Davis", email: "mdavis0389@yahoo.com", phone: "832-588-5488", createdOn: "4 Mar 2026", status: "FinWise Bank, sub-serviced by American First Finance Funded" },
+        { id: 1, name: "Sample Customer 1", email: "customer1@example.com", phone: "555-0101", createdOn: "13 Mar 2026", status: "FinWise Bank, sub-serviced by American First Finance Funded" },
+        { id: 2, name: "Sample Customer 1", email: "customer1@example.com", phone: "555-0101", createdOn: "13 Mar 2026", status: "Application Started" },
+        { id: 3, name: "Sample Customer 2", email: "customer2@example.com", phone: "555-0102", createdOn: "13 Mar 2026", status: "FinWise Bank, sub-serviced by American First Finance Pre Qualified" },
+        { id: 4, name: "Sample Customer 2", email: "customer2@example.com", phone: "555-0102", createdOn: "13 Mar 2026", status: "Phone Verified" },
+        { id: 5, name: "Sample Customer 3", email: "customer3@example.com", phone: "555-0103", createdOn: "12 Mar 2026", status: "Application Started" },
+        { id: 6, name: "Sample Customer 4", email: "customer4@example.com", phone: "555-0104", createdOn: "6 Mar 2026", status: "FinWise Bank, sub-serviced by American First Finance Funded" },
+        { id: 7, name: "Sample Customer 4", email: "customer4@example.com", phone: "555-0104", createdOn: "6 Mar 2026", status: "Application Started" },
+        { id: 8, name: "Sample Customer 4", email: "customer4@example.com", phone: "555-0105", createdOn: "6 Mar 2026", status: "Application Started" },
+        { id: 9, name: "Sample Customer 5", email: "customer5@example.com", phone: "555-0105", createdOn: "6 Mar 2026", status: "FinWise Bank, sub-serviced by American First Finance Denied" },
+        { id: 10, name: "Sample Customer 6", email: "customer6@example.com", phone: "555-0106", createdOn: "4 Mar 2026", status: "FinWise Bank, sub-serviced by American First Finance Funded" },
     ];
 
     const stats = [
@@ -108,6 +132,16 @@ export default function CapitalDealerPortalPage() {
         "U.S. Bank Avvance Pre Approval Link Generated",
         "U.S. Bank Avvance Pre Approval Denied",
     ];
+
+    // Don't render the page (and especially don't flash sample-PII rows)
+    // until the auth gate has resolved.
+    if (!authChecked) {
+        return (
+            <main className="min-h-screen flex items-center justify-center bg-slate-50">
+                <div className="text-slate-500 text-sm">Loading…</div>
+            </main>
+        );
+    }
 
     return (
         <>
@@ -169,8 +203,8 @@ export default function CapitalDealerPortalPage() {
                     {stats.map((stat, index) => (
                         <div key={index} className="rounded-xl border text-card-foreground shadow bg-white border-slate-200 p-6">
                             <div className="flex items-center justify-between mb-3">
-                                <stat.icon className="w-8 h-8 {stat.color}" />
-                                <div className="inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border-transparent shadow hover:bg-primary/80 {stat.bgColor} {stat.color.replace('text-', 'text-')} border-0">
+                                <stat.icon className={`w-8 h-8 ${stat.color}`} />
+                                <div className={`inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold border-transparent shadow ${stat.bgColor} ${stat.color} border-0`}>
                                     {stat.status}
                                 </div>
                             </div>

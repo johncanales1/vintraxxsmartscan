@@ -37,10 +37,11 @@ const AboutModal = ({ open, onClose }: { open: boolean; onClose: () => void }) =
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center">
             <div className="absolute inset-0 bg-black/80" onClick={onClose} />
-            <dialog
-                open
-                className="relative bg-white rounded-lg shadow-2xl max-w-3xl w-full mx-4 max-h-[80vh] overflow-y-auto p-6 z-10 border border-slate-200"
+            <div
+                role="dialog"
+                aria-modal="true"
                 aria-label="About VinTraxx Automotive LLC"
+                className="relative bg-white rounded-lg shadow-2xl max-w-3xl w-full mx-4 max-h-[80vh] overflow-y-auto p-6 z-10 border border-slate-200"
             >
                 <div className="flex flex-col space-y-1.5 text-left mb-4">
                     <h2 className="tracking-tight text-2xl font-bold text-[#1B3A5F]">About VinTraxx Automotive LLC</h2>
@@ -82,7 +83,7 @@ const AboutModal = ({ open, onClose }: { open: boolean; onClose: () => void }) =
                         © 2026 VinTraxx Automotive Holdings, LLC — All Rights Reserved.
                     </div>
                 </div>
-            </dialog>
+            </div>
         </div>
     );
 };
@@ -378,9 +379,11 @@ const CTA = () => {
                         Join dealerships nationwide using VinTraxx to streamline operations and boost profitability
                     </p>
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                        <button className="h-10 rounded-md bg-white hover:bg-slate-50 text-[#1B3A5F] text-lg px-10 py-6 font-bold shadow-lg hover:shadow-xl transition-all hover:scale-105 inline-flex items-center justify-center">
-                            Get Started Free
-                        </button>
+                        <Link href="/login">
+                            <button className="h-10 rounded-md bg-white hover:bg-slate-50 text-[#1B3A5F] text-lg px-10 py-6 font-bold shadow-lg hover:shadow-xl transition-all hover:scale-105 inline-flex items-center justify-center">
+                                Get Started Free
+                            </button>
+                        </Link>
                         <a href="mailto:admin@vintraxx.com">
                             <button className="h-10 rounded-md bg-[#8B2332] hover:bg-[#6d1c27] text-white text-lg px-10 py-6 font-bold shadow-lg hover:shadow-xl transition-all hover:scale-105 inline-flex items-center justify-center">
                                 Request Demo

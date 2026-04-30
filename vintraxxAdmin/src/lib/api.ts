@@ -146,7 +146,277 @@ export const api = {
 
   // Backup
   getBackupUrl: () => `${API_URL}/backup`,
+
+  // ── GPS Telemetry (admin scope — no ownerUserId filter unless requested) ──
+
+  getGpsOverview: () =>
+    request<{ success: boolean; stats: GpsOverviewStats }>('/gps/stats/overview'),
+
+  listGpsTerminals: (
+    page = 1,
+    limit = 50,
+    opts: {
+      filter?: 'online' | 'offline' | 'unpaired' | 'never_connected' | 'revoked';
+      search?: string;
+      ownerUserId?: string;
+    } = {},
+  ) =>
+    request<{
+      success: boolean;
+      terminals: GpsTerminal[];
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    }>(
+      `/gps/terminals?${buildQuery({ page, limit, ...opts })}`,
+    ),
+
+  getGpsTerminal: (id: string) =>
+    request<{ success: boolean; terminal: GpsTerminalDetail }>(`/gps/terminals/${id}`),
+
+  provisionGpsTerminal: (body: ProvisionTerminalBody) =>
+    request<{ success: boolean; terminal: GpsTerminal }>('/gps/terminals', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  reassignGpsTerminal: (id: string, ownerUserId: string | null) =>
+    request<{ success: boolean; terminal: GpsTerminal }>(`/gps/terminals/${id}/owner`, {
+      method: 'PATCH',
+      body: JSON.stringify({ ownerUserId }),
+    }),
+
+  unpairGpsTerminal: (id: string) =>
+    request<{ success: boolean; terminal: GpsTerminal }>(`/gps/terminals/${id}/unpair`, {
+      method: 'POST',
+    }),
+
+  deleteGpsTerminal: (id: string) =>
+    request<{ success: boolean; message?: string }>(`/gps/terminals/${id}`, {
+      method: 'DELETE',
+    }),
+
+  /**
+   * Most-recent GpsLocation for a terminal. `location` is null when the
+   * terminal has never reported (NEVER_CONNECTED). Throws 404 if the
+   * terminal id itself is unknown.
+   */
+  getGpsTerminalLatest: (id: string) =>
+    request<{ success: boolean; location: GpsLocation | null }>(
+      `/gps/terminals/${id}/latest`,
+    ),
+
+  getGpsLocations: (
+    id: string,
+    opts: { since?: string; until?: string; page?: number; limit?: number; minSpeedKmh?: number } = {},
+  ) =>
+    request<{
+      success: boolean;
+      locations: GpsLocation[];
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+      since: string;
+      until: string;
+    }>(`/gps/terminals/${id}/locations?${buildQuery(opts)}`),
+
+  getGpsObdSnapshots: (
+    id: string,
+    opts: { since?: string; until?: string; page?: number; limit?: number } = {},
+  ) =>
+    request<{
+      success: boolean;
+      snapshots: GpsObdSnapshot[];
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+      since: string;
+      until: string;
+    }>(`/gps/terminals/${id}/obd?${buildQuery(opts)}`),
+
+  // Alarms
+  /**
+   * List alarms (admin scope). Supports the canonical filter triplet from
+   * the backend (severity/state/ack) plus the admin-only convenience
+   * filters (alarmType/ownerUserId/search). The UI maps a higher-level
+   * "status" tri-state (OPEN | ACKNOWLEDGED | CLOSED) onto state+ack
+   * before calling here — that mapping is intentionally kept in the UI to
+   * keep the wire shape minimal and unambiguous.
+   */
+  listGpsAlarms: (
+    page = 1,
+    limit = 50,
+    filters: {
+      terminalId?: string;
+      severity?: GpsAlarmSeverity;
+      alarmType?: GpsAlarmType;
+      state?: 'open' | 'closed';
+      ack?: boolean;
+      ownerUserId?: string;
+      search?: string;
+      since?: string;
+      until?: string;
+    } = {},
+  ) =>
+    request<{
+      success: boolean;
+      alarms: GpsAlarm[];
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    }>(`/gps/alarms?${buildQuery({ page, limit, ...filters })}`),
+
+  getGpsAlarm: (id: string) =>
+    request<{ success: boolean; alarm: GpsAlarm }>(`/gps/alarms/${id}`),
+
+  acknowledgeGpsAlarm: (id: string, note?: string) =>
+    request<{ success: boolean; alarm: GpsAlarm }>(`/gps/alarms/${id}/ack`, {
+      method: 'POST',
+      body: JSON.stringify(note ? { note } : {}),
+    }),
+
+  bulkAcknowledgeGpsAlarms: (ids: string[], note?: string) =>
+    request<{
+      success: boolean;
+      count: number;
+      acknowledged: string[];
+      skipped: string[];
+    }>('/gps/alarms/ack-bulk', {
+      method: 'POST',
+      body: JSON.stringify({ ids, ...(note ? { note } : {}) }),
+    }),
+
+  // DTC events
+  /**
+   * `milOnly` is the canonical filter name on the backend (see
+   * `listDtcEventsQuerySchema`). The Zod middleware accepts the literal
+   * strings `"true"` / `"false"` and the controller does the boolean
+   * coercion. Earlier this filter was named `milOn` on the client which
+   * never reached the controller and silently no-op'd - always send
+   * `milOnly` so the backend filter is actually applied.
+   */
+  listGpsDtcEvents: (
+    page = 1,
+    limit = 50,
+    filters: {
+      terminalId?: string;
+      vin?: string;
+      milOnly?: boolean;
+      since?: string;
+      until?: string;
+    } = {},
+  ) =>
+    request<{
+      success: boolean;
+      events: GpsDtcEvent[];
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    }>(`/gps/dtc-events?${buildQuery({ page, limit, ...filters })}`),
+
+  getGpsDtcEvent: (id: string) =>
+    request<{ success: boolean; event: GpsDtcEvent }>(`/gps/dtc-events/${id}`),
+
+  /**
+   * Promote a DTC event into a Scan and run the AI pipeline on the owner's
+   * behalf. Returns `scanId` (poll `getScanDetail(scanId)` to wait for
+   * COMPLETED) and `reused:true` if a Scan already existed for this event.
+   */
+  analyzeGpsDtcEvent: (id: string) =>
+    request<{ success: boolean; scanId: string; reused: boolean }>(
+      `/gps/dtc-events/${id}/analyze`,
+      { method: 'POST', body: JSON.stringify({}) },
+    ),
+
+  // Trips + daily stats
+  listGpsTrips: (
+    page = 1,
+    limit = 50,
+    filters: {
+      terminalId?: string;
+      status?: 'OPEN' | 'CLOSED';
+      since?: string;
+      until?: string;
+    } = {},
+  ) =>
+    request<{
+      success: boolean;
+      trips: GpsTrip[];
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    }>(`/gps/trips?${buildQuery({ page, limit, ...filters })}`),
+
+  getGpsTrip: (id: string) =>
+    request<{ success: boolean; trip: GpsTrip }>(`/gps/trips/${id}`),
+
+  // Commands (read-only in v1)
+  listGpsCommands: (
+    page = 1,
+    limit = 50,
+    filters: {
+      terminalId?: string;
+      status?: GpsCommandStatus;
+      adminId?: string;
+      since?: string;
+      until?: string;
+    } = {},
+  ) =>
+    request<{
+      success: boolean;
+      commands: GpsCommand[];
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    }>(`/gps/commands?${buildQuery({ page, limit, ...filters })}`),
+
+  getGpsCommand: (id: string) =>
+    request<{ success: boolean; command: GpsCommand }>(`/gps/commands/${id}`),
+
+  // Audit log
+  listAdminAuditLogs: (
+    page = 1,
+    limit = 50,
+    filters: {
+      adminId?: string;
+      targetType?: string;
+      targetId?: string;
+      action?: string;
+      statusClass?: 1 | 2 | 3 | 4 | 5;
+      since?: string;
+      until?: string;
+    } = {},
+  ) =>
+    request<{
+      success: boolean;
+      entries: AdminAuditEntry[];
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    }>(`/audit-logs?${buildQuery({ page, limit, ...filters })}`),
 };
+
+/**
+ * Builds a URL query string from a flat object, dropping undefined/null/''.
+ * Booleans are stringified ("true"/"false") because the backend Zod
+ * schemas use `z.coerce.boolean()` which accepts both.
+ */
+function buildQuery(params: Record<string, unknown>): string {
+  const out = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === '') continue;
+    out.append(k, String(v));
+  }
+  return out.toString();
+}
 
 // Types
 export interface DashboardStats {
@@ -180,7 +450,15 @@ export interface User {
   maxVins: number | null;
   createdAt: string;
   updatedAt: string;
-  _count: { scans: number; usedScannerDevices: number; usedVins: number };
+  _count: {
+    scans: number;
+    usedScannerDevices: number;
+    usedVins: number;
+    /** Optional — populated by the admin `getUsers` endpoint after the
+     *  GPS-integration backfill. Treated as 0 when missing for older
+     *  payloads. */
+    gpsTerminals?: number;
+  };
 }
 
 export interface UserDetail extends Omit<User, '_count'> {
@@ -348,4 +626,331 @@ export interface CreateUserData {
   qrCodeUrl?: string;
   maxScannerDevices?: number | null;
   maxVins?: number | null;
+}
+
+// ── GPS Telemetry types ─────────────────────────────────────────────────────
+//
+// These mirror the Prisma models exactly (with BigInt/Decimal serialised as
+// `number` by the backend's BigInt polyfill). New fields the backend adds
+// later are forward-compatible because the frontend only reads the fields
+// it knows about and ignores the rest.
+
+export type GpsTerminalStatus =
+  | 'NEVER_CONNECTED'
+  | 'ONLINE'
+  | 'OFFLINE'
+  | 'SUSPENDED'
+  | 'REVOKED';
+
+export interface GpsTerminal {
+  id: string;
+  imei: string;
+  phoneNumber: string | null;
+  iccid: string | null;
+  manufacturerId: string | null;
+  terminalModel: string | null;
+  hardwareVersion: string | null;
+  firmwareVersion: string | null;
+
+  ownerUserId: string | null;
+  ownerUser?: {
+    id: string;
+    email: string;
+    fullName: string | null;
+    isDealer: boolean;
+  } | null;
+
+  vehicleVin: string | null;
+  vehicleYear: number | null;
+  vehicleMake: string | null;
+  vehicleModel: string | null;
+  nickname: string | null;
+  plateNumber: string | null;
+
+  status: GpsTerminalStatus;
+  connectedAt: string | null;
+  disconnectedAt: string | null;
+  lastHeartbeatAt: string | null;
+
+  reportIntervalSec: number | null;
+  heartbeatIntervalSec: number | null;
+  tcpReconnectSec: number | null;
+  tcpReplySec: number | null;
+  parameters: Record<string, unknown> | null;
+
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GpsTerminalDetail extends GpsTerminal {
+  _count?: {
+    locations: number;
+    alarms: number;
+    dtcEvents: number;
+    trips: number;
+  };
+}
+
+export interface ProvisionTerminalBody {
+  imei: string;
+  phoneNumber?: string;
+  iccid?: string;
+  manufacturerId?: string;
+  terminalModel?: string;
+  hardwareVersion?: string;
+  firmwareVersion?: string;
+  vehicleVin?: string;
+  vehicleYear?: number;
+  vehicleMake?: string;
+  vehicleModel?: string;
+  nickname?: string;
+  plateNumber?: string;
+  ownerUserId?: string | null;
+}
+
+export interface GpsLocation {
+  id: string;
+  terminalId: string;
+  reportedAt: string;
+  serverReceivedAt?: string;
+  latitude: number | string;   // Decimal serialises as string in some configs
+  longitude: number | string;
+  altitudeM: number | null;
+  speedKmh: number | string | null;
+  heading: number | null;
+  accOn: boolean | null;
+  gpsFix: boolean | null;
+  satelliteCount: number | null;
+  signalStrength: number | null;
+  odometerKm: number | string | null;
+  fuelLevelPct: number | string | null;
+  externalVoltageMv: number | null;
+  batteryVoltageMv: number | null;
+  alarmBits: number | string;
+  statusBits: number | string;
+}
+
+export interface GpsObdSnapshot {
+  id: string;
+  terminalId: string;
+  reportedAt: string;
+  vin: string | null;
+  protocol: string | null;
+  rpm: number | null;
+  engineLoadPct: number | string | null;
+  coolantTempC: number | null;
+  intakeTempC: number | null;
+  throttlePct: number | string | null;
+  fuelLevelPct: number | string | null;
+  speedKmh: number | string | null;
+  batteryVoltageMv: number | null;
+  milOn: boolean;
+  dtcCount: number;
+  storedDtcCodes: string[];
+  pendingDtcCodes: string[];
+  permanentDtcCodes: string[];
+}
+
+export type GpsAlarmSeverity = 'INFO' | 'WARNING' | 'CRITICAL';
+export type GpsAlarmType =
+  | 'COLLISION'
+  | 'SOS'
+  | 'GEOFENCE_IN'
+  | 'GEOFENCE_OUT'
+  | 'OVERSPEED'
+  | 'IDLING'
+  | 'HARSH_BRAKE'
+  | 'HARSH_ACCEL'
+  | 'HARSH_TURN'
+  | 'POWER_LOSS'
+  | 'POWER_LOW'
+  | 'TAMPER'
+  | 'IGNITION_ON'
+  | 'IGNITION_OFF'
+  | 'GPS_BLOCKED'
+  | 'OTHER';
+
+/**
+ * UI-side tri-state derived from `state` + `ack`. Not a backend type;
+ * the section maps it to query params before calling listGpsAlarms.
+ *   OPEN          → state='open',   ack=false  (active, needs attention)
+ *   ACKNOWLEDGED  → state='open',   ack=true   (still open but seen)
+ *   CLOSED        → state='closed'             (auto-closed by gateway)
+ */
+export type GpsAlarmStatus = 'OPEN' | 'ACKNOWLEDGED' | 'CLOSED';
+
+export interface GpsAlarm {
+  id: string;
+  terminalId: string;
+  ownerUserId: string | null;
+  /**
+   * The Prisma column is `type`. The backend serialises it to `alarmType`
+   * on the wire; we keep the same name on the client so that filter
+   * params, response objects, and WS events all use one identifier.
+   */
+  alarmType: GpsAlarmType;
+  severity: GpsAlarmSeverity;
+  openedAt: string;
+  closedAt: string | null;
+  acknowledged: boolean;
+  acknowledgedAt: string | null;
+  acknowledgedByAdminId: string | null;
+  acknowledgedByUserId: string | null;
+  /**
+   * Populated by the admin-scoped `listAlarms` / `getAlarmDetail` only,
+   * via Prisma `include`. Either field can be set (rarely both) when an
+   * alarm has been acknowledged. User-scoped routes don't include these
+   * to keep the payload tight, so guard with optional access in the UI.
+   */
+  acknowledgedByAdmin?: { id: string; email: string } | null;
+  acknowledgedByUser?: { id: string; email: string; fullName: string | null } | null;
+  ackNote: string | null;
+  latitude: number | string | null;
+  longitude: number | string | null;
+  speedKmh: number | string | null;
+  vin: string | null;
+  extraData: Record<string, unknown> | null;
+  serviceAppointmentId: string | null;
+  /**
+   * Admin-scoped lists return a richer terminal block with vehicle
+   * descriptors and the owner user — used by GpsAlarmsSection to render
+   * vehicle labels and owner chips. User-scoped lists return only the
+   * slim id/imei/nickname/vin fields.
+   */
+  terminal?: {
+    id: string;
+    imei: string;
+    nickname: string | null;
+    vehicleVin: string | null;
+    vehicleYear?: number | null;
+    vehicleMake?: string | null;
+    vehicleModel?: string | null;
+    ownerUser?: {
+      id: string;
+      email: string;
+      fullName: string | null;
+      isDealer: boolean;
+    } | null;
+  };
+}
+
+export interface GpsDtcEvent {
+  id: string;
+  terminalId: string;
+  ownerUserId: string | null;
+  reportedAt: string;
+  vin: string;
+  mileageKm: number | string | null;
+  milOn: boolean;
+  dtcCount: number;
+  storedDtcCodes: string[];
+  pendingDtcCodes: string[];
+  permanentDtcCodes: string[];
+  protocol: string | null;
+  latitude: number | string | null;
+  longitude: number | string | null;
+  scanId?: string | null;       // populated when a Scan was promoted
+  terminal?: {
+    id: string;
+    imei: string;
+    nickname: string | null;
+  };
+}
+
+export type GpsTripStatus = 'OPEN' | 'CLOSED';
+
+export interface GpsTrip {
+  id: string;
+  terminalId: string;
+  ownerUserId: string | null;
+  status: GpsTripStatus;
+  startAt: string;
+  endAt: string | null;
+  startLatitude: number | string | null;
+  startLongitude: number | string | null;
+  endLatitude: number | string | null;
+  endLongitude: number | string | null;
+  distanceKm: number | string;
+  drivingSec: number;
+  idleSec: number;
+  maxSpeedKmh: number | string | null;
+  avgSpeedKmh: number | string | null;
+  harshEventCount: number;
+  driverScore: number | null;
+}
+
+/**
+ * Mirrors the Prisma `GpsCommandStatus` enum exactly. The backend Zod
+ * schema (`listCommandsQuerySchema`) only accepts these literal values
+ * for the `?status=` filter; anything else (e.g. the older `PENDING`)
+ * returns 400 from the validator. Initial state is `QUEUED` (the gateway
+ * hasn't yet picked up the row), and `EXPIRED` is set by the cron when a
+ * QUEUED row sits too long without a live session to dispatch it on.
+ */
+export type GpsCommandStatus = 'QUEUED' | 'SENT' | 'ACKED' | 'FAILED' | 'EXPIRED';
+
+export interface GpsCommand {
+  id: string;
+  terminalId: string;
+  adminId: string | null;
+  status: GpsCommandStatus;
+  messageId: number | string | null;
+  functionCode: number | null;
+  kind: string;
+  payload: Record<string, unknown> | null;
+  createdAt: string;
+  sentAt: string | null;
+  ackAt: string | null;
+  errorText: string | null;
+  terminal?: {
+    id: string;
+    imei: string;
+    nickname: string | null;
+  };
+  admin?: { id: string; email: string } | null;
+}
+
+/**
+ * NESTED shape returned by `/admin/gps/stats/overview`. Confirmed in
+ * `gps-stats.service.ts:66-80`. The frontend reads nested fields directly
+ * (e.g. `stats.terminals.online`, `stats.alarms.last24h`).
+ */
+export interface GpsOverviewStats {
+  terminals: {
+    total: number;
+    online: number;
+    offline: number;
+    neverConnected: number;
+    revoked: number;
+    unpaired: number;
+  };
+  alarms: {
+    last24h: number;
+    criticalLast24h: number;
+    unacknowledged: number;
+  };
+  dtcEvents: { last24h: number };
+  trips: {
+    open: number;
+    closedLast24h: number;
+    distanceKmLast24h: number;
+    distanceKmLast7d: number;
+  };
+}
+
+export interface AdminAuditEntry {
+  id: string;
+  adminId: string | null;
+  admin?: { id: string; email: string } | null;
+  method: string;
+  path: string;
+  statusCode: number;
+  action: string;
+  targetType: string | null;
+  targetId: string | null;
+  ip: string | null;
+  userAgent: string | null;
+  payload: Record<string, unknown> | null;
+  errorText: string | null;
+  createdAt: string;
 }

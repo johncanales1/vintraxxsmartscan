@@ -9,10 +9,13 @@ import { env } from '../config/env';
 import logger from '../utils/logger';
 import prisma from '../config/db';
 import fs from 'fs';
+import { randomUUID } from 'crypto';
 import { EmailServiceUnavailableError } from '../utils/errors';
 
-// In-memory store for appraisals (would be DB in production)
-const appraisalStore = new Map<string, AppraisalSummaryData>();
+// HIGH #15: in-memory `appraisalStore` removed — it was dead code that
+// confused ops on multi-process deploys (each PM2 worker had its own copy)
+// and never got cleared. The DB row is the only source of truth; the
+// CRITICAL #10 server-overwrite path reads it directly.
 
 // ================================================================
 // POST /api/v1/appraisal/valuate
@@ -132,8 +135,11 @@ export async function valuateVehicle(req: Request, res: Response, next: NextFunc
       valuation = await getAiValuation(input);
     }
 
-    // Generate an appraisal ID
-    const appraisalId = `appr-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    // MEDIUM #31: appraisal IDs were `appr-<ms>-<6 base36 chars>` from
+    // Math.random — only ~36^6 random bits and not cryptographic. Use
+    // crypto.randomUUID() for collision-free, opaque ids. Existing rows
+    // keep their old shape because Appraisal.id is `String` — no migration.
+    const appraisalId = randomUUID();
 
     // Build appraisal summary and store it
     const appraisalData: AppraisalSummaryData = {
@@ -154,8 +160,6 @@ export async function valuateVehicle(req: Request, res: Response, next: NextFunc
       createdAt: new Date().toISOString(),
       userEmail,
     };
-
-    appraisalStore.set(appraisalId, appraisalData);
 
     // Persist to database
     try {
@@ -187,28 +191,39 @@ export async function valuateVehicle(req: Request, res: Response, next: NextFunc
     // how OBD scan reports work. The /email and /pdf endpoints will reuse
     // this file instead of re-rendering. Photos are added later when the
     // user emails a photo-enriched PDF via /pdf.
+    // MEDIUM #27: defensive try wrapper around the setImmediate body so a
+    // synchronous throw inside the lambda (e.g. a future contributor adds
+    // code BEFORE the .then chain that throws) can't escape as an
+    // unhandledRejection.
     setImmediate(() => {
-      generateAppraisalPdf(appraisalData)
-        .then(async (pdfPath) => {
-          try {
-            await prisma.appraisal.update({
-              where: { id: appraisalId },
-              data: { pdfUrl: pdfPath },
-            });
-            logger.info('Baseline appraisal PDF generated', { appraisalId, pdfPath });
-          } catch (updateErr) {
-            logger.warn('Failed to store baseline appraisal pdfUrl', {
+      try {
+        generateAppraisalPdf(appraisalData)
+          .then(async (pdfPath) => {
+            try {
+              await prisma.appraisal.update({
+                where: { id: appraisalId },
+                data: { pdfUrl: pdfPath },
+              });
+              logger.info('Baseline appraisal PDF generated', { appraisalId, pdfPath });
+            } catch (updateErr) {
+              logger.warn('Failed to store baseline appraisal pdfUrl', {
+                appraisalId,
+                error: (updateErr as Error).message,
+              });
+            }
+          })
+          .catch((pdfErr) => {
+            logger.warn('Baseline appraisal PDF generation failed (non-fatal)', {
               appraisalId,
-              error: (updateErr as Error).message,
+              error: (pdfErr as Error).message,
             });
-          }
-        })
-        .catch((pdfErr) => {
-          logger.warn('Baseline appraisal PDF generation failed (non-fatal)', {
-            appraisalId,
-            error: (pdfErr as Error).message,
           });
+      } catch (err) {
+        logger.error('Baseline appraisal PDF setImmediate threw synchronously', {
+          appraisalId,
+          err: (err as Error).message,
         });
+      }
     });
 
     logger.info('Appraisal valuation completed and stored', {
@@ -243,6 +258,67 @@ export async function valuateVehicle(req: Request, res: Response, next: NextFunc
   }
 }
 
+/**
+ * CRITICAL #10: rebuild a canonical, trusted AppraisalSummaryData from the
+ * DB row — NEVER trust the client-supplied `appraisalData`. The previous
+ * code allowed any authenticated user to send fake appraisal emails with
+ * arbitrary numbers / VINs. We honour only:
+ *   - `toEmail` (validated as an email by zod / route layer)
+ *   - `appraisalData.photos` (transient; not persisted in DB; passed
+ *     through processPhotosForEmbedding before use)
+ * Everything else (vehicle, valuation, condition, zip, notes, photoCount)
+ * is read from the prisma.appraisal row scoped to the authenticated user.
+ */
+async function loadTrustedAppraisalData(
+  appraisalId: string,
+  userId: string,
+  fallbackUserEmail: string,
+  clientPhotos: string[] | undefined,
+): Promise<AppraisalSummaryData | null> {
+  const row = await prisma.appraisal.findFirst({
+    where: { id: appraisalId, userId },
+  });
+  if (!row) return null;
+
+  // valuationData is stored as Prisma Json (broad union); we know it
+  // matches AiValuationOutput because /valuate is the only writer. Cast
+  // via `unknown` so TS doesn't complain about the structural mismatch.
+  const valuation = (row.valuationData ?? {}) as unknown as AiValuationOutput;
+
+  // Photos are not persisted on the appraisal row (they're embedded into the
+  // PDF/email at send-time and discarded). We accept them from the body but
+  // re-validate via processPhotosForEmbedding.
+  const photos = processPhotosForEmbedding(clientPhotos);
+
+  // Cast condition string to the union type. Older rows may have any string
+  // here so default to 'average' for safety; the AI prompt + UI both treat
+  // it as a label only.
+  const cond = (row.condition === 'clean' || row.condition === 'rough')
+    ? row.condition
+    : 'average';
+
+  return {
+    appraisalId: row.id,
+    vehicle: {
+      vin: row.vin,
+      year: row.vehicleYear ?? 0,
+      make: row.vehicleMake ?? '',
+      model: row.vehicleModel ?? '',
+      trim: row.vehicleTrim ?? undefined,
+      mileage: row.mileage ?? 0,
+    },
+    condition: cond,
+    zipCode: row.zipCode ?? undefined,
+    notes: row.notes ?? undefined,
+    valuation,
+    photoCount: photos.length || row.photoCount,
+    photos,
+    createdAt: row.createdAt.toISOString(),
+    userEmail: row.userEmail ?? fallbackUserEmail,
+    userFullName: row.userFullName ?? undefined,
+  };
+}
+
 // ================================================================
 // POST /api/v1/appraisal/email
 // Send appraisal summary via email
@@ -253,21 +329,28 @@ export async function emailAppraisal(req: Request, res: Response, next: NextFunc
       toEmail: string;
       appraisalData: AppraisalSummaryData;
     };
+    const userId = req.user!.userId;
+
+    // CRITICAL #10: rebuild the appraisal payload from the DB row, scoped
+    // to the authenticated user. The body's `appraisalData` is treated as
+    // untrusted — only `appraisalId` (lookup key) and `photos` are honoured.
+    const trusted = await loadTrustedAppraisalData(
+      appraisalData?.appraisalId,
+      userId,
+      req.user!.email,
+      appraisalData?.photos,
+    );
+    if (!trusted) {
+      res.status(404).json({ success: false, error: 'Appraisal not found' });
+      return;
+    }
 
     logger.info('Appraisal email requested', {
-      userId: req.user!.userId,
-      appraisalId: appraisalData.appraisalId,
+      userId,
+      appraisalId: trusted.appraisalId,
       toEmail,
-      vin: appraisalData.vehicle.vin,
+      vin: trusted.vehicle.vin,
     });
-
-    // Process photos for embedding (compress/validate)
-    appraisalData.photos = processPhotosForEmbedding(appraisalData.photos);
-
-    // Store appraisal data if not already stored
-    if (!appraisalStore.has(appraisalData.appraisalId)) {
-      appraisalStore.set(appraisalData.appraisalId, appraisalData);
-    }
 
     // Reuse the baseline PDF that /valuate generated in the background so the
     // "Email Appraisal" flow always attaches a PDF. If /valuate's background
@@ -276,19 +359,19 @@ export async function emailAppraisal(req: Request, res: Response, next: NextFunc
     let pdfPath: string | null = null;
     try {
       const existing = await prisma.appraisal.findUnique({
-        where: { id: appraisalData.appraisalId },
+        where: { id: trusted.appraisalId },
         select: { pdfUrl: true },
       });
       if (existing?.pdfUrl && fs.existsSync(existing.pdfUrl)) {
         pdfPath = existing.pdfUrl;
       } else {
-        pdfPath = await generateAppraisalPdf(appraisalData);
+        pdfPath = await generateAppraisalPdf(trusted);
         await prisma.appraisal.update({
-          where: { id: appraisalData.appraisalId },
+          where: { id: trusted.appraisalId },
           data: { pdfUrl: pdfPath },
         }).catch((dbErr) => {
           logger.warn('emailAppraisal: could not persist late-generated pdfUrl', {
-            appraisalId: appraisalData.appraisalId,
+            appraisalId: trusted.appraisalId,
             error: (dbErr as Error).message,
           });
         });
@@ -296,16 +379,16 @@ export async function emailAppraisal(req: Request, res: Response, next: NextFunc
     } catch (pdfErr) {
       // Non-fatal: we still send the email (HTML-only) if PDF generation fails.
       logger.warn('emailAppraisal: PDF generation failed, falling back to HTML-only email', {
-        appraisalId: appraisalData.appraisalId,
+        appraisalId: trusted.appraisalId,
         error: (pdfErr as Error).message,
       });
       pdfPath = null;
     }
 
-    await sendAppraisalEmail(toEmail, appraisalData, pdfPath);
+    await sendAppraisalEmail(toEmail, trusted, pdfPath);
 
     logger.info('Appraisal email sent successfully', {
-      appraisalId: appraisalData.appraisalId,
+      appraisalId: trusted.appraisalId,
       toEmail,
       hasPdf: Boolean(pdfPath),
     });
@@ -347,69 +430,76 @@ export async function pdfAppraisal(req: Request, res: Response, next: NextFuncti
       toEmail: string;
       appraisalData: AppraisalSummaryData;
     };
+    const userId = req.user!.userId;
+
+    // CRITICAL #10: same server-overwrite as emailAppraisal — only
+    // appraisalId + photos are honoured from the body; vehicle/valuation
+    // come from the DB row.
+    const trusted = await loadTrustedAppraisalData(
+      appraisalData?.appraisalId,
+      userId,
+      req.user!.email,
+      appraisalData?.photos,
+    );
+    if (!trusted) {
+      res.status(404).json({ success: false, error: 'Appraisal not found' });
+      return;
+    }
 
     logger.info('Appraisal PDF requested', {
-      userId: req.user!.userId,
-      appraisalId: appraisalData.appraisalId,
+      userId,
+      appraisalId: trusted.appraisalId,
       toEmail,
-      vin: appraisalData.vehicle.vin,
+      vin: trusted.vehicle.vin,
     });
-
-    // Process photos for embedding (compress/validate)
-    appraisalData.photos = processPhotosForEmbedding(appraisalData.photos);
-
-    // Store appraisal data if not already stored
-    if (!appraisalStore.has(appraisalData.appraisalId)) {
-      appraisalStore.set(appraisalData.appraisalId, appraisalData);
-    }
 
     // If the user didn't add photos and /valuate already produced a baseline
     // PDF we reuse that file to avoid writing duplicates. When photos ARE
     // attached the PDF is content-different, so we regenerate.
-    const hasPhotos = Array.isArray(appraisalData.photos) && appraisalData.photos.length > 0;
+    const hasPhotos = Array.isArray(trusted.photos) && trusted.photos.length > 0;
     let pdfPath: string;
     if (!hasPhotos) {
       const existing = await prisma.appraisal.findUnique({
-        where: { id: appraisalData.appraisalId },
+        where: { id: trusted.appraisalId },
         select: { pdfUrl: true },
       }).catch(() => null);
       if (existing?.pdfUrl && fs.existsSync(existing.pdfUrl)) {
         pdfPath = existing.pdfUrl;
         logger.info('Reusing baseline appraisal PDF (no photos attached)', {
-          appraisalId: appraisalData.appraisalId,
+          appraisalId: trusted.appraisalId,
           pdfPath,
         });
       } else {
-        pdfPath = await generateAppraisalPdf(appraisalData);
+        pdfPath = await generateAppraisalPdf(trusted);
       }
     } else {
-      pdfPath = await generateAppraisalPdf(appraisalData);
+      pdfPath = await generateAppraisalPdf(trusted);
     }
 
     logger.info('Appraisal PDF ready', {
-      appraisalId: appraisalData.appraisalId,
+      appraisalId: trusted.appraisalId,
       pdfPath,
       hasPhotos,
-      photoCount: appraisalData.photos?.length || 0,
+      photoCount: trusted.photos?.length || 0,
     });
 
     // Update DB record with pdfUrl (and photoCount when photos are present)
     try {
       await prisma.appraisal.update({
-        where: { id: appraisalData.appraisalId },
-        data: { pdfUrl: pdfPath, photoCount: appraisalData.photos?.length || 0 },
+        where: { id: trusted.appraisalId },
+        data: { pdfUrl: pdfPath, photoCount: trusted.photos?.length || 0 },
       });
     } catch (dbErr) {
       logger.warn('Failed to update appraisal pdfUrl in DB', { error: (dbErr as Error).message });
     }
 
     // Send email with PDF attachment
-    await sendAppraisalEmail(toEmail, appraisalData, pdfPath);
+    await sendAppraisalEmail(toEmail, trusted, pdfPath);
 
     // Keep PDF file on disk so dealers can view it later via PDF View link
 
     logger.info('Appraisal PDF email sent successfully', {
-      appraisalId: appraisalData.appraisalId,
+      appraisalId: trusted.appraisalId,
       toEmail,
     });
 

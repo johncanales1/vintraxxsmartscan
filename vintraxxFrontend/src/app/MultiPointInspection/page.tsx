@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Plus, Eye, Trash2, Car, Calendar, User, X, ChevronRight } from "lucide-react";
 import { DealerNav } from "@/components/shared-assets/navigation/dealer-nav";
-
-const API_BASE = "https://api.vintraxx.com/api/v1";
+import { API_BASE } from "@/lib/api-config";
+import { gpsWs } from "@/app/VinTraxxSmartScanDashboard/_lib/gpsWs";
 
 interface InspectionItem {
     id: string;
@@ -121,6 +121,7 @@ export default function MultiPointInspectionPage() {
             });
             
             if (res.status === 401 || res.status === 403) {
+                try { gpsWs.disconnect(); } catch { /* no-op */ }
                 localStorage.removeItem("dealer_token");
                 router.push("/login");
                 return;

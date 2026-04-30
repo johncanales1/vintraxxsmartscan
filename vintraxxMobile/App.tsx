@@ -8,7 +8,7 @@ import { StatusBar, useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { RootNavigator } from './src/navigation';
+import { RootNavigator, rootNavigationRef } from './src/navigation';
 import { colors } from './src/theme/colors';
 
 // Auth: OTP-based email verification.
@@ -25,7 +25,7 @@ function App(): React.JSX.Element {
           barStyle={isDarkMode ? 'light-content' : 'dark-content'}
           backgroundColor={colors.background.primary}
         />
-        <NavigationContainer>
+        <NavigationContainer ref={rootNavigationRef}>
           <RootNavigator />
         </NavigationContainer>
       </SafeAreaProvider>

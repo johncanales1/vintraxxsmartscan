@@ -2,10 +2,37 @@ import { APP_CONSTANTS } from '../config/constants';
 import { VinDecodeResult } from '../types';
 import logger from '../utils/logger';
 
+/**
+ * HIGH #15: bounded VIN decode cache. Map preserves insertion order, so
+ * deleting+re-inserting a key on hit gives us LRU semantics. Cap at 5000
+ * entries — at ~120 bytes/entry that's <1 MB resident, plenty for the
+ * working-set size we see in production.
+ */
+const VIN_CACHE_MAX = 5000;
 const vinCache = new Map<string, VinDecodeResult>();
 
+function vinCacheGet(key: string): VinDecodeResult | undefined {
+  const v = vinCache.get(key);
+  if (v !== undefined) {
+    // Refresh LRU position by re-inserting at the tail.
+    vinCache.delete(key);
+    vinCache.set(key, v);
+  }
+  return v;
+}
+
+function vinCacheSet(key: string, value: VinDecodeResult): void {
+  if (vinCache.has(key)) vinCache.delete(key);
+  vinCache.set(key, value);
+  if (vinCache.size > VIN_CACHE_MAX) {
+    // Evict oldest (first key in insertion order).
+    const oldest = vinCache.keys().next().value;
+    if (oldest !== undefined) vinCache.delete(oldest);
+  }
+}
+
 export async function decodeVin(vin: string): Promise<VinDecodeResult> {
-  const cached = vinCache.get(vin.toUpperCase());
+  const cached = vinCacheGet(vin.toUpperCase());
   if (cached) {
     logger.info(`VIN cache hit for ${vin}`);
     return cached;
@@ -51,7 +78,7 @@ export async function decodeVin(vin: string): Promise<VinDecodeResult> {
     const decoded: VinDecodeResult = { year, make, model, engine };
 
     if (year && make && model) {
-      vinCache.set(vin.toUpperCase(), decoded);
+      vinCacheSet(vin.toUpperCase(), decoded);
     }
 
     logger.info(`VIN decoded: ${year} ${make} ${model} (${engine})`);

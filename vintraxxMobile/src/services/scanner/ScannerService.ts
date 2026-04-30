@@ -59,6 +59,7 @@ export type ScanStep =
   | 'reading_mil'
   | 'reading_distance'
   | 'reading_time'
+  | 'reading_odometer'
   | 'complete';
 
 export interface ScanProgressCallback {
@@ -207,6 +208,10 @@ export class ScannerService {
       }
 
       // Step 2: Read VIN
+      // Bug #H3: progress percentages are now strictly monotonic across
+      // the actual call order (vin → stored → pending → permanent → mil →
+      // distance → time → odometer → done). Previously MIL at 70% ran
+      // before stored DTCs at 55%, causing the progress bar to regress.
       debugLogger.logEvent('Step 2: Reading VIN');
       onProgress?.('reading_vin', 25, 'Reading Vehicle Identification Number...');
       const vinResult = await this.obdCommands.readVINWithRaw();
@@ -228,7 +233,8 @@ export class ScannerService {
         throw new Error('Scan cancelled by user');
       }
 
-      // Step 3: Read MIL status and DTC count
+      // Step 4 (real order — was Step 3): Read MIL status and DTC count
+      // Runs AFTER the three DTC reads so 70% no longer precedes 55%.
       onProgress?.('reading_mil', 70, 'Reading MIL status...');
       const milResult = await this.obdCommands.readMILStatusWithRaw();
       const milStatus = { milOn: milResult.parsed.milOn, dtcCount: milResult.parsed.dtcCount, raw: milResult.parsed.raw };
@@ -245,8 +251,8 @@ export class ScannerService {
         throw new Error('Scan cancelled by user');
       }
 
-      // Step 4: Read stored DTCs
-      onProgress?.('reading_dtcs', 55, 'Reading stored diagnostic codes...');
+      // Step 3 (real order): Read stored DTCs
+      onProgress?.('reading_dtcs', 40, 'Reading stored diagnostic codes...');
       const storedDtcsResult = await this.obdCommands.readStoredDTCsWithRaw();
       const storedDtcs = storedDtcsResult.parsed;
       
@@ -255,8 +261,8 @@ export class ScannerService {
         debugData.storedDtcsNormalized = storedDtcsResult.raw.normalized;
       }
 
-      // Step 5: Read pending DTCs
-      onProgress?.('reading_dtcs', 65, 'Reading pending diagnostic codes...');
+      // Step 5 — real order: Read pending DTCs
+      onProgress?.('reading_dtcs', 50, 'Reading pending diagnostic codes...');
       const pendingDtcsResult = await this.obdCommands.readPendingDTCsWithRaw();
       const pendingDtcs = pendingDtcsResult.parsed;
       
@@ -265,8 +271,8 @@ export class ScannerService {
         debugData.pendingDtcsNormalized = pendingDtcsResult.raw.normalized;
       }
 
-      // Step 6: Read permanent DTCs (optional, may not be supported)
-      onProgress?.('reading_dtcs', 75, 'Reading permanent diagnostic codes...');
+      // Step 6 — real order: Read permanent DTCs (optional, may not be supported)
+      onProgress?.('reading_dtcs', 60, 'Reading permanent diagnostic codes...');
       let permanentDtcs: ParsedDtc[] = [];
       try {
         permanentDtcs = await this.obdCommands.readPermanentDTCs();
@@ -275,7 +281,7 @@ export class ScannerService {
       }
 
       // Step 7: Read distance since codes cleared
-      onProgress?.('reading_distance', 85, 'Reading distance since codes cleared...');
+      onProgress?.('reading_distance', 78, 'Reading distance since codes cleared...');
       const distanceResult = await this.obdCommands.readDistanceSinceClearedWithRaw();
       const distanceSinceCleared = distanceResult.parsed;
       
@@ -285,7 +291,7 @@ export class ScannerService {
       }
 
       // Step 8: Read time since codes cleared
-      onProgress?.('reading_time', 90, 'Reading time since codes cleared...');
+      onProgress?.('reading_time', 82, 'Reading time since codes cleared...');
       const timeResult = await this.obdCommands.readTimeSinceClearedWithRaw();
       const timeSinceCleared = timeResult.parsed;
       
@@ -358,7 +364,7 @@ export class ScannerService {
       // Step 13: Read odometer (optional, may not be supported)
       // Pass VIN to enable manufacturer-specific DID filtering
       debugLogger.logEvent('Step 13: Reading odometer');
-      onProgress?.('reading_distance', 95, 'Reading odometer...');
+      onProgress?.('reading_odometer', 92, 'Reading odometer...');
       let odometer: number | null = null;
       let odometerEcu: string | undefined = undefined;
       try {

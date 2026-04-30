@@ -5,6 +5,8 @@ import Link from "next/link";
 import { Search, Menu, ChevronDown, User, LogOut, UserCircle, X, Upload, Calendar, DollarSign, Mail, Hash, ZoomIn, ZoomOut, Move, Check, Pencil } from "lucide-react";
 import { Button as AriaButton, Dialog as AriaDialog, DialogTrigger as AriaDialogTrigger, Popover as AriaPopover } from "react-aria-components";
 import { cx } from "@/utils/cx";
+import { API_BASE } from "@/lib/api-config";
+import { gpsWs } from "@/app/VinTraxxSmartScanDashboard/_lib/gpsWs";
 
 interface DealerNavProps {
     dealerLogo?: string | null;
@@ -18,10 +20,6 @@ interface DealerNavProps {
     createdAt?: string;
     onProfileUpdate?: (data: { logoUrl?: string; originalLogoUrl?: string; pricePerLaborHour?: number; qrCodeUrl?: string; fullName?: string; email?: string }) => void;
 }
-
-const API_BASE = process.env.NODE_ENV === 'production' 
-    ? "https://api.vintraxx.com/api/v1" 
-    : "http://localhost:3000/api/v1";
 
 interface ProfileModalProps {
     isOpen: boolean;
@@ -267,7 +265,6 @@ const ProfileModal = ({ isOpen, onClose, onSave, userId, userEmail, fullName, pr
     const [saving, setSaving] = useState(false);
     const [editedLaborRate, setEditedLaborRate] = useState<string>(pricePerLaborHour?.toString() || "");
     const [editedFullName, setEditedFullName] = useState<string>(fullName || "");
-    const [editedEmail, setEditedEmail] = useState<string>(userEmail || "");
     const [originalImage, setOriginalImage] = useState<string | null>(null);
     const [selectedOriginalImage, setSelectedOriginalImage] = useState<string | null>(null);
     const [croppedImage, setCroppedImage] = useState<string | null>(null);
@@ -282,7 +279,6 @@ const ProfileModal = ({ isOpen, onClose, onSave, userId, userEmail, fullName, pr
         if (isOpen) {
             setEditedLaborRate(pricePerLaborHour?.toString() || "");
             setEditedFullName(fullName || "");
-            setEditedEmail(userEmail || "");
             setCroppedImage(null);
             setOriginalImage(null);
             setSelectedOriginalImage(null);
@@ -300,9 +296,8 @@ const ProfileModal = ({ isOpen, onClose, onSave, userId, userEmail, fullName, pr
         const logoChanged = croppedImage !== null;
         const qrCodeChanged = newQrCode !== null;
         const fullNameChanged = editedFullName !== (fullName || "");
-        const emailChanged = editedEmail !== (userEmail || "");
-        setHasChanges(laborRateChanged || logoChanged || qrCodeChanged || fullNameChanged || emailChanged);
-    }, [editedLaborRate, pricePerLaborHour, croppedImage, newQrCode, editedFullName, fullName, editedEmail, userEmail]);
+        setHasChanges(laborRateChanged || logoChanged || qrCodeChanged || fullNameChanged);
+    }, [editedLaborRate, pricePerLaborHour, croppedImage, newQrCode, editedFullName, fullName]);
 
     if (!isOpen) return null;
 
@@ -394,9 +389,6 @@ const ProfileModal = ({ isOpen, onClose, onSave, userId, userEmail, fullName, pr
             
             if (editedFullName !== (fullName || "")) {
                 updateData.fullName = editedFullName;
-            }
-            if (editedEmail && editedEmail !== (userEmail || "")) {
-                updateData.email = editedEmail;
             }
             
             if (croppedImage) {
@@ -540,11 +532,15 @@ const ProfileModal = ({ isOpen, onClose, onSave, userId, userEmail, fullName, pr
                             <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Email Address</p>
                             <input
                                 type="email"
-                                value={editedEmail}
-                                onChange={(e) => setEditedEmail(e.target.value)}
-                                placeholder="Enter email"
-                                className="w-full text-sm text-slate-900 bg-white border border-slate-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mt-1"
+                                value={userEmail || ""}
+                                readOnly
+                                disabled
+                                aria-label="Email address (read-only)"
+                                className="w-full text-sm text-slate-700 bg-slate-100 border border-slate-300 rounded-lg px-3 py-1.5 mt-1 cursor-not-allowed"
                             />
+                            <p className="text-xs text-slate-500 mt-1">
+                                Email is your sign-in identity and can&apos;t be changed here. Contact support@vintraxx.com to update it.
+                            </p>
                         </div>
                     </div>
 
@@ -558,13 +554,19 @@ const ProfileModal = ({ isOpen, onClose, onSave, userId, userEmail, fullName, pr
                                 <span className="text-slate-500">$</span>
                                 <input
                                     type="number"
+                                    min={0.01}
+                                    step={0.01}
                                     value={editedLaborRate}
                                     onChange={(e) => setEditedLaborRate(e.target.value)}
                                     placeholder="Enter rate"
+                                    aria-describedby="labor-rate-hint"
                                     className="flex-1 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                 />
                                 <span className="text-slate-500 text-sm">/hr</span>
                             </div>
+                            <p id="labor-rate-hint" className="text-xs text-slate-500 mt-1">
+                                Must be greater than $0. A rate of 0 will not be saved.
+                            </p>
                         </div>
                     </div>
 
@@ -676,6 +678,7 @@ const UserDropdownMenu = ({ className, userEmail, fullName, onProfileClick, onCl
             <div className="py-1">
                 <button 
                     onClick={() => {
+                        try { gpsWs.disconnect(); } catch { /* no-op */ }
                         localStorage.removeItem('dealer_token');
                         localStorage.removeItem('dealer_user');
                         window.location.href = '/login';

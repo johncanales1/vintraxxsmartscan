@@ -66,6 +66,10 @@ yarn-error.log
 # testing
 /coverage
 
+# Local env file with API URLs and OAuth client IDs (Bug #M4 / #M5).
+# Commit `src/config/env.example.ts` instead.
+/src/config/env.ts
+
 # Yarn
 .yarn/*
 !.yarn/patches

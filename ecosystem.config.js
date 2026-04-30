@@ -64,6 +64,33 @@ module.exports = {
       out_file: '/home/ec2-user/.pm2/logs/vintraxx-admin-out.log',
       log_file: '/home/ec2-user/.pm2/logs/vintraxx-admin-combined.log',
       time: true
+    },
+    {
+      // vintraxx-gateway: standalone JT/T 808 TCP server. Lives in the same
+      // vintraxxBackend repo as the REST API but runs as its own PM2 app so
+      // long-lived TCP sockets and binary parsing can't impact REST traffic.
+      name: 'vintraxx-gateway',
+      script: './dist/gateway/index.js',
+      cwd: '/home/ec2-user/vintraxxsmartscan/vintraxxBackend',
+      interpreter: 'node',
+      env: {
+        NODE_ENV: 'production',
+        // The gateway loads DATABASE_URL / JWT_SECRET / OPENAI_API_KEY from
+        // the same .env as vintraxx-backend. Only GPS_*-prefixed values need
+        // to live here.
+        GPS_TCP_PORT: 7808,
+        GPS_TLS_PORT: 0,
+        GPS_AUTO_PROVISION: 'false',
+        GPS_HEARTBEAT_TIMEOUT_SEC: 180
+      },
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '1500M',
+      error_file: '/home/ec2-user/.pm2/logs/vintraxx-gateway-error.log',
+      out_file: '/home/ec2-user/.pm2/logs/vintraxx-gateway-out.log',
+      log_file: '/home/ec2-user/.pm2/logs/vintraxx-gateway-combined.log',
+      time: true
     }
   ]
 };

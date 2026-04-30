@@ -2,7 +2,8 @@ import { Router } from 'express';
 import * as dealerController from '../controllers/dealer.controller';
 import { authMiddleware } from '../middleware/auth';
 import { validateRequest } from '../middleware/validateRequest';
-import { authRateLimiter } from '../middleware/rateLimiter';
+import { authRateLimiter, dealerEmailRateLimiter } from '../middleware/rateLimiter';
+import { sendDealerEmailSchema, scheduleAppointmentSchema } from '../schemas/dealer.schema';
 import { z } from 'zod';
 
 const router = Router();
@@ -14,6 +15,8 @@ const dealerLoginSchema = z.object({
   }),
 });
 
+// MEDIUM #24: `email` was removed — dealers cannot self-change their email
+// anymore. Admin-only via /admin/users/:id. See updateDealerProfile JSDoc.
 const dealerUpdateSchema = z.object({
   body: z.object({
     pricePerLaborHour: z.number().positive().optional(),
@@ -22,7 +25,6 @@ const dealerUpdateSchema = z.object({
     qrCodeImage: z.string().optional(),
     password: z.string().optional(),
     fullName: z.string().optional(),
-    email: z.string().email().optional(),
   }),
 });
 
@@ -41,10 +43,26 @@ router.get('/scan-history', authMiddleware, dealerController.getDealerScanHistor
 router.get('/report/:scanId', authMiddleware, dealerController.getDealerReportDetail);
 
 // Schedule service appointment (sends email to john@vintraxx.com)
-router.post('/schedule-appointment', authMiddleware, dealerController.scheduleAppointment);
+// MEDIUM #22: Zod schema added — previously the controller destructured
+// fields off req.body with no validation.
+router.post(
+  '/schedule-appointment',
+  authMiddleware,
+  validateRequest(scheduleAppointmentSchema),
+  dealerController.scheduleAppointment,
+);
 
 // Send custom email from dealer portal
-router.post('/send-email', authMiddleware, dealerController.sendDealerEmail);
+// CRITICAL #7: gate by auth + dealer-only check (in controller) + zod schema
+// + per-IP rate limit. The previous mounting was authMiddleware-only, so any
+// authenticated regular user could relay arbitrary HTML mail through SMTP.
+router.post(
+  '/send-email',
+  authMiddleware,
+  dealerEmailRateLimiter,
+  validateRequest(sendDealerEmailSchema),
+  dealerController.sendDealerEmail,
+);
 
 // Service appointment activity history
 router.get('/appointments', authMiddleware, dealerController.getDealerAppointments);

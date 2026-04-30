@@ -6,12 +6,19 @@ import { StatusBadge } from '@/components/Dashboard';
 import ScanDetailModal from '@/components/modals/ScanDetailModal';
 import AppraisalDetailModal from '@/components/modals/AppraisalDetailModal';
 import ConfirmDeleteModal from '@/components/modals/ConfirmDeleteModal';
+import GpsDtcsSection from '@/components/sections/GpsDtcsSection';
 import {
-  Search, Trash2, Eye, History, RefreshCw, ChevronLeft, ChevronRight, FileText, ClipboardList, Mail, Send, X, CheckCircle
+  Search, Trash2, Eye, History, RefreshCw, ChevronLeft, ChevronRight, FileText, ClipboardList, Mail, Send, X, CheckCircle, AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-type HistoryTab = 'scans' | 'appraisals';
+/**
+ * Three-tab history view: traditional OBD scans, appraisals, and the
+ * newer GPS DTC stream. The DTC tab embeds `GpsDtcsSection` directly so
+ * the view, filters, and AI-bridge logic stay in one place — the
+ * sidebar route /gps-dtcs and this in-page tab share the same component.
+ */
+type HistoryTab = 'scans' | 'appraisals' | 'dtc';
 
 interface HistorySectionProps {
   initialTab?: HistoryTab;
@@ -205,7 +212,26 @@ export default function HistorySection({ initialTab = 'scans' }: HistorySectionP
           <ClipboardList size={16} />
           Appraisals
         </button>
+        {/*
+          DTC events tab — mirrors the sidebar /gps-dtcs route. Putting it
+          here gives admins reviewing scan history a one-click jump to the
+          GPS-side fault feed without losing tab context.
+         */}
+        <button
+          onClick={() => setActiveTab('dtc')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            activeTab === 'dtc'
+              ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+          }`}
+        >
+          <AlertTriangle size={16} />
+          DTC Events
+        </button>
       </div>
+
+      {/* DTC Events tab — embed the canonical section. */}
+      {activeTab === 'dtc' && <GpsDtcsSection />}
 
       {/* OBD Scans Tab */}
       {activeTab === 'scans' && (

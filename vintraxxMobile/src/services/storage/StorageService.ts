@@ -35,6 +35,19 @@ export interface ClearedCode {
   mileage?: number;
 }
 
+/**
+ * Persisted per-user BLE pairing record. Lives at
+ * `settings.devicePairingByEmail[email]` so it survives `clearAuthOnLaunch()`
+ * (which intentionally wipes user/authToken/userDevice each launch for
+ * security) without forcing the user back through DeviceSetupScreen on every
+ * subsequent re-login. Bug #H5.
+ */
+export interface DevicePairing {
+  deviceName: string;
+  macAddress: string;
+  completedAt: string; // ISO timestamp
+}
+
 export class StorageService {
   private static instance: StorageService;
 
@@ -386,6 +399,78 @@ export class StorageService {
       storage.set(KEYS.RECENT_VINS, JSON.stringify(next));
     } catch (error) {
       logger.error(LogCategory.STORAGE, 'Failed to remove recent VIN', error);
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  // Device Pairing By Email — bug #H5
+  //
+  // Stored under `settings.devicePairingByEmail` (a map keyed by lowercase
+  // email) so it persists across the security-driven `clearAuthOnLaunch()`
+  // wipe of `settings.user`/`settings.authToken`/`settings.userDevice`.
+  // Without this map, every re-login would force the user back through
+  // DeviceSetupScreen even after a successful first-time pairing.
+  // ────────────────────────────────────────────────────────────────────
+
+  /**
+   * Look up a previously-saved pairing for an email. Returns null if none.
+   */
+  getDevicePairing(email: string): DevicePairing | null {
+    try {
+      if (!email) return null;
+      const settings = this.getSettings();
+      const map = (settings.devicePairingByEmail ?? {}) as Record<string, DevicePairing>;
+      const key = email.trim().toLowerCase();
+      const entry = map[key];
+      if (!entry || !entry.deviceName || !entry.macAddress) return null;
+      return entry;
+    } catch (error) {
+      logger.error(LogCategory.STORAGE, 'Failed to get device pairing', error);
+      return null;
+    }
+  }
+
+  /**
+   * Persist a pairing record for an email. Idempotent on identical input.
+   */
+  setDevicePairing(email: string, pairing: DevicePairing): void {
+    try {
+      if (!email || !pairing?.deviceName || !pairing?.macAddress) return;
+      const settings = this.getSettings();
+      const map = (settings.devicePairingByEmail ?? {}) as Record<string, DevicePairing>;
+      const key = email.trim().toLowerCase();
+      map[key] = {
+        deviceName: pairing.deviceName,
+        macAddress: pairing.macAddress,
+        completedAt: pairing.completedAt || new Date().toISOString(),
+      };
+      settings.devicePairingByEmail = map;
+      this.saveSettings(settings);
+      logger.info(LogCategory.STORAGE, 'Device pairing saved for email', { email: key });
+    } catch (error) {
+      logger.error(LogCategory.STORAGE, 'Failed to set device pairing', error);
+    }
+  }
+
+  /**
+   * Remove the saved pairing for an email (e.g. user requested "Forget device").
+   * Logout should NOT call this — re-login on the same email should restore
+   * the pairing automatically.
+   */
+  clearDevicePairing(email: string): void {
+    try {
+      if (!email) return;
+      const settings = this.getSettings();
+      const map = (settings.devicePairingByEmail ?? {}) as Record<string, DevicePairing>;
+      const key = email.trim().toLowerCase();
+      if (key in map) {
+        delete map[key];
+        settings.devicePairingByEmail = map;
+        this.saveSettings(settings);
+        logger.info(LogCategory.STORAGE, 'Device pairing cleared for email', { email: key });
+      }
+    } catch (error) {
+      logger.error(LogCategory.STORAGE, 'Failed to clear device pairing', error);
     }
   }
 }

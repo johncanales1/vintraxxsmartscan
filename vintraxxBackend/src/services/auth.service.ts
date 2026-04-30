@@ -120,7 +120,7 @@ export async function register(
   // Process base64 images into files (like dealer.controller.ts does)
   const apiBase = env.NODE_ENV === 'production' 
     ? 'https://api.vintraxx.com' 
-    : 'http://localhost:3000';
+    : `http://localhost:${env.PORT}`;
   
   let processedLogoUrl: string | null = null;
   let processedQrCodeUrl: string | null = null;
@@ -172,9 +172,21 @@ export async function register(
     processedQrCodeUrl = qrCodeUrl;
   }
 
-  const user = await prisma.user.create({
-    data: { email, passwordHash, isDealer: dealer, pricePerLaborHour: laborHourPrice, logoUrl: processedLogoUrl, qrCodeUrl: processedQrCodeUrl, fullName: fullName || null },
-  });
+  // HIGH #13: race-safe insert. Two concurrent register requests for the
+  // same email both pass the findUnique check above; only one wins the
+  // unique-email constraint at insert. Translate the P2002 to a clean 409
+  // so the second caller doesn't see a generic 500.
+  let user;
+  try {
+    user = await prisma.user.create({
+      data: { email, passwordHash, isDealer: dealer, pricePerLaborHour: laborHourPrice, logoUrl: processedLogoUrl, qrCodeUrl: processedQrCodeUrl, fullName: fullName || null },
+    });
+  } catch (err) {
+    if ((err as { code?: string })?.code === 'P2002') {
+      throw new AppError('Email already registered', 409);
+    }
+    throw err;
+  }
 
   await prisma.otp.deleteMany({ where: { email } });
 
@@ -188,7 +200,7 @@ export async function register(
   };
 }
 
-export async function login(email: string, password: string, isDealer?: boolean, pricePerLaborHour?: number): Promise<{ user: { id: string; email: string; fullName: string | null; isDealer: boolean; pricePerLaborHour: number | null; logoUrl: string | null; originalLogoUrl: string | null; qrCodeUrl: string | null }; token: string }> {
+export async function login(email: string, password: string): Promise<{ user: { id: string; email: string; fullName: string | null; isDealer: boolean; pricePerLaborHour: number | null; logoUrl: string | null; originalLogoUrl: string | null; qrCodeUrl: string | null }; token: string }> {
   logger.info('User login attempt', { email, hasPassword: !!password });
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
@@ -207,21 +219,10 @@ export async function login(email: string, password: string, isDealer?: boolean,
     throw new AppError('Invalid email or password', 401);
   }
 
-  // If user is signing in as dealer and providing pricePerLaborHour, update their profile
-  if (isDealer === true) {
-    const updateData: { isDealer: boolean; pricePerLaborHour?: number } = { isDealer: true };
-    if (pricePerLaborHour) {
-      updateData.pricePerLaborHour = pricePerLaborHour;
-    }
-    await prisma.user.update({
-      where: { id: user.id },
-      data: updateData,
-    });
-    user.isDealer = true;
-    if (pricePerLaborHour) {
-      user.pricePerLaborHour = pricePerLaborHour;
-    }
-  }
+  // Privilege escalation fix (CRITICAL #1): we no longer accept isDealer /
+  // pricePerLaborHour at login time. Dealer status is granted exclusively at
+  // registration or by an admin via /admin/users/:id. Allowing the client
+  // to flip its own row here was a self-promote vector.
 
   const token = generateToken({ userId: user.id, email: user.email });
 
@@ -311,12 +312,19 @@ export async function resetPassword(token: string, newPassword: string): Promise
   logger.info(`Password reset successful for user: ${resetToken.user.email}`);
 }
 
+/**
+ * LOW #1: the Google client IDs accepted as token audiences are now driven
+ * entirely by env (with sane defaults — see env.ts). The literals that
+ * used to live here were PUBLIC OAuth client IDs (visible in any compiled
+ * mobile binary), so this is purely a config-hygiene refactor — no
+ * security delta. Multiple IDs are accepted because the mobile app uses
+ * a different `aud` than the web flow.
+ */
 export async function googleAuth(idToken: string): Promise<{ user: { id: string; email: string; isDealer: boolean; pricePerLaborHour: number | null; logoUrl: string | null; originalLogoUrl: string | null; qrCodeUrl: string | null }; token: string }> {
-  // Valid Google OAuth client IDs for this project (Web, iOS, Android)
   const VALID_GOOGLE_CLIENT_IDS = [
-    env.GOOGLE_CLIENT_ID, // Backend/Web client ID from env
-    '701476871517-for6b5esr0itht4cltqh2vmfhb07mjac.apps.googleusercontent.com', // Web client ID (used as webClientId in mobile)
-    '701476871517-2h0qbn3hiovpp5mjlqu907op6rgktnf0.apps.googleusercontent.com', // iOS/Android client ID
+    env.GOOGLE_CLIENT_ID,        // primary backend / web client (legacy)
+    env.GOOGLE_CLIENT_ID_WEB,    // mobile webClientId (used by Google Sign-In SDK)
+    env.GOOGLE_CLIENT_ID_MOBILE, // iOS / Android native client IDs
   ].filter(Boolean) as string[];
 
   if (VALID_GOOGLE_CLIENT_IDS.length === 0) {
@@ -383,65 +391,26 @@ export async function googleAuth(idToken: string): Promise<{ user: { id: string;
   };
 }
 
-export async function microsoftAuth(accessToken: string): Promise<{ user: { id: string; email: string; isDealer: boolean; pricePerLaborHour: number | null; logoUrl: string | null; originalLogoUrl: string | null; qrCodeUrl: string | null }; token: string }> {
-  if (!env.MICROSOFT_CLIENT_ID) {
-    throw new AppError('Microsoft authentication is not configured.', 500);
-  }
-
-  // Use the access token to get user info from Microsoft Graph
-  let msUser: { id: string; mail?: string; userPrincipalName: string };
-  try {
-    const response = await fetch('https://graph.microsoft.com/v1.0/me', {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!response.ok) {
-      throw new Error('Invalid token');
-    }
-    msUser = await response.json() as { id: string; mail?: string; userPrincipalName: string };
-  } catch (error) {
-    logger.warn('Microsoft token verification failed', { error: (error as Error).message });
-    throw new AppError('Invalid Microsoft credentials.', 401);
-  }
-
-  const email = msUser.mail || msUser.userPrincipalName;
-  if (!email) {
-    throw new AppError('Could not retrieve email from Microsoft account.', 401);
-  }
-
-  // Find user by microsoftId or email
-  let user = await prisma.user.findFirst({
-    where: { OR: [{ microsoftId: msUser.id }, { email }] },
-  });
-
-  if (user) {
-    // Link Microsoft ID if not already linked
-    if (!user.microsoftId) {
-      user = await prisma.user.update({
-        where: { id: user.id },
-        data: { microsoftId: msUser.id, authProvider: user.authProvider === 'email' ? 'email,microsoft' : user.authProvider.includes('microsoft') ? user.authProvider : `${user.authProvider},microsoft` },
-      });
-    }
-  } else {
-    // Create new dealer user
-    user = await prisma.user.create({
-      data: {
-        email,
-        microsoftId: msUser.id,
-        authProvider: 'microsoft',
-        isDealer: true,
-      },
-    });
-    logger.info(`New user registered via Microsoft: ${user.email}`);
-  }
-
-  const token = generateToken({ userId: user.id, email: user.email });
-
-  logger.info(`User logged in via Microsoft: ${user.email}`);
-
-  return {
-    user: { id: user.id, email: user.email, isDealer: user.isDealer, pricePerLaborHour: user.pricePerLaborHour, logoUrl: user.logoUrl, originalLogoUrl: user.originalLogoUrl, qrCodeUrl: user.qrCodeUrl },
-    token,
-  };
+export async function microsoftAuth(_accessToken: string): Promise<{ user: { id: string; email: string; isDealer: boolean; pricePerLaborHour: number | null; logoUrl: string | null; originalLogoUrl: string | null; qrCodeUrl: string | null }; token: string }> {
+  // CRITICAL #6: Microsoft sign-in is temporarily disabled.
+  //
+  // The previous implementation accepted a Microsoft *access token* and
+  // identified the caller by hitting Graph /me with it. That gave us proof
+  // of token validity but NEVER verified the token's `aud` claim — meaning
+  // an access token issued for ANY app could be used to sign in here.
+  //
+  // The proper fix is to consume an *id_token*, verify its signature
+  // against Microsoft's JWKS for the configured tenant, and check
+  // aud === MICROSOFT_CLIENT_ID. That requires a coordinated mobile change
+  // (send id_token, not accessToken) and adds a JWKS dependency.
+  //
+  // Until that lands we 503 so misbehaving callers get a clear "use email
+  // or Google" signal instead of an unauthenticated session.
+  logger.warn('Microsoft sign-in disabled (CRITICAL #6 — pending JWKS id_token verify)');
+  throw new AppError(
+    'Microsoft sign-in is temporarily unavailable. Please use email or Google sign-in.',
+    503,
+  );
 }
 
 function generateToken(payload: JwtPayload): string {

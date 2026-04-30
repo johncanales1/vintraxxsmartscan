@@ -1,8 +1,9 @@
 // Root Navigator for VinTraxx SmartScan
 // Uses conditional screen rendering based on reactive auth state (React Navigation best practice)
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createNavigationContainerRef } from '@react-navigation/native';
 import { TabNavigator } from './TabNavigator';
 import { LoginScreen } from '../screens/LoginScreen';
 import { DeviceSetupScreen } from '../screens/DeviceSetupScreen';
@@ -10,6 +11,14 @@ import { ReportScreen } from '../screens/ReportScreen';
 import { FullReportScreen } from '../screens/FullReportScreen';
 import { AppraiserScreen } from '../screens/AppraiserScreen';
 import { VinScannerScreen } from '../screens/VinScannerScreen';
+import { LiveTrackScreen } from '../screens/LiveTrackScreen';
+import { AlertsScreen } from '../screens/AlertsScreen';
+import { AlertDetailScreen } from '../screens/AlertDetailScreen';
+import { TripsScreen } from '../screens/TripsScreen';
+import { TripDetailScreen } from '../screens/TripDetailScreen';
+import { DtcEventsScreen } from '../screens/DtcEventsScreen';
+import { DtcEventDetailScreen } from '../screens/DtcEventDetailScreen';
+import { DeviceSettingsScreen } from '../screens/DeviceSettingsScreen';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { RootStackParamList } from './types';
@@ -17,6 +26,16 @@ import { authService } from '../services/auth/AuthService';
 import { useAppStore } from '../store/appStore';
 import { logger, LogCategory } from '../utils/Logger';
 import { debugLogger } from '../services/debug/DebugLogger';
+import { gpsWs } from '../services/gps/GpsWsClient';
+import { pushService } from '../services/push/PushService';
+
+/**
+ * Module-scoped navigation ref. Push notifications and FCM cold-starts need
+ * to navigate from outside React (e.g. when a tap occurs while the app is
+ * suspended). Anything that needs imperative navigation can import this ref
+ * and call `.navigate(...)` on it.
+ */
+export const rootNavigationRef = createNavigationContainerRef<RootStackParamList>();
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -64,6 +83,37 @@ export const RootNavigator: React.FC = () => {
 
     initAuth();
   }, [setUser, setIsAuthenticated, setIsAuthLoading, setUserDevice, setDeviceSetupCompleted]);
+
+  // ── Live infra lifecycle ──────────────────────────────────────────────
+  // When the user is authenticated, open the GPS WebSocket and register
+  // the FCM/APNs token. On logout, tear both down and unregister the token.
+  // We watch `isAuthenticated` so token-refresh-driven re-logins also rebind.
+  useEffect(() => {
+    if (!isAuthenticated) {
+      gpsWs.disconnect();
+      void pushService.unregisterCurrent();
+      return;
+    }
+    gpsWs.connect();
+    // Push init is async but fire-and-forget — failures inside the service
+    // are logged + swallowed so the UI is never blocked.
+    void pushService.initialise();
+
+    // Deep-link handler: when a CRITICAL alarm push is tapped, hop into
+    // AlertDetail if the navigator is ready. We cast to `any` because the
+    // generic on `createNavigationContainerRef<RootStackParamList>()` does
+    // not narrow the (name, params) overload chain — TS rejects two `never`
+    // casts. `any` keeps this single hop simple without polluting the rest
+    // of the file.
+    const offDeepLink = pushService.onDeepLink((alarmId) => {
+      if (rootNavigationRef.isReady()) {
+        (rootNavigationRef as any).navigate('AlertDetail', { alarmId });
+      }
+    });
+    return () => {
+      offDeepLink();
+    };
+  }, [isAuthenticated]);
 
   // Show loading screen while checking stored auth
   if (isAuthLoading) {
@@ -149,6 +199,48 @@ export const RootNavigator: React.FC = () => {
               presentation: 'fullScreenModal',
               animation: 'slide_from_bottom',
             }}
+          />
+
+          {/* ── Phase 5: GPS / Live tracking ─────────────────────────── */}
+          <Stack.Screen
+            name="LiveTrack"
+            component={LiveTrackScreen}
+            options={{ headerShown: false, presentation: 'card' }}
+          />
+          <Stack.Screen
+            name="DeviceSettings"
+            component={DeviceSettingsScreen}
+            options={{ headerShown: true, title: 'Device settings' }}
+          />
+          <Stack.Screen
+            name="Alerts"
+            component={AlertsScreen}
+            options={{ headerShown: true, title: 'Alerts' }}
+          />
+          <Stack.Screen
+            name="AlertDetail"
+            component={AlertDetailScreen}
+            options={{ headerShown: true, title: 'Alert' }}
+          />
+          <Stack.Screen
+            name="Trips"
+            component={TripsScreen}
+            options={{ headerShown: true, title: 'Trips' }}
+          />
+          <Stack.Screen
+            name="TripDetail"
+            component={TripDetailScreen}
+            options={{ headerShown: true, title: 'Trip' }}
+          />
+          <Stack.Screen
+            name="DtcEvents"
+            component={DtcEventsScreen}
+            options={{ headerShown: true, title: 'GPS DTC events' }}
+          />
+          <Stack.Screen
+            name="DtcEventDetail"
+            component={DtcEventDetailScreen}
+            options={{ headerShown: true, title: 'DTC event' }}
           />
         </>
       )}

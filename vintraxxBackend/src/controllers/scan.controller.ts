@@ -161,7 +161,7 @@ export async function submitScan(req: Request, res: Response, next: NextFunction
   }
 }
 
-async function processScanInBackground(scanId: string, userId: string, userEmail: string): Promise<void> {
+export async function processScanInBackground(scanId: string, userId: string, userEmail: string): Promise<void> {
   const startedAtMs = Date.now();
   try {
     const scan = await prisma.scan.findUniqueOrThrow({ where: { id: scanId } });
@@ -448,6 +448,10 @@ export async function getReport(req: Request, res: Response, next: NextFunction)
     const aiOutput = fr.aiRawResponse as any;
 
     const additionalRepairsData = fr.additionalRepairsData as any[] | null;
+    // CRITICAL #4: forward the dealer's logo/QR through to the assembled
+    // report so the polled view matches what the original PDF/email used.
+    // Without this, the mobile/dealer dashboard renders an un-branded report
+    // for completed scans owned by dealers.
     const reportData = assembleFullReport({
       scanId: scan.id,
       reportId: fr.id,
@@ -466,6 +470,8 @@ export async function getReport(req: Request, res: Response, next: NextFunction)
       stockNumber: scan.stockNumber ?? undefined,
       additionalRepairs: additionalRepairsData ?? undefined,
       additionalRepairsTotalCost: fr.additionalRepairsCost ?? 0,
+      dealerLogoUrl: scan.user?.isDealer ? scan.user.logoUrl ?? undefined : undefined,
+      dealerQrCodeUrl: scan.user?.isDealer ? scan.user.qrCodeUrl ?? undefined : undefined,
     });
 
     res.json({ success: true, status: 'completed', data: reportData });

@@ -6,6 +6,13 @@ import { ConditionReport } from '../models/ConditionReport';
 import { BleDevice, BleConnectionState } from '../services/ble/types';
 import { User, OBDDevice } from '../services/auth/AuthService';
 import type { AiValuationOutput } from '../types/api';
+import type {
+  GpsTerminal,
+  GpsLocation,
+  GpsAlarm,
+  GpsDtcEvent,
+  WsLocationUpdate,
+} from '../types/gps';
 
 export interface ScanProgress {
   step: string;
@@ -51,6 +58,21 @@ interface AppState {
   // History
   savedReports: ConditionReport[];
   savedAppraisals: SavedAppraisal[];
+
+  // GPS State (Phase 5: live fleet)
+  gpsTerminals: GpsTerminal[];
+  /** Currently focused terminal — drives LiveTrack default + smart-scan
+   *  default for the elevated tab-bar button. */
+  selectedTerminalId: string | null;
+  /** Latest known location per terminal, kept fresh by WebSocket. */
+  gpsLatestLocations: Record<string, GpsLocation>;
+  /** Open + recent alarms — the Alerts tab reads from this. WS appends. */
+  gpsAlarms: GpsAlarm[];
+  /** Recent GPS-detected DTC events for the History tab. */
+  gpsDtcEvents: GpsDtcEvent[];
+  /** Tracks the last action a user took with the elevated Scan button so
+   *  the smart-default points back at it on subsequent taps. */
+  lastPrimaryAction: 'ble-scan' | 'go-live' | 'appraisal' | null;
   
   // DEV Settings
   devModeActivated: boolean;
@@ -83,6 +105,19 @@ interface AppState {
   
   addSavedAppraisal: (appraisal: SavedAppraisal) => void;
   removeSavedAppraisal: (appraisalId: string) => void;
+
+  // GPS Actions
+  setGpsTerminals: (terminals: GpsTerminal[]) => void;
+  upsertGpsTerminal: (terminal: GpsTerminal) => void;
+  setSelectedTerminalId: (id: string | null) => void;
+  applyLocationUpdate: (event: WsLocationUpdate) => void;
+  setGpsLatestLocation: (terminalId: string, location: GpsLocation) => void;
+  setGpsAlarms: (alarms: GpsAlarm[]) => void;
+  addGpsAlarm: (alarm: GpsAlarm) => void;
+  updateGpsAlarm: (alarmId: string, patch: Partial<GpsAlarm>) => void;
+  setGpsDtcEvents: (events: GpsDtcEvent[]) => void;
+  addGpsDtcEvent: (event: GpsDtcEvent) => void;
+  setLastPrimaryAction: (action: AppState['lastPrimaryAction']) => void;
   
   // DEV Actions
   setDevModeActivated: (activated: boolean) => void;
@@ -106,6 +141,13 @@ const initialState = {
   currentReport: null,
   savedReports: [],
   savedAppraisals: [],
+  // GPS slice
+  gpsTerminals: [] as GpsTerminal[],
+  selectedTerminalId: null as string | null,
+  gpsLatestLocations: {} as Record<string, GpsLocation>,
+  gpsAlarms: [] as GpsAlarm[],
+  gpsDtcEvents: [] as GpsDtcEvent[],
+  lastPrimaryAction: null as AppState['lastPrimaryAction'],
   devModeActivated: false,
 };
 
@@ -182,6 +224,88 @@ export const useAppStore = create<AppState>((set) => ({
     set((state) => ({
       savedAppraisals: state.savedAppraisals.filter((a) => a.id !== appraisalId),
     })),
+
+  // GPS Actions
+  setGpsTerminals: (terminals) => set({ gpsTerminals: terminals }),
+
+  upsertGpsTerminal: (terminal) =>
+    set((state) => {
+      const idx = state.gpsTerminals.findIndex((t) => t.id === terminal.id);
+      if (idx === -1) {
+        return { gpsTerminals: [terminal, ...state.gpsTerminals] };
+      }
+      const next = [...state.gpsTerminals];
+      next[idx] = { ...next[idx], ...terminal };
+      return { gpsTerminals: next };
+    }),
+
+  setSelectedTerminalId: (id) => set({ selectedTerminalId: id }),
+
+  applyLocationUpdate: (event) =>
+    set((state) => {
+      // Synthesize a partial GpsLocation from the WS payload so callers
+      // can render gauges without a re-fetch. WS frames omit some fields
+      // that REST returns (no `id`, no DB-side received-at) — we patch
+      // those with a synthetic id and "now" so the type stays satisfied.
+      const synthetic: GpsLocation = {
+        id: `ws-${event.terminalId}-${event.data.reportedAt}`,
+        terminalId: event.terminalId,
+        reportedAt: event.data.reportedAt,
+        serverReceivedAt: new Date().toISOString(),
+        latitude: event.data.latitude,
+        longitude: event.data.longitude,
+        altitudeM: event.data.altitudeM,
+        speedKmh: event.data.speedKmh,
+        heading: event.data.heading,
+        alarmBits: event.data.alarmBits,
+        statusBits: event.data.statusBits,
+        accOn: event.data.accOn,
+        gpsFix: event.data.gpsFix,
+        satelliteCount: null,
+        signalStrength: null,
+        odometerKm: null,
+        fuelLevelPct: null,
+        externalVoltageMv: null,
+        batteryVoltageMv: null,
+      };
+      return {
+        gpsLatestLocations: {
+          ...state.gpsLatestLocations,
+          [event.terminalId]: synthetic,
+        },
+      };
+    }),
+
+  setGpsLatestLocation: (terminalId, location) =>
+    set((state) => ({
+      gpsLatestLocations: { ...state.gpsLatestLocations, [terminalId]: location },
+    })),
+
+  setGpsAlarms: (alarms) => set({ gpsAlarms: alarms }),
+
+  addGpsAlarm: (alarm) =>
+    set((state) => {
+      // Dedup on id — WS may push the same alarm again on reconnect/replay.
+      if (state.gpsAlarms.some((a) => a.id === alarm.id)) return {};
+      return { gpsAlarms: [alarm, ...state.gpsAlarms] };
+    }),
+
+  updateGpsAlarm: (alarmId, patch) =>
+    set((state) => ({
+      gpsAlarms: state.gpsAlarms.map((a) =>
+        a.id === alarmId ? { ...a, ...patch } : a,
+      ),
+    })),
+
+  setGpsDtcEvents: (events) => set({ gpsDtcEvents: events }),
+
+  addGpsDtcEvent: (event) =>
+    set((state) => {
+      if (state.gpsDtcEvents.some((e) => e.id === event.id)) return {};
+      return { gpsDtcEvents: [event, ...state.gpsDtcEvents] };
+    }),
+
+  setLastPrimaryAction: (action) => set({ lastPrimaryAction: action }),
 
   // DEV Actions
   setDevModeActivated: (activated) => set({ devModeActivated: activated }),

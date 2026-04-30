@@ -20,6 +20,10 @@ import { ConditionReport } from '../models/ConditionReport';
 import { getVehicleDisplayName, formatMileage } from '../models/Vehicle';
 import { useAppStore, SavedAppraisal } from '../store/appStore';
 import { debugLogger } from '../services/debug/DebugLogger';
+import type { GpsAlarm, GpsDtcEvent } from '../types/gps';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../navigation/types';
 
 // Import SVG icons
 import CarIcon from '../assets/icons/car.svg';
@@ -31,7 +35,7 @@ interface HistoryScreenProps {
   navigation: any;
 }
 
-type HistoryItemType = 'obd' | 'appraisal';
+type HistoryItemType = 'obd' | 'appraisal' | 'gps-alarm' | 'gps-dtc';
 
 interface UnifiedHistoryItem {
   id: string;
@@ -39,6 +43,10 @@ interface UnifiedHistoryItem {
   date: Date;
   report?: ConditionReport;
   appraisal?: SavedAppraisal;
+  /** Populated for `type === 'gps-alarm'`. */
+  gpsAlarm?: GpsAlarm;
+  /** Populated for `type === 'gps-dtc'`. */
+  gpsDtc?: GpsDtcEvent;
 }
 
 const formatCurrency = (amount: number): string => {
@@ -59,9 +67,18 @@ const formatDate = (date: Date): string => {
 };
 
 export const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
-  const [filter, setFilter] = useState<'all' | 'obd' | 'appraisal'>('all');
+  // Four-way filter per the Phase 5 spec: All / OBD / Appraisal / GPS.
+  const [filter, setFilter] = useState<'all' | 'obd' | 'appraisal' | 'gps'>('all');
+  const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
-  const { savedReports, savedAppraisals, removeSavedReport, removeSavedAppraisal } = useAppStore();
+  const {
+    savedReports,
+    savedAppraisals,
+    removeSavedReport,
+    removeSavedAppraisal,
+    gpsAlarms,
+    gpsDtcEvents,
+  } = useAppStore();
 
   // Build unified history list sorted by date (newest first)
   const unifiedHistory: UnifiedHistoryItem[] = useMemo(() => {
@@ -85,18 +102,46 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
       });
     });
 
+    // GPS alarms (alerts that have crossed into the user's history).
+    gpsAlarms.forEach((alarm) => {
+      items.push({
+        id: 'gpsa-' + alarm.id,
+        type: 'gps-alarm',
+        date: new Date(alarm.openedAt),
+        gpsAlarm: alarm,
+      });
+    });
+
+    // GPS-detected DTC snapshots.
+    gpsDtcEvents.forEach((event) => {
+      items.push({
+        id: 'gpsd-' + event.id,
+        type: 'gps-dtc',
+        date: new Date(event.reportedAt),
+        gpsDtc: event,
+      });
+    });
+
     items.sort((a, b) => b.date.getTime() - a.date.getTime());
     return items;
-  }, [savedReports, savedAppraisals]);
+  }, [savedReports, savedAppraisals, gpsAlarms, gpsDtcEvents]);
 
   const filteredHistory = useMemo(() => {
     if (filter === 'all') return unifiedHistory;
-    return unifiedHistory.filter(item => item.type === filter);
+    if (filter === 'gps') {
+      return unifiedHistory.filter(
+        (item) => item.type === 'gps-alarm' || item.type === 'gps-dtc',
+      );
+    }
+    return unifiedHistory.filter((item) => item.type === filter);
   }, [unifiedHistory, filter]);
 
   const totalCount = unifiedHistory.length;
-  const obdCount = unifiedHistory.filter(i => i.type === 'obd').length;
-  const appraisalCount = unifiedHistory.filter(i => i.type === 'appraisal').length;
+  const obdCount = unifiedHistory.filter((i) => i.type === 'obd').length;
+  const appraisalCount = unifiedHistory.filter((i) => i.type === 'appraisal').length;
+  const gpsCount = unifiedHistory.filter(
+    (i) => i.type === 'gps-alarm' || i.type === 'gps-dtc',
+  ).length;
 
   const handleReportPress = (report: ConditionReport) => {
     navigation.navigate('Report', { report });
@@ -323,13 +368,113 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
     );
   };
 
+  const renderGpsAlarmCard = (item: UnifiedHistoryItem) => {
+    const alarm = item.gpsAlarm!;
+    const dotColor =
+      alarm.severity === 'CRITICAL'
+        ? colors.status.error
+        : alarm.severity === 'WARNING'
+        ? colors.status.warning
+        : colors.status.info;
+    const vehicle =
+      alarm.terminal?.nickname ??
+      [alarm.terminal?.vehicleYear, alarm.terminal?.vehicleMake, alarm.terminal?.vehicleModel]
+        .filter(Boolean)
+        .join(' ') ??
+      'Unknown vehicle';
+    return (
+      <TouchableOpacity
+        style={styles.historyCard}
+        onPress={() => rootNav.navigate('AlertDetail', { alarmId: alarm.id })}
+        activeOpacity={0.85}
+      >
+        <View style={styles.cardHeader}>
+          <View style={styles.cardHeaderTop}>
+            <Text style={styles.cardDate}>{formatDate(item.date)}</Text>
+          </View>
+          <View style={styles.cardBadgeRow}>
+            <View style={[styles.typeBadgeAppraisal, { backgroundColor: dotColor }]}>
+              <Text style={styles.typeBadgeText}>{alarm.severity}</Text>
+            </View>
+            <View style={[styles.typeBadgeObd, { backgroundColor: '#E0E7FF' }]}>
+              <Text style={[styles.typeBadgeText, { color: '#1E3A5F' }]}>GPS Alert</Text>
+            </View>
+          </View>
+        </View>
+        <View style={styles.cardBody}>
+          <View style={styles.vehicleRow}>
+            <View style={styles.vehicleIconContainer}>
+              <WarningIcon width={24} height={24} color={dotColor} />
+            </View>
+            <View style={styles.vehicleInfo}>
+              <Text style={styles.vehicleName} numberOfLines={2}>
+                {alarm.type.replace(/_/g, ' ')}
+              </Text>
+              <Text style={styles.vehicleMileage}>{vehicle}</Text>
+            </View>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderGpsDtcCard = (item: UnifiedHistoryItem) => {
+    const dtc = item.gpsDtc!;
+    const allCodes = [
+      ...dtc.storedDtcCodes,
+      ...dtc.pendingDtcCodes,
+      ...dtc.permanentDtcCodes,
+    ];
+    const vehicle =
+      dtc.terminal?.nickname ??
+      [dtc.terminal?.vehicleYear, dtc.terminal?.vehicleMake, dtc.terminal?.vehicleModel]
+        .filter(Boolean)
+        .join(' ') ??
+      'Unknown vehicle';
+    return (
+      <TouchableOpacity
+        style={styles.historyCard}
+        onPress={() => rootNav.navigate('DtcEventDetail', { dtcEventId: dtc.id })}
+        activeOpacity={0.85}
+      >
+        <View style={styles.cardHeader}>
+          <View style={styles.cardHeaderTop}>
+            <Text style={styles.cardDate}>{formatDate(item.date)}</Text>
+          </View>
+          <View style={styles.cardBadgeRow}>
+            <View style={[styles.typeBadgeObd, { backgroundColor: '#FEE2E2' }]}>
+              <Text style={[styles.typeBadgeText, { color: '#991B1B' }]}>
+                GPS DTC
+              </Text>
+            </View>
+          </View>
+        </View>
+        <View style={styles.cardBody}>
+          <View style={styles.vehicleRow}>
+            <View style={styles.vehicleIconContainer}>
+              <CarIcon width={24} height={24} color={colors.primary.navy} />
+            </View>
+            <View style={styles.vehicleInfo}>
+              <Text style={styles.vehicleName} numberOfLines={2}>
+                {vehicle}
+                {dtc.milOn ? ' · MIL on' : ''}
+              </Text>
+              <Text style={styles.vehicleMileage}>
+                {dtc.dtcCount} code{dtc.dtcCount === 1 ? '' : 's'}
+                {allCodes.length > 0 ? ` · ${allCodes.slice(0, 3).join(', ')}` : ''}
+              </Text>
+            </View>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   const renderHistoryItem = ({ item }: { item: UnifiedHistoryItem }) => {
-    if (item.type === 'obd' && item.report) {
-      return renderObdCard(item);
-    }
-    if (item.type === 'appraisal' && item.appraisal) {
-      return renderAppraisalCard(item);
-    }
+    if (item.type === 'obd' && item.report) return renderObdCard(item);
+    if (item.type === 'appraisal' && item.appraisal) return renderAppraisalCard(item);
+    if (item.type === 'gps-alarm' && item.gpsAlarm) return renderGpsAlarmCard(item);
+    if (item.type === 'gps-dtc' && item.gpsDtc) return renderGpsDtcCard(item);
     return null;
   };
 
@@ -379,6 +524,14 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
         >
           <Text style={[styles.filterText, filter === 'appraisal' && styles.filterTextActive]}>
             Appr ({appraisalCount})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.filterTab, filter === 'gps' && styles.filterTabActive]}
+          onPress={() => setFilter('gps')}
+        >
+          <Text style={[styles.filterText, filter === 'gps' && styles.filterTextActive]}>
+            GPS ({gpsCount})
           </Text>
         </TouchableOpacity>
       </View>

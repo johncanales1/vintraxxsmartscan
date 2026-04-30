@@ -1,3 +1,5 @@
+import { randomInt } from 'crypto';
+
 export function kmToMiles(km: number): number {
   return Math.round(km * 0.621371 * 10) / 10;
 }
@@ -14,10 +16,16 @@ export function formatNumber(num: number): string {
   return num.toLocaleString('en-US');
 }
 
+/**
+ * Generate a numeric OTP. HIGH #11: uses `crypto.randomInt` (CSPRNG) so the
+ * output is unpredictable. The previous Math.random() was fast but seeded
+ * by V8 and trivially predictable across calls — unacceptable for an
+ * authentication artefact.
+ */
 export function generateOtpCode(length: number = 6): string {
   let code = '';
   for (let i = 0; i < length; i++) {
-    code += Math.floor(Math.random() * 10).toString();
+    code += randomInt(0, 10).toString();
   }
   return code;
 }

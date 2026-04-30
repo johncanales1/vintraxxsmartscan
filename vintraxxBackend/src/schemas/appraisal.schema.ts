@@ -11,6 +11,10 @@ export const appraisalValuationSchema = z.object({
     condition: z.enum(['clean', 'average', 'rough']),
     zipCode: z.string().max(10).optional(),
     notes: z.string().max(1000).optional(),
+    // HIGH #12: the controller reads `vehicleOwnerName` off the body and
+    // persists it on Appraisal.vehicleOwnerName. Declare it here so the
+    // schema matches reality.
+    vehicleOwnerName: z.string().max(120).optional(),
   }),
 });
 

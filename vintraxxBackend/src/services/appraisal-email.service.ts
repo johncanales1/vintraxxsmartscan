@@ -1,92 +1,15 @@
-import nodemailer from 'nodemailer';
 import { env } from '../config/env';
 import { AppraisalSummaryData } from '../types';
 import { formatCurrency } from '../utils/helpers';
 import { getEmailLogoHeaderHtml } from '../utils/logos';
 import logger from '../utils/logger';
 import { EmailServiceUnavailableError, isSmtpAvailabilityError } from '../utils/errors';
+// MEDIUM #21: transporter + verify-cache + health helpers now live in
+// ../services/mailer. Re-export here so existing import sites in
+// src/index.ts keep working without churn.
+import { transporter, ensureTransporterVerified } from './mailer';
 
-const transporter = nodemailer.createTransport({
-  host: env.SMTP_HOST,
-  port: env.SMTP_PORT,
-  secure: false,
-  auth: {
-    user: env.SMTP_USER,
-    pass: env.SMTP_PASS,
-  },
-});
-
-// Cache verify outcome. Successful verify stays true for the life of the
-// process; a failed verify is cached for VERIFY_FAIL_TTL_MS so we don't hammer
-// SendGrid on every request when the account is in a bad state.
-let verifiedAt: number | null = null;
-let lastVerifyFailAt: number | null = null;
-let lastVerifyError: string | null = null;
-const VERIFY_FAIL_TTL_MS = 60 * 1000;
-
-async function ensureTransporterVerified(): Promise<void> {
-  if (verifiedAt !== null) return;
-
-  const now = Date.now();
-  if (lastVerifyFailAt && now - lastVerifyFailAt < VERIFY_FAIL_TTL_MS && lastVerifyError) {
-    // Fail fast with the cached error — SMTP is still down.
-    throw new EmailServiceUnavailableError(lastVerifyError);
-  }
-
-  try {
-    await transporter.verify();
-    verifiedAt = now;
-    lastVerifyFailAt = null;
-    lastVerifyError = null;
-    logger.info('Appraisal SMTP transporter verified');
-  } catch (error) {
-    const msg = (error as Error).message;
-    lastVerifyFailAt = now;
-    lastVerifyError = msg;
-    logger.error('Appraisal SMTP transporter verification failed', { error: msg });
-    if (isSmtpAvailabilityError(error)) {
-      throw new EmailServiceUnavailableError(msg);
-    }
-    throw error;
-  }
-}
-
-/**
- * Exposed so `GET /api/v1/health` can probe SMTP status without sending mail.
- * Returns { ok: true } if the transporter is known-good, otherwise the last
- * error message. Cheap — reuses the cached verify outcome.
- */
-export async function getSmtpHealth(): Promise<{ ok: boolean; error?: string; checkedAt: number }> {
-  try {
-    await ensureTransporterVerified();
-    return { ok: true, checkedAt: verifiedAt ?? Date.now() };
-  } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : String(err),
-      checkedAt: lastVerifyFailAt ?? Date.now(),
-    };
-  }
-}
-
-/**
- * Force a fresh transporter verify (bypass cache). Called at server boot so we
- * log SMTP readiness once on startup.
- */
-export async function verifyTransporterAtBoot(): Promise<boolean> {
-  verifiedAt = null;
-  lastVerifyFailAt = null;
-  lastVerifyError = null;
-  try {
-    await ensureTransporterVerified();
-    return true;
-  } catch (err) {
-    logger.warn('SMTP not ready at boot (emails will fail until provider is healthy)', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return false;
-  }
-}
+export { getSmtpHealth, verifyTransporterAtBoot } from './mailer';
 
 export async function sendAppraisalEmail(
   toEmail: string,

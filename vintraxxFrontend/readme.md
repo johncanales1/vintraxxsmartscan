@@ -10,6 +10,30 @@ Built with React 19.1, Tailwind CSS v4.1, TypeScript 5.8, and React Aria, Untitl
 
 [Learn more](https://www.untitledui.com/react) • [Documentation](https://www.untitledui.com/react/docs/introduction) • [Figma](https://www.untitledui.com/figma) • [FAQs](https://www.untitledui.com/faqs)
 
+## VinTraxx configuration
+
+The VinTraxx frontend talks to the VinTraxx backend over a single
+`NEXT_PUBLIC_API_BASE_URL` env var (see `src/lib/api-config.ts`).
+
+Default ports:
+
+| Service | Default port |
+|---|---|
+| `vintraxxBackend` | `4000` |
+| `vintraxxFrontend` (Next.js dev) | `3000` |
+
+Required `vintraxxFrontend/.env.local` for local development:
+
+```
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=<your-google-oauth-web-client-id>
+NEXT_PUBLIC_API_BASE_URL=http://localhost:4000/api/v1
+# Optional, only needed if you want maps in the dashboard:
+# NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=<your-key>
+```
+
+The WebSocket URL is derived from `NEXT_PUBLIC_API_BASE_URL` automatically
+(swaps http→ws / https→wss and trims `/api/v1`).
+
 ## Getting started
 
 First, run the development server:

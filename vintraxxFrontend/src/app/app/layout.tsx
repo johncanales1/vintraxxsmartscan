@@ -37,8 +37,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                             current: pathname === item.href,
                         })),
                     },
-                    { label: "Tasks", href: "/app/tasks", current: pathname.startsWith("/app/tasks") },
-                    { label: "Users", href: "/app/users", current: pathname.startsWith("/app/users") },
                 ]}
                 trailingContent={
                     <Button iconLeading={Zap} color="secondary" size="sm">

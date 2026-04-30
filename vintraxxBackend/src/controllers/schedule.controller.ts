@@ -1,21 +1,14 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import nodemailer from 'nodemailer';
 import { env } from '../config/env';
 import logger from '../utils/logger';
 import prisma from '../config/db';
 import { getEmailLogoHeaderHtml } from '../utils/logos';
-import { EmailServiceUnavailableError, isSmtpAvailabilityError } from '../utils/errors';
-
-const transporter = nodemailer.createTransport({
-  host: env.SMTP_HOST,
-  port: env.SMTP_PORT,
-  secure: false,
-  auth: {
-    user: env.SMTP_USER,
-    pass: env.SMTP_PASS,
-  },
-});
+import { isSmtpAvailabilityError } from '../utils/errors';
+import { escapeHtml as e } from '../utils/escape-html';
+// MEDIUM #21: shared transporter (was a module-level
+// nodemailer.createTransport here previously).
+import { transporter } from '../services/mailer';
 
 const scheduleRequestSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -85,46 +78,46 @@ function buildAdminEmail(data: ScheduleRequestData): { subject: string; html: st
       <div class="section-title">Customer Information</div>
       <div class="field">
         <div class="field-label">Name</div>
-        <div class="field-value">${data.name}</div>
+        <div class="field-value">${e(data.name)}</div>
       </div>
       <div class="field">
         <div class="field-label">Email</div>
-        <div class="field-value"><a href="mailto:${data.email}">${data.email}</a></div>
+        <div class="field-value"><a href="mailto:${e(data.email)}">${e(data.email)}</a></div>
       </div>
       <div class="field">
         <div class="field-label">Phone</div>
-        <div class="field-value"><a href="tel:${data.phone}">${data.phone}</a></div>
+        <div class="field-value"><a href="tel:${e(data.phone)}">${e(data.phone)}</a></div>
       </div>
       <div class="field">
         <div class="field-label">Dealership</div>
-        <div class="field-value">${data.dealership}</div>
+        <div class="field-value">${e(data.dealership)}</div>
       </div>
 
       <div class="section-title">Vehicle Information</div>
       <div class="field">
         <div class="field-label">Vehicle</div>
-        <div class="field-value">${data.vehicle}</div>
+        <div class="field-value">${e(data.vehicle)}</div>
       </div>
       <div class="field">
         <div class="field-label">VIN</div>
-        <div class="field-value">${data.vin}</div>
+        <div class="field-value">${e(data.vin)}</div>
       </div>
 
       <div class="highlight-box">
         <div class="field">
           <div class="field-label">Service Type</div>
-          <div class="field-value">${data.serviceType}</div>
+          <div class="field-value">${e(data.serviceType)}</div>
         </div>
         <div class="field" style="margin-bottom: 0;">
           <div class="field-label">Preferred Date & Time</div>
-          <div class="field-value">${preferredDateFormatted} at ${data.preferredTime}</div>
+          <div class="field-value">${e(preferredDateFormatted)} at ${e(data.preferredTime)}</div>
         </div>
       </div>
 
       ${data.additionalNotes ? `
       <div class="section-title">Additional Notes</div>
       <div class="notes-box">
-        ${data.additionalNotes}
+        ${e(data.additionalNotes).replace(/\n/g, '<br/>')}
       </div>
       ` : ''}
 
@@ -172,21 +165,21 @@ function buildUserConfirmationEmail(data: ScheduleRequestData): { subject: strin
     ${getEmailLogoHeaderHtml('Appointment Request Received', 'VinTraxx SmartScan')}
     <div class="content">
       <div class="success-icon">✅</div>
-      <p>Dear <strong>${data.name}</strong>,</p>
+      <p>Dear <strong>${e(data.name)}</strong>,</p>
       <p>Thank you for submitting your service appointment request. We have received your request and will contact you shortly to confirm your appointment.</p>
 
       <div class="highlight-box">
         <div class="field">
           <div class="field-label">Service Type</div>
-          <div class="field-value">${data.serviceType}</div>
+          <div class="field-value">${e(data.serviceType)}</div>
         </div>
         <div class="field">
           <div class="field-label">Vehicle</div>
-          <div class="field-value">${data.vehicle}</div>
+          <div class="field-value">${e(data.vehicle)}</div>
         </div>
         <div class="field" style="margin-bottom: 0;">
           <div class="field-label">Requested Date & Time</div>
-          <div class="field-value">${preferredDateFormatted} at ${data.preferredTime}</div>
+          <div class="field-value">${e(preferredDateFormatted)} at ${e(data.preferredTime)}</div>
         </div>
       </div>
 
@@ -289,8 +282,17 @@ export async function submitScheduleRequest(req: Request, res: Response): Promis
   // ── 2. Fire emails in the background — never block the response ─────
   // Use setImmediate so the response is flushed before the (potentially slow)
   // SMTP round trips start. Results are written back to the appointment row.
+  // MEDIUM #27: explicit .catch on the deliverScheduleEmails promise so a
+  // future change inside that helper that omits its own try/catch can't
+  // surface as a process-level unhandledRejection.
   setImmediate(() => {
-    void deliverScheduleEmails(appointmentId, data, requestId);
+    deliverScheduleEmails(appointmentId, data, requestId).catch((err) => {
+      logger.error('deliverScheduleEmails threw unexpectedly', {
+        requestId,
+        appointmentId,
+        err: (err as Error).message,
+      });
+    });
   });
 
   // ── 3. Respond success immediately ──────────────────────────────────

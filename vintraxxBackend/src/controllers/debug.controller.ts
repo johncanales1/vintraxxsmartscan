@@ -84,6 +84,8 @@ export async function uploadClientLog(req: Request, res: Response): Promise<void
 
   try {
     await fs.promises.appendFile(filename, lines.join('\n'), 'utf8');
+    // HIGH #14: do not echo the absolute server path back to the client.
+    // We still log the filename server-side for ops correlation.
     logger.info('Client log batch received', {
       requestId,
       userId,
@@ -92,7 +94,7 @@ export async function uploadClientLog(req: Request, res: Response): Promise<void
       entryCount: entries.length,
       filename,
     });
-    res.json({ success: true, received: entries.length, filename });
+    res.json({ success: true, received: entries.length });
   } catch (err) {
     logger.error('Failed to write client log batch', {
       requestId,

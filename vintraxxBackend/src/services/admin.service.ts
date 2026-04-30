@@ -22,7 +22,7 @@ function processBase64Image(base64: string, dir: string, prefix: string): string
   const filename = `${prefix}-${Date.now()}.${ext}`;
   const filePath = path.join(dir, filename);
   fs.writeFileSync(filePath, Buffer.from(matches[2], 'base64'));
-  const apiBase = env.NODE_ENV === 'production' ? 'https://api.vintraxx.com' : 'http://localhost:3000';
+  const apiBase = env.NODE_ENV === 'production' ? 'https://api.vintraxx.com' : `http://localhost:${env.PORT}`;
   const subdir = dir.includes('dealer-qrcodes') ? 'dealer-qrcodes' : 'dealer-logos';
   return `${apiBase}/assets/${subdir}/${filename}`;
 }
@@ -47,15 +47,28 @@ export async function adminLogin(email: string, password: string) {
     throw new AppError('Invalid email or password', 401);
   }
 
-  const token = generateAdminToken({ adminId: admin.id, email: admin.email, role: 'admin' });
-  logger.info(`Admin logged in: ${admin.email}`);
-  return { admin: { id: admin.id, email: admin.email }, token };
+  const token = generateAdminToken({
+    adminId: admin.id,
+    email: admin.email,
+    role: 'admin',
+    superAdmin: admin.superAdmin,
+  });
+  logger.info(`Admin logged in: ${admin.email}`, { superAdmin: admin.superAdmin });
+  return {
+    admin: { id: admin.id, email: admin.email, superAdmin: admin.superAdmin },
+    token,
+  };
 }
 
 export async function getAdminProfile(adminId: string) {
   const admin = await prisma.admin.findUnique({ where: { id: adminId } });
   if (!admin) throw new AppError('Admin not found', 404);
-  return { id: admin.id, email: admin.email, createdAt: admin.createdAt };
+  return {
+    id: admin.id,
+    email: admin.email,
+    superAdmin: admin.superAdmin,
+    createdAt: admin.createdAt,
+  };
 }
 
 export async function changeAdminPassword(adminId: string, currentPassword: string, newPassword: string) {
@@ -100,9 +113,19 @@ export async function verifyAndChangeAdminEmail(adminId: string, newEmail: strin
   const admin = await prisma.admin.update({ where: { id: adminId }, data: { email: newEmail } });
   await prisma.otp.deleteMany({ where: { email: newEmail } });
 
-  const token = generateAdminToken({ adminId: admin.id, email: admin.email, role: 'admin' });
-  logger.info(`Admin email changed to: ${newEmail}`);
-  return { admin: { id: admin.id, email: admin.email }, token };
+  // CRITICAL #9: preserve `superAdmin` on the new JWT. Without this a
+  // super-admin who simply changes their email loses super-admin privilege
+  // until they re-login (because requireSuperAdmin reads `req.admin.superAdmin`
+  // off the token, not the DB). Mirrors what adminLogin does at the same
+  // call site.
+  const token = generateAdminToken({
+    adminId: admin.id,
+    email: admin.email,
+    role: 'admin',
+    superAdmin: admin.superAdmin,
+  });
+  logger.info(`Admin email changed to: ${newEmail}`, { superAdmin: admin.superAdmin });
+  return { admin: { id: admin.id, email: admin.email, superAdmin: admin.superAdmin }, token };
 }
 
 export async function verifyAdminPassword(adminId: string, password: string) {
@@ -120,7 +143,17 @@ export async function getUsers(type?: 'dealer' | 'regular') {
   return prisma.user.findMany({
     where,
     include: {
-      _count: { select: { scans: true, usedScannerDevices: true, usedVins: true } },
+      // gpsTerminals count powers the "📡 N GPS devices" chip on the
+      // admin's Dealer/Regular cards. Cheap addition (Prisma resolves it
+      // in the same join Group) and zero impact for users with none.
+      _count: {
+        select: {
+          scans: true,
+          usedScannerDevices: true,
+          usedVins: true,
+          gpsTerminals: true,
+        },
+      },
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -309,21 +342,86 @@ export async function deleteAppraisal(id: string) {
 
 // ── Backup ────────────────────────────────────────────────────────────────────
 
+/**
+ * HIGH #16: backup OOM guardrail.
+ *
+ * The previous implementation `findMany()`'d every table unbounded and
+ * serialised the result to JSON in one shot. With photos in
+ * Appraisal.valuationData and rawPayload blobs on Scan, that OOMs the
+ * Express process at modest dataset sizes.
+ *
+ * Now each table is capped at GET_FULL_BACKUP_LIMIT rows (newest first)
+ * and the response includes a per-table `truncated` flag so the operator
+ * can see the cap was hit and switch to a streaming `pg_dump` in those
+ * cases. We also drop the `otps` collection — transient verification
+ * data, not worth backing up.
+ */
+const GET_FULL_BACKUP_LIMIT = 50_000;
+
 export async function getFullBackup() {
-  const [users, scans, fullReports, scannerDevices, vinUsages, inspections, appraisals, serviceAppointments, otps] = await Promise.all([
-    prisma.user.findMany({ include: { usedScannerDevices: true, usedVins: true, serviceAppointments: true } }),
-    prisma.scan.findMany(),
-    prisma.fullReport.findMany(),
-    prisma.userScannerDevice.findMany(),
-    prisma.userVinUsage.findMany(),
-    prisma.inspection.findMany(),
-    prisma.appraisal.findMany(),
-    prisma.serviceAppointment.findMany(),
-    prisma.otp.findMany(),
+  const take = GET_FULL_BACKUP_LIMIT;
+  const [
+    users,
+    scans,
+    fullReports,
+    scannerDevices,
+    vinUsages,
+    inspections,
+    appraisals,
+    serviceAppointments,
+    counts,
+  ] = await Promise.all([
+    prisma.user.findMany({
+      take,
+      orderBy: { createdAt: 'desc' },
+      include: { usedScannerDevices: true, usedVins: true, serviceAppointments: true },
+    }),
+    prisma.scan.findMany({ take, orderBy: { receivedAt: 'desc' } }),
+    prisma.fullReport.findMany({ take, orderBy: { createdAt: 'desc' } }),
+    prisma.userScannerDevice.findMany({ take, orderBy: { lastUsedAt: 'desc' } }),
+    prisma.userVinUsage.findMany({ take, orderBy: { lastUsedAt: 'desc' } }),
+    prisma.inspection.findMany({ take, orderBy: { createdAt: 'desc' } }),
+    prisma.appraisal.findMany({ take, orderBy: { createdAt: 'desc' } }),
+    prisma.serviceAppointment.findMany({ take, orderBy: { createdAt: 'desc' } }),
+    Promise.all([
+      prisma.user.count(),
+      prisma.scan.count(),
+      prisma.fullReport.count(),
+      prisma.userScannerDevice.count(),
+      prisma.userVinUsage.count(),
+      prisma.inspection.count(),
+      prisma.appraisal.count(),
+      prisma.serviceAppointment.count(),
+    ]),
   ]);
+  const [
+    nUsers, nScans, nFullReports, nScannerDevices, nVinUsages,
+    nInspections, nAppraisals, nServiceAppointments,
+  ] = counts;
+
+  const truncated = {
+    users: nUsers > take,
+    scans: nScans > take,
+    fullReports: nFullReports > take,
+    scannerDevices: nScannerDevices > take,
+    vinUsages: nVinUsages > take,
+    inspections: nInspections > take,
+    appraisals: nAppraisals > take,
+    serviceAppointments: nServiceAppointments > take,
+  };
+
+  if (Object.values(truncated).some(Boolean)) {
+    logger.warn('getFullBackup: per-table cap hit; consider pg_dump', {
+      cap: take,
+      truncated,
+    });
+  }
+
   return {
     exportedAt: new Date().toISOString(),
-    data: { users, scans, fullReports, scannerDevices, vinUsages, inspections, appraisals, serviceAppointments, otps },
+    cap: take,
+    truncated,
+    data: { users, scans, fullReports, scannerDevices, vinUsages, inspections, appraisals, serviceAppointments },
   };
 }
 
@@ -369,19 +467,16 @@ export async function getAppraisalDetail(id: string) {
 }
 
 export async function sendAdminEmail(to: string, subject: string, body: string) {
-  const nodemailer = (await import('nodemailer')).default;
+  // MEDIUM #21: use the shared transporter from src/services/mailer.ts
+  // instead of building a new one per call. Dynamic imports kept so the
+  // dependency graph matches the original (no circular-import surprises
+  // at load time).
   const { env } = await import('../config/env');
   const { EmailServiceUnavailableError, isSmtpAvailabilityError } = await import('../utils/errors');
-
-  const transporter = nodemailer.createTransport({
-    host: env.SMTP_HOST,
-    port: env.SMTP_PORT,
-    secure: false,
-    auth: {
-      user: env.SMTP_USER,
-      pass: env.SMTP_PASS,
-    },
-  });
+  // CRITICAL #8: escape user-supplied `body` before HTML interpolation so an
+  // admin who pastes attacker-supplied content can't relay live tags.
+  const { escapeHtml } = await import('../utils/escape-html');
+  const { transporter, ensureTransporterVerified } = await import('./mailer');
 
   const htmlBody = `
 <!DOCTYPE html>
@@ -402,7 +497,7 @@ export async function sendAdminEmail(to: string, subject: string, body: string) 
       <h1>VinTraxx SmartScan</h1>
     </div>
     <div class="content">
-      ${body ? body.replace(/\n/g, '<br/>') : '<p>No message content.</p>'}
+      ${body ? escapeHtml(body).replace(/\n/g, '<br/>') : '<p>No message content.</p>'}
     </div>
     <div class="footer">
       <p>&copy; ${new Date().getFullYear()} VinTraxx SmartScan. All rights reserved.</p>
@@ -412,6 +507,7 @@ export async function sendAdminEmail(to: string, subject: string, body: string) 
 </html>`;
 
   try {
+    await ensureTransporterVerified();
     await transporter.sendMail({
       from: `"${env.EMAIL_FROM_NAME}" <${env.EMAIL_FROM}>`,
       to,
@@ -421,6 +517,7 @@ export async function sendAdminEmail(to: string, subject: string, body: string) 
   } catch (err) {
     // Classify provider outages so the admin controller can respond 503
     // instead of a generic 500 when SendGrid is exhausted / mis-auth'd.
+    if (err instanceof EmailServiceUnavailableError) throw err;
     if (isSmtpAvailabilityError(err)) {
       throw new EmailServiceUnavailableError(
         err instanceof Error ? err.message : String(err),

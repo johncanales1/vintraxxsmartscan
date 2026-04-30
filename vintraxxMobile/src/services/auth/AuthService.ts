@@ -745,17 +745,13 @@ class AuthService {
 
       if (data.success && data.token) {
 
-        // Restore device setup state from stored settings for returning users
+        // Bug #H5 fix: read pairing from the per-email map (which survives
+        // `clearAuthOnLaunch`), not from `settings.user`/`settings.userDevice`
+        // which are intentionally wiped each launch for security.
 
-        const storedSettings = storageService.getSettings();
+        const storedPairing = storageService.getDevicePairing(email);
 
-        const storedUser = storedSettings.user as User | undefined;
-
-        const wasDeviceSetup = storedUser?.email === email
-
-          ? storedUser.deviceSetupCompleted
-
-          : false;
+        const wasDeviceSetup = !!storedPairing;
 
 
 
@@ -773,7 +769,7 @@ class AuthService {
 
           deviceSetupCompleted: wasDeviceSetup,
 
-          deviceName: storedUser?.email === email ? storedUser?.deviceName : undefined,
+          deviceName: storedPairing?.deviceName,
 
           createdAt: new Date(),
 
@@ -789,11 +785,21 @@ class AuthService {
 
 
 
-        // Restore stored device if same user
+        // Restore stored device from the per-email pairing record.
 
-        if (wasDeviceSetup && storedSettings.userDevice) {
+        if (storedPairing) {
 
-          this.userDevice = storedSettings.userDevice;
+          this.userDevice = {
+
+            id: `device-${storedPairing.macAddress}`,
+
+            name: storedPairing.deviceName,
+
+            macAddress: storedPairing.macAddress,
+
+            setupCompletedAt: new Date(storedPairing.completedAt),
+
+          };
 
         }
 
@@ -998,6 +1004,30 @@ class AuthService {
         userDevice: this.userDevice,
 
       });
+
+
+
+      // Bug #H5 fix: also persist into the per-email pairing map so re-logins
+
+      // after `clearAuthOnLaunch` can restore the pairing. The MAC is the
+
+      // single source of truth — without it we cannot reconnect to the
+
+      // adapter, so we only write when we actually have one.
+
+      if (macAddress) {
+
+        storageService.setDevicePairing(this.currentUser.email, {
+
+          deviceName,
+
+          macAddress,
+
+          completedAt: new Date().toISOString(),
+
+        });
+
+      }
 
 
 

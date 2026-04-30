@@ -3,11 +3,14 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Search, Eye, Car, Scan, DollarSign, TrendingUp, ClipboardList, X, FileText, Wrench, Activity, CalendarDays, Mail, Send, User, CheckCircle } from "lucide-react";
+import { Search, Eye, Car, Scan, DollarSign, TrendingUp, ClipboardList, X, FileText, Wrench, Activity, CalendarDays, Mail, Send, User, CheckCircle, Cpu, AlertTriangle, Route as RouteIcon } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line, ResponsiveContainer } from "recharts";
-import { DealerNav } from "@/components/shared-assets/navigation/dealer-nav";
-
-const API_BASE = "https://api.vintraxx.com/api/v1";
+import { useScanDetail } from "./_components/ScanDetailContext";
+import { useGpsTerminals } from "./_lib/useGpsTerminals";
+import { useFleetKpis } from "./_lib/useFleetKpis";
+import { gpsWs } from "./_lib/gpsWs";
+import { formatCurrency } from "./_lib/format";
+import { API_BASE } from "@/lib/api-config";
 
 interface DealerUser {
     id: string;
@@ -142,10 +145,17 @@ export default function DealerPortalPage() {
     // Modal States
     const [showScanListModal, setShowScanListModal] = useState(false);
     const [scanListFilter, setScanListFilter] = useState<'all' | 'repairs'>('all');
-    const [selectedScanId, setSelectedScanId] = useState<string | null>(null);
-    const [scanDetail, setScanDetail] = useState<OBDReportDetail | null>(null);
-    const [scanDetailLoading, setScanDetailLoading] = useState(false);
     const [selectedAppraisal, setSelectedAppraisal] = useState<AppraisalData | null>(null);
+
+    // Final scan-report modal lives in the dashboard layout via
+    // <ScanDetailProvider/>. Both the OBD scan list and the GPS-DTC AI bridge
+    // funnel through `openByScanId`, so this page no longer owns scan-detail
+    // state of its own.
+    const { openByScanId } = useScanDetail();
+
+    // GPS fleet KPIs for the new top strip.
+    const { terminals: gpsTerminals } = useGpsTerminals();
+    const fleetKpis = useFleetKpis(gpsTerminals);
     
     // Scan Activity Period
     const [scanActivityPeriod, setScanActivityPeriod] = useState<'1w' | '1m' | '3m' | '6m' | '12m'>('12m');
@@ -196,6 +206,7 @@ export default function DealerPortalPage() {
             ]);
 
             if (profileRes.status === 401 || profileRes.status === 403) {
+                try { gpsWs.disconnect(); } catch { /* no-op */ }
                 localStorage.removeItem("dealer_token");
                 localStorage.removeItem("dealer_user");
                 router.push("/login");
@@ -224,27 +235,6 @@ export default function DealerPortalPage() {
         }
     }, [router]);
     
-    // Fetch single scan report detail
-    const fetchScanDetail = useCallback(async (scanId: string) => {
-        const token = localStorage.getItem("dealer_token");
-        if (!token) return;
-        
-        setScanDetailLoading(true);
-        try {
-            const res = await fetch(`${API_BASE}/scan/report/${scanId}`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            const data = await res.json();
-            if (data.success && data.status === 'completed') {
-                setScanDetail(data.data);
-            }
-        } catch (err) {
-            console.error('Failed to fetch scan detail:', err);
-        } finally {
-            setScanDetailLoading(false);
-        }
-    }, []);
-    
     // Handle panel clicks
     const handleTotalScansClick = () => {
         setScanListFilter('all');
@@ -256,21 +246,17 @@ export default function DealerPortalPage() {
         setShowScanListModal(true);
     };
     
-    // Handle scan item click to show detail
+    // Open the shared scan-detail modal. Existing OBD scans are already
+    // completed so a single fetch is enough; the context handles polling for
+    // any 'processing' edge cases.
     const handleScanItemClick = (scanId: string) => {
-        setSelectedScanId(scanId);
-        fetchScanDetail(scanId);
+        openByScanId(scanId);
     };
     
     // Close modals
     const closeScanListModal = () => {
         setShowScanListModal(false);
         setScanListFilter('all');
-    };
-    
-    const closeScanDetailModal = () => {
-        setSelectedScanId(null);
-        setScanDetail(null);
     };
     
     const closeAppraisalModal = () => {
@@ -389,9 +375,6 @@ export default function DealerPortalPage() {
         }
         fetchDealerData(token);
     }, [fetchDealerData, router]);
-
-    const formatCurrency = (val: number | null | undefined) =>
-        val !== null && val !== undefined ? `$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—";
 
     const formatDate = (iso: string) =>
         new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -538,57 +521,17 @@ export default function DealerPortalPage() {
         );
     }
 
+    // The dashboard layout (`layout.tsx`) now provides:
+    //   • <DealerNav/> (fixed header)
+    //   • <DashboardTabBar/> + <RealtimePill/>
+    //   • The shared <ScanDetailProvider/>
+    //   • The bg-slate-50 page background
+    // This page therefore renders ONLY its own content (header + sections).
     return (
-        <div className="min-h-screen bg-slate-950">
-            <style jsx>{`
-                :root {
-                  --background: 2 6 23;
-                  --foreground: 248 250 252;
-                  --card: 15 23 42;
-                  --card-foreground: 248 250 252;
-                  --popover: 15 23 42;
-                  --popover-foreground: 248 250 252;
-                  --primary: 27 58 95;
-                  --primary-foreground: 255 255 255;
-                  --secondary: 30 41 59;
-                  --secondary-foreground: 248 250 252;
-                  --muted: 30 41 59;
-                  --muted-foreground: 148 163 184;
-                  --accent: 139 35 50;
-                  --accent-foreground: 255 255 255;
-                  --destructive: 239 68 68;
-                  --destructive-foreground: 255 255 255;
-                  --border: 51 65 85;
-                  --input: 51 65 85;
-                  --ring: 27 58 95;
-                }
-            `}</style>
-
-            <DealerNav 
-                dealerLogo={dealer?.logoUrl}
-                originalLogoUrl={dealer?.originalLogoUrl}
-                dealerName={dealer?.companyName}
-                userEmail={dealer?.email}
-                userId={dealer?.id}
-                fullName={dealer?.fullName}
-                pricePerLaborHour={dealer?.pricePerLaborHour}
-                qrCodeUrl={dealer?.qrCodeUrl}
-                createdAt={dealer?.createdAt}
-                onProfileUpdate={(data) => setDealer(prev => prev ? { 
-                    ...prev, 
-                    logoUrl: data.logoUrl || prev.logoUrl,
-                    originalLogoUrl: data.originalLogoUrl || prev.originalLogoUrl,
-                    qrCodeUrl: data.qrCodeUrl || prev.qrCodeUrl,
-                    pricePerLaborHour: data.pricePerLaborHour ?? prev.pricePerLaborHour,
-                    fullName: data.fullName || prev.fullName,
-                    email: data.email || prev.email,
-                } : null)}
-            />
-
-            <main className="pt-16 min-h-screen">
-                <div className="min-h-screen bg-slate-50">
+        <>
+                <div>
                     {/* Header */}
-                    <div className="bg-white border-b border-slate-200 sticky top-16 z-40">
+                    <div className="bg-white border-b border-slate-200 sticky top-[7rem] z-30">
                         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
                             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                                 <div>
@@ -615,6 +558,52 @@ export default function DealerPortalPage() {
                     </div>
 
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-12">
+                        {/* GPS Fleet KPI strip — 4 quick stats with deep links
+                            into the dedicated GPS tabs. */}
+                        <div className="mb-6 sm:mb-8">
+                            <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-[#1B3A5F] flex items-center gap-2 mb-3">
+                                <Cpu className="w-6 h-6" />
+                                GPS Fleet
+                            </h2>
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                                <Link href="/VinTraxxSmartScanDashboard/devices" className="rounded-xl border border-slate-200 bg-white p-4 hover:shadow-md transition-shadow">
+                                    <div className="flex items-center justify-between">
+                                        <Cpu className="w-5 h-5 text-[#1B3A5F]" />
+                                        <span className="text-xs text-slate-400">Total</span>
+                                    </div>
+                                    <p className="text-2xl sm:text-3xl font-bold text-slate-900 mt-2">{fleetKpis.devicesTotal}</p>
+                                    <p className="text-xs text-slate-500 mt-1">Devices paired</p>
+                                </Link>
+                                <Link href="/VinTraxxSmartScanDashboard/map" className="rounded-xl border border-slate-200 bg-white p-4 hover:shadow-md transition-shadow">
+                                    <div className="flex items-center justify-between">
+                                        <Activity className="w-5 h-5 text-emerald-600" />
+                                        <span className="inline-flex items-center gap-1 text-xs text-emerald-700">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                            Live
+                                        </span>
+                                    </div>
+                                    <p className="text-2xl sm:text-3xl font-bold text-slate-900 mt-2">{fleetKpis.devicesOnline}</p>
+                                    <p className="text-xs text-slate-500 mt-1">Online now</p>
+                                </Link>
+                                <Link href="/VinTraxxSmartScanDashboard/alerts" className="rounded-xl border border-slate-200 bg-white p-4 hover:shadow-md transition-shadow">
+                                    <div className="flex items-center justify-between">
+                                        <AlertTriangle className="w-5 h-5 text-rose-600" />
+                                        <span className="text-xs text-slate-400">24h</span>
+                                    </div>
+                                    <p className="text-2xl sm:text-3xl font-bold text-slate-900 mt-2">{fleetKpis.alarms24h}</p>
+                                    <p className="text-xs text-slate-500 mt-1">Alerts</p>
+                                </Link>
+                                <Link href="/VinTraxxSmartScanDashboard/trips" className="rounded-xl border border-slate-200 bg-white p-4 hover:shadow-md transition-shadow">
+                                    <div className="flex items-center justify-between">
+                                        <RouteIcon className="w-5 h-5 text-[#1B3A5F]" />
+                                        <span className="text-xs text-slate-400">7d</span>
+                                    </div>
+                                    <p className="text-2xl sm:text-3xl font-bold text-slate-900 mt-2">{(fleetKpis.distance7dKm * 0.621371).toFixed(0)}</p>
+                                    <p className="text-xs text-slate-500 mt-1">Miles driven</p>
+                                </Link>
+                            </div>
+                        </div>
+
                         {/* OBD Scan Section Header */}
                         <div className="mb-4 sm:mb-6">
                             <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-[#1B3A5F] flex items-center gap-2">
@@ -897,8 +886,10 @@ export default function DealerPortalPage() {
                                 </div>
                             </div>
                         </div>
-                        {/* Service Appointment Activity History */}
-                        <div className="mb-8 sm:mb-12">
+                        {/* Service Appointment Activity History.
+                            The DashboardTabBar's "Appointments" tab links to
+                            #appointments, which scrolls here. */}
+                        <div id="appointments" className="mb-8 sm:mb-12 scroll-mt-32">
                             <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                 <div>
                                     <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-[#1B3A5F] to-[#3d6a9f] bg-clip-text text-transparent flex items-center gap-3">
@@ -1059,8 +1050,7 @@ export default function DealerPortalPage() {
                         </div>
                     </div>
                 </div>
-            </main>
-            
+
             {/* Scan List Modal - Shows when clicking blue or green panels */}
             {showScanListModal && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-2 sm:p-4" onClick={closeScanListModal}>
@@ -1181,135 +1171,10 @@ export default function DealerPortalPage() {
                 </div>
             )}
             
-            {/* Scan Detail Modal */}
-            {selectedScanId && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-2 sm:p-4" onClick={closeScanDetailModal}>
-                    <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-3xl w-full max-h-[95vh] sm:max-h-[85vh] overflow-hidden" onClick={e => e.stopPropagation()}>
-                        {scanDetailLoading ? (
-                            <div className="p-8 sm:p-12 text-center">
-                                <div className="w-10 h-10 sm:w-12 sm:h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                                <p className="text-slate-500 text-sm sm:text-base">Loading report details...</p>
-                            </div>
-                        ) : scanDetail ? (
-                            <>
-                                <div className="bg-[#1B3A5F] px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
-                                    <div className="min-w-0 flex-1">
-                                        <h2 className="text-base sm:text-xl font-bold text-white truncate">
-                                            {scanDetail.vehicle.year} {scanDetail.vehicle.make} {scanDetail.vehicle.model}
-                                        </h2>
-                                        <p className="text-blue-200 text-xs sm:text-sm font-mono truncate">{scanDetail.vehicle.vin}</p>
-                                    </div>
-                                    <button onClick={closeScanDetailModal} className="text-white/80 hover:text-white p-1 sm:p-2 flex-shrink-0 ml-2">
-                                        <X className="w-5 h-5 sm:w-6 sm:h-6" />
-                                    </button>
-                                </div>
-                                <div className="p-4 sm:p-6 overflow-y-auto max-h-[calc(95vh-70px)] sm:max-h-[calc(85vh-80px)]">
-                                    {/* Health Score */}
-                                    <div className="flex items-center gap-4 sm:gap-6 mb-4 sm:mb-6 pb-4 sm:pb-6 border-b border-slate-200">
-                                        <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center text-white text-xl sm:text-2xl font-bold flex-shrink-0 ${
-                                            scanDetail.healthScore >= 90 ? 'bg-emerald-500' :
-                                            scanDetail.healthScore >= 70 ? 'bg-yellow-500' :
-                                            scanDetail.healthScore >= 50 ? 'bg-orange-500' : 'bg-red-500'
-                                        }`}>
-                                            {scanDetail.healthScore}
-                                        </div>
-                                        <div className="min-w-0">
-                                            <p className="text-xs sm:text-sm text-slate-500">Health Score</p>
-                                            <p className="text-xl sm:text-2xl font-bold text-slate-900">
-                                                {scanDetail.healthScore >= 90 ? 'Excellent' :
-                                                 scanDetail.healthScore >= 70 ? 'Good' :
-                                                 scanDetail.healthScore >= 50 ? 'Fair' : 'Poor'}
-                                            </p>
-                                            <p className="text-xs sm:text-sm text-slate-500 capitalize">{scanDetail.overallStatus.replace('_', ' ')}</p>
-                                        </div>
-                                    </div>
-                                    
-                                    {/* Vehicle Info */}
-                                    <div className="grid grid-cols-2 gap-2 sm:gap-4 mb-4 sm:mb-6">
-                                        <div className="bg-slate-50 rounded-lg p-3 sm:p-4">
-                                            <p className="text-xs sm:text-sm text-slate-500">Mileage</p>
-                                            <p className="font-semibold text-slate-900 text-sm sm:text-base">{scanDetail.vehicle.mileage?.toLocaleString() || '—'} mi</p>
-                                        </div>
-                                        <div className="bg-slate-50 rounded-lg p-3 sm:p-4">
-                                            <p className="text-xs sm:text-sm text-slate-500">Stock Number</p>
-                                            <p className="font-semibold text-slate-900 text-sm sm:text-base truncate">{scanDetail.stockNumber || '—'}</p>
-                                        </div>
-                                        <div className="bg-slate-50 rounded-lg p-3 sm:p-4">
-                                            <p className="text-xs sm:text-sm text-slate-500">DTC Codes</p>
-                                            <p className="font-semibold text-slate-900 text-sm sm:text-base">{scanDetail.dtcAnalysis?.length || 0}</p>
-                                        </div>
-                                        <div className="bg-slate-50 rounded-lg p-3 sm:p-4">
-                                            <p className="text-xs sm:text-sm text-slate-500">Emissions Status</p>
-                                            <p className={`font-semibold capitalize text-sm sm:text-base ${
-                                                scanDetail.emissionsAnalysis?.status === 'pass' ? 'text-emerald-600' : 
-                                                scanDetail.emissionsAnalysis?.status === 'fail' ? 'text-red-600' : 'text-yellow-600'
-                                            }`}>
-                                                {scanDetail.emissionsAnalysis?.status || '—'}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    
-                                    {/* Costs */}
-                                    <div className="bg-gradient-to-r from-slate-50 to-slate-100 rounded-lg sm:rounded-xl p-3 sm:p-4 mb-4 sm:mb-6">
-                                        <h3 className="font-semibold text-slate-900 mb-2 sm:mb-3 text-sm sm:text-base">Repair Costs</h3>
-                                        <div className="grid grid-cols-3 gap-2 sm:gap-4 text-center">
-                                            <div>
-                                                <p className="text-[10px] sm:text-sm text-slate-500">DTC Repairs</p>
-                                                <p className="text-sm sm:text-lg font-bold text-slate-900">{formatCurrency(scanDetail.totalEstimatedRepairCost)}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-[10px] sm:text-sm text-slate-500">Additional</p>
-                                                <p className="text-sm sm:text-lg font-bold text-slate-900">{formatCurrency(scanDetail.additionalRepairsTotalCost || 0)}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-[10px] sm:text-sm text-slate-500">Grand Total</p>
-                                                <p className="text-sm sm:text-lg font-bold text-emerald-600">{formatCurrency(scanDetail.grandTotalCost || scanDetail.totalEstimatedRepairCost)}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    
-                                    {/* AI Summary */}
-                                    {scanDetail.aiSummary && (
-                                        <div className="mb-4 sm:mb-6">
-                                            <h3 className="font-semibold text-slate-900 mb-2 text-sm sm:text-base">AI Analysis Summary</h3>
-                                            <p className="text-slate-600 text-xs sm:text-sm leading-relaxed">{scanDetail.aiSummary}</p>
-                                        </div>
-                                    )}
-                                    
-                                    {/* DTC Analysis */}
-                                    {scanDetail.dtcAnalysis && scanDetail.dtcAnalysis.length > 0 && (
-                                        <div className="mb-4 sm:mb-6">
-                                            <h3 className="font-semibold text-slate-900 mb-2 text-sm sm:text-base">DTC Codes ({scanDetail.dtcAnalysis.length})</h3>
-                                            <div className="space-y-2">
-                                                {scanDetail.dtcAnalysis.map((dtc, idx) => (
-                                                    <div key={idx} className="flex items-start gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg bg-slate-50">
-                                                        <span className={`px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-bold text-white flex-shrink-0 ${
-                                                            dtc.severity === 'critical' ? 'bg-red-500' :
-                                                            dtc.severity === 'moderate' ? 'bg-orange-500' :
-                                                            dtc.severity === 'minor' ? 'bg-yellow-500' : 'bg-blue-500'
-                                                        }`}>
-                                                            {dtc.code}
-                                                        </span>
-                                                        <div className="flex-1 min-w-0">
-                                                            <p className="text-xs sm:text-sm font-medium text-slate-900">{dtc.description}</p>
-                                                            <p className="text-[10px] sm:text-xs text-slate-500 capitalize">{dtc.severity} • {dtc.urgency}</p>
-                                                        </div>
-                                                        <p className="text-xs sm:text-sm font-semibold text-slate-900 flex-shrink-0">
-                                                            {formatCurrency(dtc.repairEstimate.high)}
-                                                        </p>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            </>
-                        ) : (
-                            <div className="p-8 sm:p-12 text-center text-slate-500 text-sm sm:text-base">Report not available</div>
-                        )}
-                    </div>
-                </div>
-            )}
+            {/* Scan Detail Modal is rendered globally by <ScanDetailProvider/>
+                in the dashboard layout. Both the OBD scan list and GPS-DTC AI
+                bridge funnel through `useScanDetail().openByScanId(scanId)` so
+                the modal lives once at the layout level instead of per page. */}
             
             {/* Schedule Service Appointment Modal */}
             {showScheduleModal && (
@@ -1697,6 +1562,6 @@ export default function DealerPortalPage() {
                     </div>
                 </div>
             )}
-        </div>
+        </>
     );
 }

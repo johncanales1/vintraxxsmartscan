@@ -9,37 +9,46 @@ datasource db {
 }
 
 model User {
-  id               String   @id @default(uuid())
-  email            String   @unique
-  fullName         String?
-  passwordHash     String?
-  authProvider     String   @default("email")
-  googleId         String?  @unique
-  microsoftId      String?  @unique
-  isDealer         Boolean  @default(false)
-  pricePerLaborHour Float?
-  logoUrl          String?
-  originalLogoUrl  String?
-  qrCodeUrl        String?
-  maxScannerDevices Int?
-  maxVins           Int?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  scans            Scan[]
-  usedScannerDevices UserScannerDevice[]
-  usedVins           UserVinUsage[]
-  passwordResetTokens PasswordResetToken[]
-  serviceAppointments ServiceAppointment[]
+  id                    String               @id @default(uuid())
+  email                 String               @unique
+  fullName              String?
+  passwordHash          String?
+  authProvider          String               @default("email")
+  googleId              String?              @unique
+  microsoftId           String?              @unique
+  isDealer              Boolean              @default(false)
+  pricePerLaborHour     Float?
+  logoUrl               String?
+  originalLogoUrl       String?
+  qrCodeUrl             String?
+  maxScannerDevices     Int?
+  maxVins               Int?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  scans                 Scan[]
+  usedScannerDevices    UserScannerDevice[]
+  usedVins              UserVinUsage[]
+  passwordResetTokens   PasswordResetToken[]
+  serviceAppointments   ServiceAppointment[]
+  gpsTerminals          GpsTerminal[]
+  acknowledgedGpsAlarms GpsAlarm[]           @relation("UserAlarmAck")
+  // Mobile push devices (FCM/APNs) registered to this account. Multiple
+  // tokens per user are normal (phone + tablet, OR same phone after a
+  // reinstall) — uniqueness lives on the `token` column itself.
+  pushTokens            MobilePushToken[]
+  // GPS commands that originated from the mobile app (owner-only `locate`
+  // wrapper). Admin-issued commands keep `userId = null` and `adminId` set.
+  gpsCommands           GpsCommand[]
 }
 
 model PasswordResetToken {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  token     String   @unique
+  user      User      @relation(fields: [userId], references: [id])
+  token     String    @unique
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([token])
   @@index([userId])
@@ -57,9 +66,9 @@ model Otp {
 }
 
 model Scan {
-  id                   String     @id @default(uuid())
+  id                   String      @id @default(uuid())
   userId               String
-  user                 User       @relation(fields: [userId], references: [id])
+  user                 User        @relation(fields: [userId], references: [id])
   vin                  String
   mileage              Float?
   milOn                Boolean
@@ -84,12 +93,22 @@ model Scan {
   vehicleMake          String?
   vehicleModel         String?
   vehicleEngine        String?
-  status               ScanStatus @default(RECEIVED)
+  status               ScanStatus  @default(RECEIVED)
   errorMessage         String?
   scanDate             DateTime
-  receivedAt           DateTime   @default(now())
+  receivedAt           DateTime    @default(now())
   processedAt          DateTime?
   fullReport           FullReport?
+
+  // Optional bridge: when a GPS-origin DTC event is promoted to a full AI report,
+  // the resulting Scan row points back at the source GpsDtcEvent for traceability.
+  //
+  // CRITICAL #3: @unique enforces the "at most one Scan per DTC event"
+  // invariant at the DB layer so concurrent promote calls (admin + owner +
+  // gateway-auto bridge racing) cannot create duplicate rows. Both promote
+  // paths catch P2002 and return the existing row's id with reused:true.
+  gpsDtcEventId String?  @unique
+  gpsDtcEvent   GpsDtcEvent? @relation(fields: [gpsDtcEventId], references: [id])
 
   @@index([userId])
   @@index([vin])
@@ -110,6 +129,12 @@ model FullReport {
   additionalRepairsCost   Float     @default(0)
   additionalRepairsData   Json?
   reportVersion           String
+  /// HIGH #18: despite the name, this column stores the **absolute
+  /// filesystem path** that pdf.service.generatePdf() returns (e.g.
+  /// "/.../reports/report-<uuid>.pdf"), not a public URL. The public URL
+  /// is derived at the controller layer via `toPublicPdfUrl(path)`. Any
+  /// new code that consumes this field must treat it as a server-local
+  /// path or call `toPublicPdfUrl` before exposing it.
   pdfUrl                  String?
   pdfGeneratedAt          DateTime?
   emailSentAt             DateTime?
@@ -133,10 +158,10 @@ model UserScannerDevice {
 }
 
 model UserVinUsage {
-  id         String   @id @default(uuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id])
-  vin        String
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  vin         String
   firstUsedAt DateTime @default(now())
   lastUsedAt  DateTime @default(now())
   scanCount   Int      @default(1)
@@ -159,55 +184,113 @@ model Admin {
   id           String   @id @default(uuid())
   email        String   @unique
   passwordHash String
+  /// True iff this admin can perform destructive operations: DELETE
+  /// terminal, TERMINAL_CONTROL (0x8105) commands, factory-reset, etc.
+  /// Defaults to false — must be flipped by another super-admin (or a
+  /// direct DB write during ops bootstrap).
+  superAdmin   Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  acknowledgedGpsAlarms GpsAlarm[]      @relation("AdminAlarmAck")
+  issuedGpsCommands     GpsCommand[]
+  auditLogEntries       AdminAuditLog[]
+}
+
+/// Cross-cutting audit trail for admin write actions.
+///
+/// Captures every successful POST/PATCH/PUT/DELETE under /api/v1/admin/*
+/// alongside ad-hoc service-level writes (alarm ack, command enqueue,
+/// terminal provision, etc.). The middleware writes one row per request;
+/// services that bypass HTTP (e.g. internal jobs) should write directly
+/// via prisma.adminAuditLog.create.
+model AdminAuditLog {
+  id        String   @id @default(uuid())
+  adminId   String?
+  admin     Admin?   @relation(fields: [adminId], references: [id], onDelete: SetNull)
+
+  /// HTTP method: GET/POST/PATCH/PUT/DELETE. GETs are NOT recorded by the
+  /// middleware but the column is kept generic so service-level audit
+  /// writes ('alarm-ack' etc.) can be normalised into the same table.
+  method    String
+  /// Full request path including the /api prefix.
+  path      String
+  /// Response status code.
+  statusCode Int
+  /// Action label — for HTTP rows this is `"<METHOD> <ROUTE>"`; for
+  /// service-level rows it's a stable slug like 'alarm.ack' or
+  /// 'command.enqueue.locate'. The list is open-ended; new actions don't
+  /// require a schema change.
+  action    String
+  /// Optional resource pointer (e.g. terminalId, alarmId). Indexed.
+  targetType String?
+  targetId   String?
+  /// Caller IP captured from X-Forwarded-For / req.ip.
+  ip        String?
+  userAgent String?
+  /// Sanitised request body — secrets and large payloads are stripped by
+  /// the middleware before write.
+  payload   Json?
+  /// Optional error message if the action failed mid-write.
+  errorText String?
+
+  createdAt DateTime @default(now())
+
+  @@index([adminId, createdAt])
+  @@index([action, createdAt])
+  @@index([targetType, targetId])
+  @@index([createdAt])
 }
 
 model Appraisal {
-  id            String   @id @default(uuid())
-  userId        String
-  vin           String
-  vehicleYear   Int?
-  vehicleMake   String?
-  vehicleModel  String?
-  vehicleTrim   String?
-  mileage       Int?
-  condition     String?
-  zipCode       String?
-  notes         String?
-  valuationData Json?
-  pdfUrl        String?
-  photoCount    Int      @default(0)
-  userEmail          String?
-  userFullName       String?
-  vehicleOwnerName   String?
-  createdAt          DateTime @default(now())
+  id               String   @id @default(uuid())
+  userId           String
+  vin              String
+  vehicleYear      Int?
+  vehicleMake      String?
+  vehicleModel     String?
+  vehicleTrim      String?
+  mileage          Int?
+  condition        String?
+  zipCode          String?
+  notes            String?
+  valuationData    Json?
+  /// HIGH #18: stores an absolute filesystem path (see FullReport.pdfUrl
+  /// note above), not a public URL.
+  pdfUrl           String?
+  photoCount       Int      @default(0)
+  userEmail        String?
+  userFullName     String?
+  vehicleOwnerName String?
+  createdAt        DateTime @default(now())
 
   @@index([userId])
   @@index([vin])
 }
 
 model ServiceAppointment {
-  id                 String    @id @default(uuid())
-  userId             String
-  user               User      @relation(fields: [userId], references: [id])
-  name               String
-  email              String
-  phone              String?
-  dealership         String?
-  vehicle            String?
-  vin                String?
-  serviceType        String
-  preferredDate      String
-  preferredTime      String?
-  additionalNotes    String?
-  status             String    @default("pending")
-  adminEmailSentAt   DateTime?
-  userEmailSentAt    DateTime?
-  emailLastError     String?
-  emailAttempts      Int       @default(0)
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id               String    @id @default(uuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id])
+  name             String
+  email            String
+  phone            String?
+  dealership       String?
+  vehicle          String?
+  vin              String?
+  serviceType      String
+  preferredDate    String
+  preferredTime    String?
+  additionalNotes  String?
+  status           String    @default("pending")
+  adminEmailSentAt DateTime?
+  userEmailSentAt  DateTime?
+  emailLastError   String?
+  emailAttempts    Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  gpsAlarms GpsAlarm[]
 
   @@index([userId])
 }
@@ -227,4 +310,399 @@ model Inspection {
   updatedAt   DateTime @updatedAt
 
   @@index([userId])
+}
+
+// =============================================================================
+// GPS OBD SCANNER (JT/T 808 telemetry) — added 2026-04-30
+// =============================================================================
+//
+// All GPS-related models live below. Phase 0 only writes to GpsTerminal during
+// device registration / authentication. Other tables exist so later phases
+// (location/alarm/dtc/trip/command) ship without further schema migrations.
+//
+// Denormalised ownerUserId on event tables (alarm/dtc/trip/dailyStats) is a
+// plain String (no FK) intentionally — it's a snapshot of the terminal owner
+// at event time, used for fast user-scoped queries without joining GpsTerminal.
+
+enum GpsTerminalStatus {
+  NEVER_CONNECTED
+  ONLINE
+  OFFLINE
+  REVOKED
+}
+
+enum GpsAlarmSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum GpsAlarmType {
+  OVERSPEED
+  FATIGUE
+  HARSH_ACCEL
+  HARSH_BRAKE
+  HARSH_TURN
+  COLLISION
+  ROLLOVER
+  GEOFENCE_IN
+  GEOFENCE_OUT
+  POWER_LOST
+  POWER_LOW_VOLT
+  VIBRATION
+  TOW
+  MIL_ON
+  DTC_DETECTED
+  LOW_BATTERY
+  ANTENNA_DISCONNECT
+  SOS
+  OTHER
+}
+
+enum GpsCommandStatus {
+  QUEUED
+  SENT
+  ACKED
+  FAILED
+  EXPIRED
+}
+
+enum GpsTripStatus {
+  OPEN
+  CLOSED
+}
+
+model GpsTerminal {
+  id              String  @id @default(uuid())
+  imei            String  @unique
+  phoneNumber     String? @unique
+  iccid           String?
+  manufacturerId  String?
+  terminalModel   String?
+  hardwareVersion String?
+  firmwareVersion String?
+  provinceId      Int?
+  cityId          Int?
+  plateColor      Int?
+  plateNumber     String?
+
+  // Generated by platform on 0x8100 registration response, echoed back by the
+  // device in 0x0102 authentication. Random 32-char string.
+  authCode         String?
+  authCodeIssuedAt DateTime?
+
+  ownerUserId String?
+  ownerUser   User?   @relation(fields: [ownerUserId], references: [id])
+
+  vehicleVin   String?
+  vehicleYear  Int?
+  vehicleMake  String?
+  vehicleModel String?
+  nickname     String?
+
+  status          GpsTerminalStatus @default(NEVER_CONNECTED)
+  connectedAt     DateTime?
+  disconnectedAt  DateTime?
+  lastHeartbeatAt DateTime?
+
+  // Most-recent 32-bit alarm flag-set we observed. Used by the gateway to
+  // detect bit-level transitions (0→1 opens an alarm row, 1→0 closes the
+  // matching open row) without re-querying GpsLocation. Stored as BigInt
+  // because the JT/T 808 alarmFlag field is technically a uint32 — Prisma's
+  // Int maps to PostgreSQL int4 which is signed and overflows for bit 31.
+  lastAlarmBits BigInt @default(0)
+
+  // Last-known parameter values (set by 0x8104 query response). Phase 4 writes,
+  // Phase 0 leaves null.
+  reportIntervalSec    Int?
+  heartbeatIntervalSec Int?
+  tcpReconnectSec      Int?
+  tcpReplySec          Int?
+  parameters           Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  locations    GpsLocation[]
+  obdSnapshots GpsObdSnapshot[]
+  alarms       GpsAlarm[]
+  dtcEvents    GpsDtcEvent[]
+  trips        GpsTrip[]
+  commands     GpsCommand[]
+  dailyStats   GpsTerminalDailyStats[]
+
+  @@index([ownerUserId])
+  @@index([status])
+  @@index([vehicleVin])
+  @@index([lastHeartbeatAt])
+}
+
+model GpsLocation {
+  id         String      @id @default(uuid())
+  terminalId String
+  terminal   GpsTerminal @relation(fields: [terminalId], references: [id], onDelete: Cascade)
+
+  alarmBits  BigInt   @default(0)
+  statusBits BigInt   @default(0)
+  latitude   Decimal  @db.Decimal(10, 7)
+  longitude  Decimal  @db.Decimal(10, 7)
+  altitudeM  Int?
+  speedKmh   Decimal? @db.Decimal(5, 1)
+  heading    Int?
+
+  reportedAt       DateTime
+  serverReceivedAt DateTime @default(now())
+
+  accOn             Boolean?
+  gpsFix            Boolean?
+  satelliteCount    Int?
+  signalStrength    Int?
+  odometerKm        Decimal? @db.Decimal(10, 1)
+  fuelLevelPct      Decimal? @db.Decimal(4, 1)
+  externalVoltageMv Int?
+  batteryVoltageMv  Int?
+  mcc               Int?
+  mnc               Int?
+  lac               Int?
+  cellId            Int?
+
+  rawPayload Bytes?
+
+  alarms GpsAlarm[]
+
+  @@index([terminalId, reportedAt(sort: Desc)])
+  @@index([reportedAt])
+}
+
+model GpsObdSnapshot {
+  id         String      @id @default(uuid())
+  terminalId String
+  terminal   GpsTerminal @relation(fields: [terminalId], references: [id], onDelete: Cascade)
+
+  reportedAt       DateTime
+  serverReceivedAt DateTime @default(now())
+  vin              String?
+
+  rpm              Int?
+  vehicleSpeedKmh  Decimal? @db.Decimal(5, 1)
+  coolantTempC     Int?
+  intakeAirTempC   Int?
+  throttlePct      Decimal? @db.Decimal(4, 1)
+  enginePowerKw    Decimal? @db.Decimal(5, 1)
+  engineLoadPct    Decimal? @db.Decimal(4, 1)
+  fuelPressureKpa  Int?
+  fuelRateLph      Decimal? @db.Decimal(5, 2)
+  fuelConsumedL    Decimal? @db.Decimal(8, 2)
+  batteryVoltageMv Int?
+  odometerKm       Decimal? @db.Decimal(10, 1)
+  mafGps           Decimal? @db.Decimal(6, 2)
+  o2Voltage        Decimal? @db.Decimal(4, 3)
+  milOn            Boolean?
+  milDistanceKm    Decimal? @db.Decimal(8, 1)
+
+  extraPidsJson Json?
+
+  @@index([terminalId, reportedAt(sort: Desc)])
+  @@index([vin])
+}
+
+model GpsAlarm {
+  id         String      @id @default(uuid())
+  terminalId String
+  terminal   GpsTerminal @relation(fields: [terminalId], references: [id], onDelete: Cascade)
+
+  // Snapshot of terminal owner at alarm time. Plain String (no FK) so an alarm
+  // history survives owner reassignment.
+  ownerUserId String?
+
+  type     GpsAlarmType
+  severity GpsAlarmSeverity
+  openedAt DateTime
+  closedAt DateTime?
+
+  locationId String?
+  location   GpsLocation? @relation(fields: [locationId], references: [id])
+
+  latitude  Decimal? @db.Decimal(10, 7)
+  longitude Decimal? @db.Decimal(10, 7)
+  speedKmh  Decimal? @db.Decimal(5, 1)
+  extraData Json?
+
+  acknowledged          Boolean   @default(false)
+  acknowledgedByAdminId String?
+  acknowledgedByAdmin   Admin?    @relation("AdminAlarmAck", fields: [acknowledgedByAdminId], references: [id])
+  // Terminal owners can ack alarms on their own vehicles too. Either field
+  // (or both, in rare cases) is set when `acknowledged = true`.
+  acknowledgedByUserId  String?
+  acknowledgedByUser    User?     @relation("UserAlarmAck", fields: [acknowledgedByUserId], references: [id])
+  acknowledgedAt        DateTime?
+  ackNote               String?
+
+  serviceAppointmentId String?
+  serviceAppointment   ServiceAppointment? @relation(fields: [serviceAppointmentId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([ownerUserId, openedAt])
+  @@index([terminalId, openedAt])
+  @@index([severity, openedAt])
+  @@index([acknowledged])
+}
+
+model GpsDtcEvent {
+  id         String      @id @default(uuid())
+  terminalId String
+  terminal   GpsTerminal @relation(fields: [terminalId], references: [id], onDelete: Cascade)
+
+  ownerUserId       String?
+  vin               String?
+  mileageKm         Decimal? @db.Decimal(10, 1)
+  milOn             Boolean
+  dtcCount          Int
+  storedDtcCodes    String[]
+  pendingDtcCodes   String[]
+  permanentDtcCodes String[]
+  protocol          String?
+  latitude          Decimal? @db.Decimal(10, 7)
+  longitude         Decimal? @db.Decimal(10, 7)
+  reportedAt        DateTime
+  createdAt         DateTime @default(now())
+
+  // Back-relation: at most one Scan is promoted from a given DTC event, but
+  // Prisma models this as 1:N because Scan owns the FK.
+  promotedScans Scan[]
+
+  @@index([ownerUserId, reportedAt])
+  @@index([terminalId, reportedAt])
+  @@index([vin])
+}
+
+model GpsTrip {
+  id          String      @id @default(uuid())
+  terminalId  String
+  terminal    GpsTerminal @relation(fields: [terminalId], references: [id], onDelete: Cascade)
+  ownerUserId String?
+  vin         String?
+
+  status  GpsTripStatus @default(OPEN)
+  startAt DateTime
+  endAt   DateTime?
+
+  startLat Decimal? @db.Decimal(10, 7)
+  startLng Decimal? @db.Decimal(10, 7)
+  endLat   Decimal? @db.Decimal(10, 7)
+  endLng   Decimal? @db.Decimal(10, 7)
+
+  distanceKm      Decimal? @db.Decimal(8, 2)
+  durationSec     Int?
+  maxSpeedKmh     Decimal? @db.Decimal(5, 1)
+  avgSpeedKmh     Decimal? @db.Decimal(5, 1)
+  harshAccelCount Int      @default(0)
+  harshBrakeCount Int      @default(0)
+  harshTurnCount  Int      @default(0)
+  overspeedCount  Int      @default(0)
+  idleDurationSec Int?
+  fuelConsumedL   Decimal? @db.Decimal(8, 2)
+  score           Int?
+  rawSummary      Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerUserId, startAt])
+  @@index([terminalId, startAt])
+  @@index([status])
+}
+
+model GpsCommand {
+  id         String      @id @default(uuid())
+  terminalId String
+  terminal   GpsTerminal @relation(fields: [terminalId], references: [id], onDelete: Cascade)
+  // Originator of the command. Exactly ONE of (adminId, userId) is set on a
+  // healthy row. Admin-issued commands keep `userId = null`; mobile-issued
+  // owner commands (e.g. `locate` wrapper) keep `adminId = null`. Allowing
+  // both null is reserved for future system/cron-issued commands.
+  adminId    String?
+  admin      Admin?      @relation(fields: [adminId], references: [id])
+  userId     String?
+  user       User?       @relation(fields: [userId], references: [id])
+
+  functionCode Int
+  payload      Json
+  rawBytesSent Bytes?
+  status       GpsCommandStatus @default(QUEUED)
+  response     Json?
+  errorText    String?
+  serialNumber Int?
+
+  sentAt    DateTime?
+  ackAt     DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([terminalId, createdAt])
+  @@index([status])
+  @@index([userId])
+}
+
+model GpsTerminalDailyStats {
+  id          String      @id @default(uuid())
+  terminalId  String
+  terminal    GpsTerminal @relation(fields: [terminalId], references: [id], onDelete: Cascade)
+  ownerUserId String?
+  day         DateTime    @db.Date
+
+  distanceKm      Decimal  @default(0) @db.Decimal(8, 2)
+  tripCount       Int      @default(0)
+  drivingSec      Int      @default(0)
+  idleSec         Int      @default(0)
+  alarmCount      Int      @default(0)
+  harshEventCount Int      @default(0)
+  maxSpeedKmh     Decimal? @db.Decimal(5, 1)
+  avgScore        Int?
+
+  createdAt DateTime @default(now())
+
+  @@unique([terminalId, day])
+  @@index([ownerUserId, day])
+}
+
+/// Mobile device push-notification registration.
+///
+/// Token uniqueness is global because FCM rotates a token between users when
+/// they share a device (rare but real). Re-registering the same token simply
+/// re-points the userId. Soft-disabling sets `disabledAt` so we keep audit
+/// history and can reactivate without losing analytics.
+model MobilePushToken {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 'ios' or 'android'. Constrained at the API layer; stored as string for
+  /// future flexibility (web push, hms-push, etc.).
+  platform   String
+  /// Raw FCM/APNs registration token. FCM tokens can grow ~200 chars and APNs
+  /// device tokens are 64 hex chars; we leave it as a String for simplicity.
+  token      String   @unique
+  /// Optional version pin for crash-correlation. e.g. "1.0.0+42".
+  appVersion String?
+  /// Bumped on every successful re-register so we can prune dormant tokens.
+  lastSeenAt DateTime @default(now())
+  /// Set when FCM tells us the token is no longer valid; we stop sending to
+  /// it but keep the row for history.
+  disabledAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([disabledAt])
+}
+
+/// Idempotency guard for "send a push for this CRITICAL alarm exactly once".
+///
+/// Why a separate row instead of a column on GpsAlarm: the bridge service
+/// uses a CAS (`prisma.create`) on this table — a unique-violation tells us
+/// another worker already pushed. Putting the flag on GpsAlarm would require
+/// a SELECT-UPDATE-WHERE, which is racier without serializable isolation.
+model GpsAlarmPushDedup {
+  id      String   @id @default(uuid())
+  alarmId String   @unique
+  sentAt  DateTime @default(now())
 }

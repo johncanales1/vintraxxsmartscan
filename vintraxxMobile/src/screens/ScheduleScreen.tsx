@@ -14,7 +14,8 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import type { TabParamList } from '../navigation/types';
 // Using simple text inputs instead of DateTimePicker to avoid dependency issues
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
@@ -67,6 +68,11 @@ interface FormErrors {
 
 export const ScheduleScreen: React.FC = () => {
   const navigation = useNavigation();
+  // The Schedule tab can be entered with deep-link params from a GPS alert
+  // ("Create service appointment") that pre-fill the form. We read them
+  // through a typed RouteProp so TS catches missing fields up front.
+  const route = useRoute<RouteProp<TabParamList, 'Schedule'>>();
+  const prefill = route.params;
   const { selectedVehicle } = useAppStore();
   const { vins: recentVins, add: addRecentVin } = useRecentVins();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -113,6 +119,19 @@ export const ScheduleScreen: React.FC = () => {
       }
     }
   }, [selectedVehicle]);
+
+  // Pre-fill from a deep-link (typically "Create service appointment" from
+  // a GPS alarm). We only fill empty fields so we never clobber user input.
+  useEffect(() => {
+    if (!prefill) return;
+    setFormData(prev => ({
+      ...prev,
+      vin: prev.vin || (prefill.vin ?? ''),
+      vehicle: prev.vehicle || (prefill.vehicle ?? ''),
+      additionalNotes:
+        prev.additionalNotes || (prefill.additionalNotes ?? ''),
+    }));
+  }, [prefill]);
 
   const handleScanVin = useCallback(() => {
     logger.info(LogCategory.APP, 'ScheduleScreen: Camera VIN scan initiated');
@@ -277,39 +296,18 @@ export const ScheduleScreen: React.FC = () => {
         }
 
         if (result.success) {
-          // 207 path — appointment saved but confirmation email failed. Make
-          // this very explicit so the user doesn't retry and create a duplicate.
-          if (result.warning) {
-            Alert.alert(
-              'Appointment Saved',
-              `${result.message ?? 'Your appointment has been booked.'}\n\n${result.warning}`,
-              [{ text: 'OK', onPress: clearForm }],
-            );
-            logger.warn(LogCategory.SCHEDULE, 'ScheduleScreen: Request saved with email-delivery warning', {
-              reason: result.reason,
-              appointmentId: result.appointmentId,
-            });
-          } else {
-            Alert.alert(
-              'Request Submitted',
-              result.message ??
-                'Your service appointment request has been submitted. You will receive a confirmation email shortly.',
-              [{ text: 'OK', onPress: clearForm }],
-            );
-            logger.info(LogCategory.SCHEDULE, 'ScheduleScreen: Request submitted successfully', {
-              appointmentId: result.appointmentId,
-            });
-          }
-        } else if (result.emailServiceDown) {
-          // 503 path — SMTP verified-down. Surface a distinct, actionable
-          // dialog that tells the user the issue is on our side + offers an
-          // alternative contact path instead of spamming retry.
+          // Backend persists the appointment immediately and dispatches the
+          // confirmation email asynchronously (persist-first / fire-and-forget).
+          // The user only ever sees a single success state on submit; email
+          // outcomes are tracked server-side. (Bug #H1 / #H2)
           Alert.alert(
-            'Email System Temporarily Unavailable',
-            `${result.message}\n\nYour request was not submitted. Please call the service department directly, or try again in a few minutes.`,
+            'Request Submitted',
+            result.message ??
+              'Your service appointment request has been submitted. You will receive a confirmation email shortly.',
+            [{ text: 'OK', onPress: clearForm }],
           );
-          logger.error(LogCategory.SCHEDULE, 'ScheduleScreen: Email service reported down', {
-            reason: result.reason,
+          logger.info(LogCategory.SCHEDULE, 'ScheduleScreen: Request submitted successfully', {
+            appointmentId: result.appointmentId,
           });
         } else {
           Alert.alert('Submission Failed', result.message || 'Failed to submit request. Please try again.');

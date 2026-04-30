@@ -6,11 +6,21 @@ import UserDetailModal from '@/components/modals/UserDetailModal';
 import CreateUserModal from '@/components/modals/CreateUserModal';
 import ConfirmDeleteModal from '@/components/modals/ConfirmDeleteModal';
 import {
-  Search, Plus, Trash2, Eye, Users, Smartphone, Car, Calendar, RefreshCw
+  Search, Plus, Trash2, Eye, Users, Smartphone, Car, Calendar, RefreshCw, Radio,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-export default function RegularSection() {
+// Same navigate-handler shape as DealerSection — forwarded by Dashboard.
+type NavigateFn = (
+  tab: 'gps-terminals' | 'gps-alarms',
+  options?: { ownerUserId?: string },
+) => void;
+
+interface RegularSectionProps {
+  onNavigate?: NavigateFn;
+}
+
+export default function RegularSection({ onNavigate }: RegularSectionProps = {}) {
   const [users, setUsers] = useState<User[]>([]);
   const [filtered, setFiltered] = useState<User[]>([]);
   const [search, setSearch] = useState('');
@@ -132,6 +142,21 @@ export default function RegularSection() {
                   <Smartphone size={14} />
                   <span>{user._count.usedScannerDevices} devices &middot; {user._count.usedVins} VINs</span>
                 </div>
+                {/* GPS terminal chip — same pattern as DealerSection. */}
+                {(user._count.gpsTerminals ?? 0) > 0 && onNavigate && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onNavigate('gps-terminals', { ownerUserId: user.id });
+                    }}
+                    className="flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+                  >
+                    <Radio size={14} />
+                    <span className="underline-offset-2 hover:underline">
+                      {user._count.gpsTerminals} GPS terminal{user._count.gpsTerminals === 1 ? '' : 's'}
+                    </span>
+                  </button>
+                )}
                 <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
                   <Calendar size={14} />
                   <span>Joined {new Date(user.createdAt).toLocaleDateString()}</span>
@@ -155,6 +180,7 @@ export default function RegularSection() {
           loading={detailLoading}
           onClose={() => { setShowDetailModal(false); setSelectedUser(null); }}
           onRefresh={loadUsers}
+          onNavigate={onNavigate}
         />
       )}
 

@@ -1,79 +1,17 @@
-import nodemailer from 'nodemailer';
 import { env } from '../config/env';
 import { FullReportData } from '../types';
 import { formatCurrency } from '../utils/helpers';
 import { getEmailLogoHeaderHtml } from '../utils/logos';
 import logger from '../utils/logger';
-import { EmailServiceUnavailableError, isSmtpAvailabilityError } from '../utils/errors';
-
-const transporter = nodemailer.createTransport({
-  host: env.SMTP_HOST,
-  port: env.SMTP_PORT,
-  secure: false,
-  auth: {
-    user: env.SMTP_USER,
-    pass: env.SMTP_PASS,
-  },
-});
-
-// Shared verify cache — identical pattern to appraisal-email.service.ts so
-// ops has a single mental model for SMTP health across the backend.
-let verifiedAt: number | null = null;
-let lastVerifyFailAt: number | null = null;
-let lastVerifyError: string | null = null;
-const VERIFY_FAIL_TTL_MS = 60 * 1000;
-
-async function ensureTransporterVerified(): Promise<void> {
-  if (verifiedAt !== null) return;
-
-  const now = Date.now();
-  if (lastVerifyFailAt && now - lastVerifyFailAt < VERIFY_FAIL_TTL_MS && lastVerifyError) {
-    // Fail fast with cached error — SMTP is still in a bad state, don't
-    // hammer SendGrid (and don't make the user wait for a TCP timeout).
-    throw new EmailServiceUnavailableError(lastVerifyError);
-  }
-
-  try {
-    await transporter.verify();
-    verifiedAt = now;
-    lastVerifyFailAt = null;
-    lastVerifyError = null;
-    logger.info('SMTP transporter verified', {
-      host: env.SMTP_HOST,
-      port: env.SMTP_PORT,
-      user: env.SMTP_USER,
-    });
-  } catch (error) {
-    const msg = (error as Error).message;
-    lastVerifyFailAt = now;
-    lastVerifyError = msg;
-    logger.error('SMTP transporter verification failed', {
-      host: env.SMTP_HOST,
-      port: env.SMTP_PORT,
-      user: env.SMTP_USER,
-      error: msg,
-    });
-    if (isSmtpAvailabilityError(error)) {
-      throw new EmailServiceUnavailableError(msg);
-    }
-    throw error;
-  }
-}
-
-/**
- * Translate raw SMTP send failures into a classified
- * `EmailServiceUnavailableError` so controller layers can return HTTP 503
- * with a user-friendly message instead of leaking raw provider errors.
- */
-function rethrowAsEmailServiceError(error: unknown): never {
-  if (error instanceof EmailServiceUnavailableError) throw error;
-  if (isSmtpAvailabilityError(error)) {
-    throw new EmailServiceUnavailableError(
-      error instanceof Error ? error.message : String(error),
-    );
-  }
-  throw error;
-}
+import { EmailServiceUnavailableError } from '../utils/errors';
+// MEDIUM #21: transporter and verify-cache are now owned by ../services/mailer
+// so we no longer create one per consumer module. Both helpers below come
+// from there.
+import {
+  transporter,
+  ensureTransporterVerified,
+  rethrowAsEmailServiceError,
+} from './mailer';
 
 export async function sendReportEmail(
   toEmail: string,

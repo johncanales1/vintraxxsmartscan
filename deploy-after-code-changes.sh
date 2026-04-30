@@ -70,7 +70,7 @@ deploy_backend() {
         npm install
     fi
     
-    # Build backend
+    # Build backend (also emits dist/gateway/index.js — shared rootDir)
     if npm run build; then
         print_status "Backend build successful"
     else
@@ -87,6 +87,35 @@ deploy_backend() {
     fi
     
     print_status "Backend deployed successfully"
+}
+
+# (Re)start the GPS gateway. Shares the vintraxxBackend build and node_modules
+# so this step does not re-install or re-compile — it only refreshes the PM2
+# process. On first run we start it from ecosystem.config.js.
+deploy_gateway() {
+    print_status "Deploying GPS gateway..."
+
+    # If the dist/gateway/index.js file isn't there, abort — the build step
+    # (deploy_backend) failed silently or the gateway sources weren't included.
+    if [ ! -f "/home/ec2-user/vintraxxsmartscan/vintraxxBackend/dist/gateway/index.js" ]; then
+        print_error "dist/gateway/index.js not found — backend build did not emit gateway artifact"
+        exit 1
+    fi
+
+    # Try a graceful restart first; fall back to a fresh start from ecosystem.
+    if pm2 restart vintraxx-gateway --update-env 2>/dev/null; then
+        print_status "Gateway service restarted"
+    else
+        print_warning "Gateway not registered with PM2 yet, starting fresh..."
+        if pm2 start /home/ec2-user/vintraxxsmartscan/ecosystem.config.js --only vintraxx-gateway; then
+            print_status "Gateway service started"
+        else
+            print_error "Failed to start gateway service"
+            exit 1
+        fi
+    fi
+
+    print_status "Gateway deployed successfully"
 }
 
 # Build and deploy frontend
@@ -170,16 +199,18 @@ test_services() {
     
     # Check if all services are online
     backend_status=$(pm2 jlist | jq -r '.[] | select(.name == "vintraxx-backend") | .pm2_env.status' 2>/dev/null || echo "unknown")
+    gateway_status=$(pm2 jlist | jq -r '.[] | select(.name == "vintraxx-gateway") | .pm2_env.status' 2>/dev/null || echo "unknown")
     frontend_status=$(pm2 jlist | jq -r '.[] | select(.name == "vintraxx-frontend") | .pm2_env.status' 2>/dev/null || echo "unknown")
     admin_status=$(pm2 jlist | jq -r '.[] | select(.name == "vintraxx-admin") | .pm2_env.status' 2>/dev/null || echo "unknown")
     
     echo ""
     print_status "Service Status:"
     echo "  Backend:  $backend_status"
+    echo "  Gateway:  $gateway_status"
     echo "  Frontend: $frontend_status"
     echo "  Admin:    $admin_status"
     
-    if [[ "$backend_status" == "online" && "$frontend_status" == "online" && "$admin_status" == "online" ]]; then
+    if [[ "$backend_status" == "online" && "$gateway_status" == "online" && "$frontend_status" == "online" && "$admin_status" == "online" ]]; then
         print_status "All services are running successfully!"
     else
         print_warning "Some services may not be running properly"
@@ -207,6 +238,9 @@ main() {
     deploy_backend
     echo ""
     
+    deploy_gateway
+    echo ""
+
     deploy_frontend  
     echo ""
     

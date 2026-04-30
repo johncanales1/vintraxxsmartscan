@@ -1,24 +1,36 @@
 'use client';
 
-import { useState } from 'react';
-import { api, UserDetail, normalizePdfUrl } from '@/lib/api';
+import { useEffect, useState } from 'react';
+import { api, UserDetail, GpsTerminal, normalizePdfUrl } from '@/lib/api';
 import { StatusBadge } from '@/components/Dashboard';
 import ConfirmDeleteModal from '@/components/modals/ConfirmDeleteModal';
 import ScanActivityChart from '@/components/charts/ScanActivityChart';
+import { vehicleLabel, statusDotClasses, fmtRelative } from '@/lib/gpsHelpers';
 import {
   X, Mail, Calendar, Smartphone, Car, DollarSign, Globe, Edit2, Save, Trash2,
-  FileText, ExternalLink, Hash, AlertCircle, CheckCircle, Image
+  FileText, ExternalLink, Hash, AlertCircle, CheckCircle, Image, Radio, Bell, ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
+
+/**
+ * Optional Dashboard navigate handler. When provided, the modal renders a
+ * GPS section with deep-link buttons that close the modal and route the
+ * admin to /gps-terminals or /gps-alarms pre-filtered by this user's id.
+ */
+type NavigateFn = (
+  tab: 'gps-terminals' | 'gps-alarms',
+  options?: { ownerUserId?: string },
+) => void;
 
 interface Props {
   user: UserDetail | null;
   loading: boolean;
   onClose: () => void;
   onRefresh: () => void;
+  onNavigate?: NavigateFn;
 }
 
-export default function UserDetailModal({ user, loading, onClose, onRefresh }: Props) {
+export default function UserDetailModal({ user, loading, onClose, onRefresh, onNavigate }: Props) {
   const [editing, setEditing] = useState(false);
   const [editData, setEditData] = useState({
     email: '',
@@ -29,6 +41,51 @@ export default function UserDetailModal({ user, loading, onClose, onRefresh }: P
   });
   const [saving, setSaving] = useState(false);
   const [scanDeleteTarget, setScanDeleteTarget] = useState<{ id: string; vin: string } | null>(null);
+
+  // Lazy-load up to 5 of this user's GPS terminals so we can preview them
+  // inline. We only render the section when the user actually owns at
+  // least one terminal — keeps the modal compact for the common case.
+  const [gpsTerminals, setGpsTerminals] = useState<GpsTerminal[]>([]);
+  const [gpsTerminalsTotal, setGpsTerminalsTotal] = useState(0);
+  const [gpsLoading, setGpsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!user) {
+      setGpsTerminals([]);
+      setGpsTerminalsTotal(0);
+      return;
+    }
+    let cancelled = false;
+    setGpsLoading(true);
+    api
+      .listGpsTerminals(1, 5, { ownerUserId: user.id })
+      .then((res) => {
+        if (cancelled) return;
+        setGpsTerminals(res.terminals);
+        setGpsTerminalsTotal(res.total);
+      })
+      .catch(() => {
+        // Non-fatal — the GPS section just won't render.
+        if (!cancelled) {
+          setGpsTerminals([]);
+          setGpsTerminalsTotal(0);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setGpsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const handleNavigateGps = (tab: 'gps-terminals' | 'gps-alarms') => {
+    if (!user || !onNavigate) return;
+    // Close the modal first so the section drill-in chip is the only
+    // visible filter — feels less stacked.
+    onClose();
+    onNavigate(tab, { ownerUserId: user.id });
+  };
 
   const startEdit = () => {
     if (!user) return;
@@ -252,6 +309,74 @@ export default function UserDetailModal({ user, loading, onClose, onRefresh }: P
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* GPS terminals — admin-only contextual chip. */}
+              {gpsTerminalsTotal > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                      <Radio size={16} />
+                      GPS Terminals ({gpsTerminalsTotal})
+                    </h3>
+                    {onNavigate && (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleNavigateGps('gps-alarms')}
+                          className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 hover:underline"
+                        >
+                          <Bell size={12} />
+                          View Alarms
+                        </button>
+                        <button
+                          onClick={() => handleNavigateGps('gps-terminals')}
+                          className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                        >
+                          View All
+                          <ChevronRight size={12} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {gpsLoading ? (
+                    <div className="h-12 rounded-xl bg-gray-100 dark:bg-gray-700/50 animate-pulse" />
+                  ) : (
+                    <div className="space-y-2">
+                      {gpsTerminals.map((t) => (
+                        <div
+                          key={t.id}
+                          className="px-4 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 flex items-center gap-3"
+                        >
+                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusDotClasses(t.status)}`} />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                              {vehicleLabel({
+                                vehicleYear: t.vehicleYear,
+                                vehicleMake: t.vehicleMake,
+                                vehicleModel: t.vehicleModel,
+                                vehicleVin: t.vehicleVin,
+                                nickname: t.nickname,
+                                imei: t.imei,
+                              })}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">{t.imei}</p>
+                          </div>
+                          <span className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 flex-shrink-0">
+                            {t.status === 'ONLINE' ? 'online' : fmtRelative(t.lastHeartbeatAt)}
+                          </span>
+                        </div>
+                      ))}
+                      {gpsTerminalsTotal > gpsTerminals.length && onNavigate && (
+                        <button
+                          onClick={() => handleNavigateGps('gps-terminals')}
+                          className="w-full py-2 rounded-xl border border-dashed border-gray-200 dark:border-gray-600 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+                        >
+                          + {gpsTerminalsTotal - gpsTerminals.length} more — view all
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

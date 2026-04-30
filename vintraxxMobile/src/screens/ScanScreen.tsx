@@ -222,7 +222,14 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
   const autoStart = route?.params?.autoStart || false;
   
   // Get connection state from store
-  const { connectionState, setCurrentReport, addSavedReport, user, selectedBleDevice } = useAppStore();
+  const {
+    connectionState,
+    setCurrentReport,
+    addSavedReport,
+    user,
+    selectedBleDevice,
+    gpsTerminals,
+  } = useAppStore();
   const isConnected = connectionState === BleConnectionState.CONNECTED;
   const hasAutoStarted = useRef(false);
 
@@ -631,6 +638,30 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
             Diagnose your vehicle's health
           </Text>
         </View>
+
+        {/* GPS-side data banner — only shown when the user has at least one
+            paired GPS terminal. Provides a one-tap path into the GPS DTC
+            history when they're considering an OBD scan. */}
+        {gpsTerminals.length > 0 && (
+          <TouchableOpacity
+            style={gpsBannerStyles.banner}
+            onPress={() =>
+              (navigation as any).navigate('DtcEvents', {
+                terminalId:
+                  gpsTerminals.length === 1 ? gpsTerminals[0].id : undefined,
+              })
+            }
+            activeOpacity={0.85}
+          >
+            <Text style={gpsBannerStyles.title}>
+              Looking at GPS-side data?
+            </Text>
+            <Text style={gpsBannerStyles.body}>
+              Your always-on telematics device may already have captured DTCs.
+              Tap to review →
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {/* Selected Vehicle Card */}
         {selectedVehicle && (
@@ -1577,4 +1608,27 @@ const styles = StyleSheet.create({
     ...typography.styles.button,
     color: colors.text.inverse,
   },
+});
+
+// Kept separate from `styles` to avoid disrupting the existing 800+ line
+// stylesheet shape — this is a self-contained banner styled identically to
+// the rest of the app's section cards.
+const gpsBannerStyles = StyleSheet.create({
+  banner: {
+    backgroundColor: '#EEF2FF',
+    borderRadius: spacing.cardRadius,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    marginHorizontal: spacing.screenHorizontal,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  title: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#3730A3',
+    marginBottom: 2,
+  },
+  body: { fontSize: 12, color: '#4338CA', lineHeight: 16 },
 });

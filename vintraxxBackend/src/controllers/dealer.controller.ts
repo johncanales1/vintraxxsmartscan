@@ -5,8 +5,12 @@ import logger from '../utils/logger';
 import * as fs from 'fs';
 import * as path from 'path';
 import bcrypt from 'bcrypt';
-import nodemailer from 'nodemailer';
 import { env } from '../config/env';
+import { escapeHtml as e } from '../utils/escape-html';
+// MEDIUM #21: shared transporter — was creating one per request twice
+// (scheduleAppointment + sendDealerEmail) which leaked socket descriptors
+// over time and dodged the verify-cache.
+import { transporter } from '../services/mailer';
 
 const API_BASE_URL = 'https://api.vintraxx.com';
 
@@ -73,10 +77,16 @@ export async function getDealerProfile(req: Request, res: Response, next: NextFu
   }
 }
 
+/**
+ * MEDIUM #24: email changes via this endpoint have been removed. Operators
+ * who need to change a user's email must do so via /admin/users/:id (which
+ * also lands in the AdminAuditLog). The `email` field in the body — if
+ * present — is destructured but unused.
+ */
 export async function updateDealerProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = req.user!.userId;
-    const { pricePerLaborHour, logoImage, originalLogoImage, qrCodeImage, password, fullName, email: newEmail } = req.body;
+    const { pricePerLaborHour, logoImage, originalLogoImage, qrCodeImage, password, fullName } = req.body;
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user || !user.isDealer) {
@@ -101,28 +111,33 @@ export async function updateDealerProfile(req: Request, res: Response, next: Nex
       }
     }
 
-    const updateData: { pricePerLaborHour?: number; logoUrl?: string; originalLogoUrl?: string; qrCodeUrl?: string; fullName?: string; email?: string } = {};
+    // MEDIUM #24: email intentionally NOT in this shape — see JSDoc above.
+    // LOW #2: `fullName` widened to `string | null` so we can clear it by
+    // submitting an empty string (User.fullName is `String?` in Prisma).
+    // The previous `null as any` cast is gone.
+    const updateData: { pricePerLaborHour?: number; logoUrl?: string; originalLogoUrl?: string; qrCodeUrl?: string; fullName?: string | null } = {};
 
     if (fullName !== undefined && typeof fullName === 'string') {
-      updateData.fullName = fullName.trim() || null as any;
+      updateData.fullName = fullName.trim() || null;
     }
 
-    if (newEmail !== undefined && typeof newEmail === 'string' && newEmail.trim() && newEmail.trim() !== user.email) {
-      const existing = await prisma.user.findUnique({ where: { email: newEmail.trim() } });
-      if (existing && existing.id !== userId) {
-        res.status(409).json({ success: false, error: 'Email already in use by another account.' });
-        return;
-      }
-      updateData.email = newEmail.trim();
-    }
+    // MEDIUM #24: dealer self-service email change has been removed.
+    // Email is the account's primary identity; changing it should require a
+    // verification flow (send OTP to new address, confirm) AND audit. The
+    // admin path /admin/users/:id is the only supported way today. Any
+    // `email` field in the request body is silently ignored — the schema
+    // also no longer declares it.
 
     if (pricePerLaborHour !== undefined && typeof pricePerLaborHour === 'number' && pricePerLaborHour > 0) {
       updateData.pricePerLaborHour = pricePerLaborHour;
     }
 
-    const apiBase = process.env.NODE_ENV === 'production' 
-      ? 'https://api.vintraxx.com' 
-      : 'http://localhost:3000';
+    // HIGH #12: use the validated env helper instead of raw process.env
+    // so this code path matches the rest of the controller and the
+    // typo-defended schema in src/config/env.ts.
+    const apiBase = env.NODE_ENV === 'production'
+      ? 'https://api.vintraxx.com'
+      : `http://localhost:${env.PORT}`;
 
     // Handle original logo image (unedited version for crop editor)
     if (originalLogoImage && typeof originalLogoImage === 'string' && originalLogoImage.startsWith('data:image/')) {
@@ -215,11 +230,12 @@ export async function updateDealerProfile(req: Request, res: Response, next: Nex
         // Write file to disk
         fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
         
-        // Store URL path instead of base64
-        const apiBase = process.env.NODE_ENV === 'production' 
-          ? 'https://api.vintraxx.com' 
-          : 'http://localhost:3000';
-        updateData.qrCodeUrl = `${apiBase}/assets/dealer-qrcodes/${filename}`;
+        // HIGH #12: use validated env (matches the apiBase computed
+        // earlier in this same function for the logo branch).
+        const apiBaseQr = env.NODE_ENV === 'production'
+          ? 'https://api.vintraxx.com'
+          : `http://localhost:${env.PORT}`;
+        updateData.qrCodeUrl = `${apiBaseQr}/assets/dealer-qrcodes/${filename}`;
         
         logger.info(`Saved new QR code file: ${filename}`);
       } else {
@@ -521,15 +537,7 @@ export async function scheduleAppointment(req: Request, res: Response, next: Nex
       additionalNotes,
     } = req.body;
 
-    const transporter = nodemailer.createTransport({
-      host: env.SMTP_HOST,
-      port: env.SMTP_PORT,
-      secure: false,
-      auth: {
-        user: env.SMTP_USER,
-        pass: env.SMTP_PASS,
-      },
-    });
+    // MEDIUM #21: use the shared transporter from src/services/mailer.
 
     const submittedAt = new Date().toLocaleString('en-US', {
       year: 'numeric',
@@ -567,54 +575,54 @@ export async function scheduleAppointment(req: Request, res: Response, next: Nex
       <p>New Service Appointment Request</p>
     </div>
     <div class="content">
-      <p style="margin-top:0;">A new service appointment has been submitted on <strong>${submittedAt}</strong>.</p>
+      <p style="margin-top:0;">A new service appointment has been submitted on <strong>${e(submittedAt)}</strong>.</p>
       <hr class="divider" />
       <div class="grid">
         <div class="field">
           <div class="label">Name</div>
-          <div class="value">${name}</div>
+          <div class="value">${e(name)}</div>
         </div>
         <div class="field">
           <div class="label">Email</div>
-          <div class="value"><a href="mailto:${email}" style="color:#8B2332;">${email}</a></div>
+          <div class="value"><a href="mailto:${e(email)}" style="color:#8B2332;">${e(email)}</a></div>
         </div>
         <div class="field">
           <div class="label">Phone</div>
-          <div class="value">${phone || '—'}</div>
+          <div class="value">${phone ? e(phone) : '—'}</div>
         </div>
         <div class="field">
           <div class="label">Dealership</div>
-          <div class="value">${dealership || '—'}</div>
+          <div class="value">${dealership ? e(dealership) : '—'}</div>
         </div>
         <div class="field">
           <div class="label">Vehicle</div>
-          <div class="value">${vehicle || '—'}</div>
+          <div class="value">${vehicle ? e(vehicle) : '—'}</div>
         </div>
         <div class="field">
           <div class="label">VIN</div>
-          <div class="value" style="font-family: monospace;">${vin || '—'}</div>
+          <div class="value" style="font-family: monospace;">${vin ? e(vin) : '—'}</div>
         </div>
       </div>
       <hr class="divider" />
       <div class="field">
         <div class="label">Service Type</div>
-        <div class="value"><span class="badge">${serviceType}</span></div>
+        <div class="value"><span class="badge">${e(serviceType)}</span></div>
       </div>
       <div class="grid" style="margin-top:16px;">
         <div class="field">
           <div class="label">Preferred Date</div>
-          <div class="value">${preferredDate}</div>
+          <div class="value">${e(preferredDate)}</div>
         </div>
         <div class="field">
           <div class="label">Preferred Time</div>
-          <div class="value">${preferredTime || '—'}</div>
+          <div class="value">${preferredTime ? e(preferredTime) : '—'}</div>
         </div>
       </div>
       ${additionalNotes ? `
       <hr class="divider" />
       <div class="field">
         <div class="label">Additional Notes</div>
-        <div class="notes-box">${additionalNotes}</div>
+        <div class="notes-box">${e(additionalNotes).replace(/\n/g, '<br/>')}</div>
       </div>
       ` : ''}
     </div>
@@ -668,48 +676,60 @@ export async function scheduleAppointment(req: Request, res: Response, next: Nex
     }
 
     // ── 2. Fire email in background — never block the response ─────────
+    // MEDIUM #27: outer try/catch around the entire async body so any
+    // unexpected synchronous throw (e.g. from a future contributor adding
+    // code outside the existing inner try/catches) is logged rather than
+    // surfacing as a process-level unhandledRejection.
     setImmediate(async () => {
-      let sentAt: Date | null = null;
-      let emailError: string | null = null;
       try {
-        await transporter.sendMail({
-          from: `"${env.EMAIL_FROM_NAME}" <${env.EMAIL_FROM}>`,
-          to: 'john@vintraxx.com',
-          replyTo: email,
-          subject: `Service Appointment Request — ${name} — ${serviceType}`,
-          html: htmlBody,
-        });
-        sentAt = new Date();
-        logger.info('Dealer schedule admin email sent', {
-          requestId,
-          appointmentId,
-          name,
-          serviceType,
-        });
-      } catch (err) {
-        emailError = (err as Error).message;
-        logger.error('Dealer schedule admin email failed', {
-          requestId,
-          appointmentId,
-          error: emailError,
-        });
-      }
+        let sentAt: Date | null = null;
+        let emailError: string | null = null;
+        try {
+          await transporter.sendMail({
+            from: `"${env.EMAIL_FROM_NAME}" <${env.EMAIL_FROM}>`,
+            to: 'john@vintraxx.com',
+            replyTo: email,
+            subject: `Service Appointment Request — ${name} — ${serviceType}`,
+            html: htmlBody,
+          });
+          sentAt = new Date();
+          logger.info('Dealer schedule admin email sent', {
+            requestId,
+            appointmentId,
+            name,
+            serviceType,
+          });
+        } catch (err) {
+          emailError = (err as Error).message;
+          logger.error('Dealer schedule admin email failed', {
+            requestId,
+            appointmentId,
+            error: emailError,
+          });
+        }
 
-      try {
-        await prisma.serviceAppointment.update({
-          where: { id: appointmentId },
-          data: {
-            adminEmailSentAt: sentAt,
-            emailLastError: emailError ? emailError.slice(0, 1000) : null,
-            emailAttempts: { increment: 1 },
-            status: sentAt ? 'confirmed' : 'email_queued',
-          },
-        });
-      } catch (updateErr) {
-        logger.error('Dealer schedule appointment status update failed', {
+        try {
+          await prisma.serviceAppointment.update({
+            where: { id: appointmentId },
+            data: {
+              adminEmailSentAt: sentAt,
+              emailLastError: emailError ? emailError.slice(0, 1000) : null,
+              emailAttempts: { increment: 1 },
+              status: sentAt ? 'confirmed' : 'email_queued',
+            },
+          });
+        } catch (updateErr) {
+          logger.error('Dealer schedule appointment status update failed', {
+            requestId,
+            appointmentId,
+            error: (updateErr as Error).message,
+          });
+        }
+      } catch (outerErr) {
+        logger.error('Dealer schedule background task threw unexpectedly', {
           requestId,
           appointmentId,
-          error: (updateErr as Error).message,
+          err: (outerErr as Error).message,
         });
       }
     });
@@ -740,20 +760,17 @@ export async function sendDealerEmail(req: Request, res: Response, next: NextFun
     const userId = req.user!.userId;
     const userEmail = req.user!.email;
 
-    if (!to || !subject) {
-      res.status(400).json({ success: false, error: 'Recipient and subject are required.' });
+    // CRITICAL #7: enforce dealer-only access. Without this check the route
+    // is an open SMTP relay for any authenticated user. zod already
+    // validated the input shape upstream so we don't repeat the to/subject
+    // null-checks here.
+    const requester = await prisma.user.findUnique({ where: { id: userId } });
+    if (!requester || !requester.isDealer) {
+      res.status(403).json({ success: false, error: 'Dealer access required.' });
       return;
     }
 
-    const transporter = nodemailer.createTransport({
-      host: env.SMTP_HOST,
-      port: env.SMTP_PORT,
-      secure: false,
-      auth: {
-        user: env.SMTP_USER,
-        pass: env.SMTP_PASS,
-      },
-    });
+    // MEDIUM #21: use the shared transporter from src/services/mailer.
 
     const htmlBody = `
 <!DOCTYPE html>
@@ -774,7 +791,7 @@ export async function sendDealerEmail(req: Request, res: Response, next: NextFun
       <h1>VinTraxx SmartScan</h1>
     </div>
     <div class="content">
-      ${body ? body.replace(/\n/g, '<br/>') : '<p>No message content.</p>'}
+      ${body ? e(body).replace(/\n/g, '<br/>') : '<p>No message content.</p>'}
     </div>
     <div class="footer">
       <p>&copy; ${new Date().getFullYear()} VinTraxx SmartScan. All rights reserved.</p>

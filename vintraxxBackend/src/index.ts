@@ -1,7 +1,15 @@
+// Install JSON serialisers for `bigint` (e.g. GpsTerminal.lastAlarmBits) and
+// Prisma `Decimal` (coordinates, speeds, distances) BEFORE any other module
+// imports Prisma — the polyfill mutates global prototypes so all later
+// `res.json(prismaRow)` calls are safe. See utils/json-bigint-decimal-polyfill
+// for the rationale + safety guards.
+import './utils/json-bigint-decimal-polyfill';
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
+import http from 'http';
 import { env } from './config/env';
 import { errorHandler } from './middleware/errorHandler';
 import { requestIdMiddleware } from './middleware/requestId';
@@ -13,8 +21,12 @@ import inspectionRoutes from './routes/inspection.routes';
 import adminRoutes from './routes/admin.routes';
 import scheduleRoutes from './routes/schedule.routes';
 import debugRoutes from './routes/debug.routes';
+import gpsRoutes from './routes/gps.routes';
 import logger from './utils/logger';
 import { getSmtpHealth, verifyTransporterAtBoot } from './services/appraisal-email.service';
+import { startGpsEventListener, stopGpsEventListener } from './realtime/listener';
+import { attachGpsWebSocket, wsHealth } from './realtime/wsServer';
+import { startCronJobs, stopCronJobs } from './cron';
 
 const app = express();
 
@@ -60,32 +72,27 @@ app.use(helmet({
 }));
 
 // CORS configuration - must be before routes
+// MEDIUM #28: production allow-list now lives in env.CORS_ALLOWED_ORIGINS
+// (env.ts has the default for back-compat). Localhost development origins
+// are appended at runtime when NODE_ENV === 'development' so dev still
+// works without setting the var.
+const DEV_LOCALHOST_ORIGINS = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:3002',
+  'capacitor://localhost',
+  'http://localhost',
+];
+const corsAllowedOrigins =
+  env.NODE_ENV === 'development'
+    ? [...env.CORS_ALLOWED_ORIGINS, ...DEV_LOCALHOST_ORIGINS]
+    : env.CORS_ALLOWED_ORIGINS;
 const corsOptions = {
   origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
     // Allow requests with no origin (mobile apps, curl, etc.)
     if (!origin) return callback(null, true);
-    
-    // List of allowed origins
-    const allowedOrigins = [
-      'https://dev.vintraxx.com',
-      'https://admin.vintraxx.com',
-      'https://api.vintraxx.com',
-      'https://capital.vintraxx.com',
-      'https://dealer.vintraxx.com'
-    ];
-    
-    // Add localhost origins for development
-    if (env.NODE_ENV === 'development') {
-      allowedOrigins.push(
-        'http://localhost:3000',
-        'http://localhost:3001', 
-        'http://localhost:3002',
-        'capacitor://localhost',
-        'http://localhost'
-      );
-    }
-    
-    if (allowedOrigins.includes(origin)) {
+
+    if (corsAllowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       console.log('CORS blocked origin:', origin);
@@ -154,17 +161,68 @@ app.use('/api/v1/inspection', inspectionRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/schedule', scheduleRoutes);
 app.use('/api/v1/debug', debugRoutes);
+app.use('/api/v1/gps', gpsRoutes);
 
 app.use(errorHandler);
 
-app.listen(env.PORT, '0.0.0.0', () => {
+// Use an explicit http.Server so the GPS WebSocket server can hook the
+// `upgrade` event and share the same TCP port as the REST API. Browsers and
+// the mobile app connect to wss://api.vintraxx.com<GPS_WS_PATH>?token=...
+const httpServer = http.createServer(app);
+const wss = attachGpsWebSocket(httpServer);
+
+httpServer.listen(env.PORT, '0.0.0.0', () => {
   logger.info(`VinTraxx backend running on 0.0.0.0:${env.PORT} [${env.NODE_ENV}]`);
+  logger.info(`GPS WebSocket mounted at ${env.GPS_WS_PATH}`);
   // Kick off a one-time SMTP verify so ops can see at boot whether the email
   // provider is healthy. Non-blocking: a failure here does not prevent the
   // API from serving traffic (persist-first flow still works).
   void verifyTransporterAtBoot().then((ok) => {
     logger.info('SMTP readiness check complete', { smtpReady: ok });
   });
+  // Open the long-lived Postgres LISTEN client so gateway-emitted NOTIFYs
+  // start flowing into the WebSocket fan-out. Failures here are logged and
+  // retried with exponential backoff inside the listener itself.
+  void startGpsEventListener().catch((err) => {
+    logger.error('startGpsEventListener failed at boot', {
+      err: (err as Error).message,
+    });
+  });
+  // Schedule recurring jobs (heartbeat watchdog, future retention sweeps).
+  startCronJobs();
 });
+
+// Graceful shutdown — stop accepting new HTTP/WS connections, drain cron and
+// the LISTEN client, then let the process exit naturally.
+async function gracefulShutdown(signal: string): Promise<void> {
+  logger.info(`Received ${signal}, beginning graceful shutdown`);
+  stopCronJobs();
+  try {
+    await stopGpsEventListener();
+  } catch (err) {
+    logger.warn('stopGpsEventListener failed', { err: (err as Error).message });
+  }
+  try {
+    wss.close();
+  } catch (err) {
+    logger.warn('wss.close failed', { err: (err as Error).message });
+  }
+  httpServer.close(() => {
+    logger.info('HTTP server closed; exiting');
+    process.exit(0);
+  });
+  // Hard-exit after 10s if anything refuses to close.
+  setTimeout(() => {
+    logger.warn('Forcing process exit after shutdown timeout');
+    process.exit(1);
+  }, 10_000).unref();
+}
+process.on('SIGTERM', () => void gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => void gracefulShutdown('SIGINT'));
+
+// Re-export wsHealth so future endpoints (or operator scripts) can poke at
+// "how many WS clients are connected right now" without importing wsServer
+// directly.
+export { wsHealth };
 
 export default app;

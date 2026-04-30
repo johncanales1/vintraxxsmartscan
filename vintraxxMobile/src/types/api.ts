@@ -167,6 +167,10 @@ export interface ReportPollResponse {
   status: ReportStatus;
   data?: FullReportData;
   message?: string;
+  /** Backend's getReport() returns the failure cause as `error` (matches the
+   *  global `errorHandler` shape); callers must read both `message` and
+   *  `error` to surface the real reason. (Bug #H4) */
+  error?: string;
 }
 
 // ================================================================

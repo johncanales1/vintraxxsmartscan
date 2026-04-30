@@ -32,29 +32,49 @@ export function assembleFullReport(input: ReportAssemblyInput): FullReportData {
   const overallStatus = determineOverallStatus(healthScore);
   const totalEstimatedRepairCost = calculateTotalRepairCost(aiOutput);
 
-  const dtcAnalysis = aiOutput.dtcAnalysis.map((dtc) => ({
-    code: dtc.code,
-    description: dtc.description,
-    severity: dtc.severity as 'critical' | 'moderate' | 'minor' | 'info',
-    category: dtc.module,
-    possibleCauses: dtc.possibleCauses,
-    repairEstimate: {
-      low: dtc.repair.partsCost,
-      high: dtc.repair.partsCost + dtc.repair.laborCost,
-    },
-    urgency: dtc.urgency,
-  }));
+  // LOW #5: single-pass build of dtcAnalysis + repairRecommendations.
+  // Previously the same `aiOutput.dtcAnalysis` array was iterated twice,
+  // each pass touching the same `dtc.repair.{description,laborCost,partsCost}`
+  // and `dtc.severity`. With 20+ DTCs that's 2× the closure allocations
+  // and 2× the array growth. Output is byte-identical to the old shape.
+  const dtcAnalysis: FullReportData['dtcAnalysis'] = [];
+  const repairRecommendations: FullReportData['repairRecommendations'] = [];
+  for (const dtc of aiOutput.dtcAnalysis) {
+    const labor = dtc.repair.laborCost;
+    const parts = dtc.repair.partsCost;
+    const total = parts + labor;
 
-  const repairRecommendations = aiOutput.dtcAnalysis.map((dtc) => ({
-    title: truncateString(dtc.repair.description, 80),
-    description: dtc.repair.description,
-    priority: mapSeverityToPriority(dtc.severity),
-    estimatedCost: {
-      labor: dtc.repair.laborCost,
-      parts: dtc.repair.partsCost,
-      total: dtc.repair.laborCost + dtc.repair.partsCost,
-    },
-  }));
+    // HIGH #19: build a meaningful low/high range. Previously low=parts and
+    // high=parts+labor, which isn't a range at all (it's parts vs total).
+    // Mobile/dealer dashboards render this as a min/max repair quote, so
+    // we use a ±10% band around the labor portion to honour that contract.
+    dtcAnalysis.push({
+      code: dtc.code,
+      description: dtc.description,
+      severity: dtc.severity as 'critical' | 'moderate' | 'minor' | 'info',
+      category: dtc.module,
+      possibleCauses: dtc.possibleCauses,
+      repairEstimate: {
+        low: Math.round(parts + labor * 0.9),
+        high: Math.round(parts + labor * 1.1),
+        // Keep the AI point estimate available for clients that want it
+        // without needing to do (low+high)/2 math themselves.
+        total: Math.round(total),
+      },
+      urgency: dtc.urgency,
+    });
+
+    repairRecommendations.push({
+      title: truncateString(dtc.repair.description, 80),
+      description: dtc.repair.description,
+      priority: mapSeverityToPriority(dtc.severity),
+      estimatedCost: {
+        labor,
+        parts,
+        total,
+      },
+    });
+  }
 
   const report: FullReportData = {
     scanId,

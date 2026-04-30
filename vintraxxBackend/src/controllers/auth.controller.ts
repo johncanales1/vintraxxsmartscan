@@ -45,8 +45,12 @@ export async function register(req: Request, res: Response, next: NextFunction):
 
 export async function login(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { email, password, isDealer, pricePerLaborHour } = req.body;
-    const result = await authService.login(email, password, isDealer, pricePerLaborHour);
+    const { email, password } = req.body;
+    // CRITICAL #1: do NOT accept isDealer / pricePerLaborHour from the body.
+    // Allowing the client to flip its own dealer flag at login was a privilege
+    // escalation. Dealer status is now granted only at registration or via
+    // /admin/users/:id. The schema rejects extra fields with a validation error.
+    const result = await authService.login(email, password);
     res.json({ success: true, user: result.user, token: result.token });
   } catch (error) {
     next(error);

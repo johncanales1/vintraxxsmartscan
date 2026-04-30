@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { api } from './api';
+import { gpsAdminWs } from './gpsAdminWs';
 
 interface AdminUser {
   id: string;
@@ -49,6 +50,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    // Tear down the realtime socket BEFORE we drop the token so the close
+    // frame can use the still-valid auth context if the server cares.
+    gpsAdminWs.disconnect();
     localStorage.removeItem('admin_token');
     setTokenState(null);
     setAdmin(null);

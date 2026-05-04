@@ -1,48 +1,26 @@
 {
   "project_info": {
-    "project_number": "701476871517",
-    "project_id": "vintraxx-smartscan",
-    "storage_bucket": "vintraxx-smartscan.appspot.com"
+    "project_number": "507991833503",
+    "project_id": "smartscan-gps-project",
+    "storage_bucket": "smartscan-gps-project.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:701476871517:android:abcdef1234567890",
+        "mobilesdk_app_id": "1:507991833503:android:afd52ba43dc36ab1565baa",
         "android_client_info": {
           "package_name": "com.vtsmartscan"
         }
       },
-      "oauth_client": [
-        {
-          "client_id": "701476871517-for6b5esr0itht4cltqh2vmfhb07mjac.apps.googleusercontent.com",
-          "client_type": 3
-        },
-        {
-          "client_id": "701476871517-2h0qbn3hiovpp5mjlqu907op6rgktnf0.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.vtsmartscan",
-            "certificate_hash": "0000000000000000000000000000000000000000"
-          }
-        },
-        {
-          "client_id": "701476871517-2h0qbn3hiovpp5mjlqu907op6rgktnf0.apps.googleusercontent.com",
-          "client_type": 3
-        }
-      ],
+      "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDx8nZ2Y3X4W5V6U7I8J9K0L1M2N3O4P5Q"
+          "current_key": "AIzaSyB072_WuBUu7Lv2REyzPjyMk9KTiNBU3ag"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": [
-            {
-              "client_id": "701476871517-for6b5esr0itht4cltqh2vmfhb07mjac.apps.googleusercontent.com",
-              "client_type": 3
-            }
-          ]
+          "other_platform_oauth_client": []
         }
       }
     }

@@ -43,14 +43,9 @@ const DAMAGE_ZONES = [
   { id: "rearBumper", title: "Rear Bumper", style: { left: '30%', top: '88%', width: '40%', height: '6%' } },
 ];
 
-function getRatingColor(rating: string | null) {
-  switch (rating) {
-    case 'good': return 'bg-emerald-500';
-    case 'fair': return 'bg-amber-500';
-    case 'poor': return 'bg-red-500';
-    default: return 'bg-gray-300 dark:bg-gray-600';
-  }
-}
+// `getRatingColor` used to render a dot colour next to each panel but the
+// design moved to pill badges only — see `getRatingBadgeStyle` below. The
+// dot helper was left dangling; removed to keep this file honest.
 
 function getRatingBadgeStyle(rating: string | null) {
   switch (rating) {

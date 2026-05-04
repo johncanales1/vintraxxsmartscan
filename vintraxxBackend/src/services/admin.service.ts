@@ -138,11 +138,36 @@ export async function verifyAdminPassword(adminId: string, password: string) {
 
 // ── Users CRUD ────────────────────────────────────────────────────────────────
 
+/**
+ * Explicit `select` projection for User rows that are safe to return to the
+ * admin UI. We deliberately OMIT `passwordHash`, `googleId`, `microsoftId`
+ * and `originalLogoUrl` — bcrypt hashes aren't plaintext but still give an
+ * attacker an offline brute-force target if a session is ever compromised,
+ * and the two OAuth provider ids are internal-only linkage keys that the UI
+ * never needs. All list/detail endpoints reuse this to keep the shape
+ * consistent.
+ */
+const SAFE_USER_SELECT = {
+  id: true,
+  email: true,
+  fullName: true,
+  authProvider: true,
+  isDealer: true,
+  pricePerLaborHour: true,
+  logoUrl: true,
+  qrCodeUrl: true,
+  maxScannerDevices: true,
+  maxVins: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
 export async function getUsers(type?: 'dealer' | 'regular') {
   const where = type === 'dealer' ? { isDealer: true } : type === 'regular' ? { isDealer: false } : {};
   return prisma.user.findMany({
     where,
-    include: {
+    select: {
+      ...SAFE_USER_SELECT,
       // gpsTerminals count powers the "📡 N GPS devices" chip on the
       // admin's Dealer/Regular cards. Cheap addition (Prisma resolves it
       // in the same join Group) and zero impact for users with none.
@@ -162,7 +187,8 @@ export async function getUsers(type?: 'dealer' | 'regular') {
 export async function getUserDetail(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    include: {
+    select: {
+      ...SAFE_USER_SELECT,
       scans: {
         include: { fullReport: true },
         orderBy: { receivedAt: 'desc' },
@@ -175,48 +201,62 @@ export async function getUserDetail(userId: string) {
   return user;
 }
 
+/**
+ * Normalise a logo/QR payload. If the value is a `data:image/...` URL, the
+ * base64 bytes are decoded and persisted to disk (returning the stored
+ * URL); otherwise the value is left untouched. `null` explicitly clears
+ * the field (used by the edit form to remove a logo).
+ */
+function normaliseImageField(
+  value: string | null | undefined,
+  dir: string,
+  filenamePrefix: string,
+): string | null | undefined {
+  if (value === undefined) return undefined; // field not provided — don't touch
+  if (value === null) return null;            // explicit clear
+  if (value.startsWith('data:image/')) {
+    return processBase64Image(value, dir, `${filenamePrefix}-${Date.now()}`);
+  }
+  return value;
+}
+
 export async function createUser(data: {
   email: string;
   password: string;
+  fullName?: string;
   isDealer?: boolean;
   pricePerLaborHour?: number;
-  logoUrl?: string;
-  qrCodeUrl?: string;
+  logoUrl?: string | null;
+  qrCodeUrl?: string | null;
+  maxScannerDevices?: number | null;
+  maxVins?: number | null;
 }) {
   const existing = await prisma.user.findUnique({ where: { email: data.email } });
   if (existing) throw new AppError('Email already exists', 409);
 
   const passwordHash = await bcrypt.hash(data.password, APP_CONSTANTS.BCRYPT_SALT_ROUNDS);
-
-  let processedLogoUrl: string | null = null;
-  let processedQrCodeUrl: string | null = null;
-
-  if (data.logoUrl && data.logoUrl.startsWith('data:image/')) {
-    processedLogoUrl = processBase64Image(data.logoUrl, LOGO_DIR, `admin-${Date.now()}`);
-  } else if (data.logoUrl) {
-    processedLogoUrl = data.logoUrl;
-  }
-
-  if (data.qrCodeUrl && data.qrCodeUrl.startsWith('data:image/')) {
-    processedQrCodeUrl = processBase64Image(data.qrCodeUrl, QR_CODE_DIR, `admin-qr-${Date.now()}`);
-  } else if (data.qrCodeUrl) {
-    processedQrCodeUrl = data.qrCodeUrl;
-  }
+  const logoUrl = normaliseImageField(data.logoUrl, LOGO_DIR, 'admin') ?? null;
+  const qrCodeUrl = normaliseImageField(data.qrCodeUrl, QR_CODE_DIR, 'admin-qr') ?? null;
 
   return prisma.user.create({
     data: {
       email: data.email,
+      fullName: data.fullName,
       passwordHash,
       isDealer: data.isDealer ?? false,
       pricePerLaborHour: data.pricePerLaborHour,
-      logoUrl: processedLogoUrl,
-      qrCodeUrl: processedQrCodeUrl,
+      logoUrl,
+      qrCodeUrl,
+      maxScannerDevices: data.maxScannerDevices ?? undefined,
+      maxVins: data.maxVins ?? undefined,
     },
+    select: { ...SAFE_USER_SELECT },
   });
 }
 
 export async function updateUser(userId: string, data: {
   email?: string;
+  fullName?: string | null;
   isDealer?: boolean;
   pricePerLaborHour?: number | null;
   logoUrl?: string | null;
@@ -226,7 +266,33 @@ export async function updateUser(userId: string, data: {
 }) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new AppError('User not found', 404);
-  return prisma.user.update({ where: { id: userId }, data });
+
+  // Normalise any image payload coming in. Before this fix `updateUser`
+  // stored `data:image/...` blobs verbatim in the DB because only
+  // `createUser` processed them — a latent foot-gun the first time an
+  // "edit logo" UI shipped.
+  const logoUrl = normaliseImageField(data.logoUrl, LOGO_DIR, 'admin');
+  const qrCodeUrl = normaliseImageField(data.qrCodeUrl, QR_CODE_DIR, 'admin-qr');
+
+  try {
+    return await prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...data,
+        ...(logoUrl !== undefined ? { logoUrl } : {}),
+        ...(qrCodeUrl !== undefined ? { qrCodeUrl } : {}),
+      },
+      select: { ...SAFE_USER_SELECT },
+    });
+  } catch (err: any) {
+    // P2002 = unique-constraint violation. The only unique field we allow
+    // changing here is `email`, so surface that as a clean 409 instead of
+    // a generic 500 with an inscrutable Prisma stack.
+    if (err?.code === 'P2002') {
+      throw new AppError('Email already in use', 409);
+    }
+    throw err;
+  }
 }
 
 export async function deleteUser(userId: string) {

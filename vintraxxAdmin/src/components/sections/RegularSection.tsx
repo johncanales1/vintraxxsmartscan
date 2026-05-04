@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { api, User, UserDetail } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import UserDetailModal from '@/components/modals/UserDetailModal';
 import CreateUserModal from '@/components/modals/CreateUserModal';
 import ConfirmDeleteModal from '@/components/modals/ConfirmDeleteModal';
@@ -21,6 +22,10 @@ interface RegularSectionProps {
 }
 
 export default function RegularSection({ onNavigate }: RegularSectionProps = {}) {
+  const { admin } = useAuth();
+  // DELETE /admin/users/:id is gated by `requireSuperAdmin` on the backend —
+  // hide the trash icon for non-super admins so they don't eat a 403.
+  const canDelete = !!admin?.superAdmin;
   const [users, setUsers] = useState<User[]>([]);
   const [filtered, setFiltered] = useState<User[]>([]);
   const [search, setSearch] = useState('');
@@ -127,9 +132,11 @@ export default function RegularSection({ onNavigate }: RegularSectionProps = {})
                   <button onClick={() => openDetail(user.id)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-blue-500 transition-all">
                     <Eye size={16} />
                   </button>
-                  <button onClick={() => setDeleteTarget({ id: user.id, email: user.email })} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-red-500 transition-all">
-                    <Trash2 size={16} />
-                  </button>
+                  {canDelete && (
+                    <button onClick={() => setDeleteTarget({ id: user.id, email: user.email })} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-red-500 transition-all">
+                      <Trash2 size={16} />
+                    </button>
+                  )}
                 </div>
               </div>
 

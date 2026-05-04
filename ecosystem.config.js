@@ -23,15 +23,16 @@ module.exports = {
     },
     {
       name: 'vintraxx-frontend',
-      script: './.next/standalone/server.js',
+      script: 'node',
+      args: ['.next/standalone/server.js'],
       cwd: '/home/ec2-user/vintraxxsmartscan/vintraxxFrontend',
-      interpreter: 'node',
+      interpreter: 'none',
       exec_mode: 'fork',
       env: {
         NODE_ENV: 'production',
         PORT: 3001,
-        HOSTNAME: '0.0.0.0',
-        NEXT_PUBLIC_API_URL: 'https://api.vintraxx.com',
+        HOSTNAME: '127.0.0.1',
+        NEXT_PUBLIC_API_BASE_URL: 'https://api.vintraxx.com/api/v1',
         NEXT_PUBLIC_FRONTEND_URL: 'https://dev.vintraxx.com'
       },
       instances: 1,

@@ -10,7 +10,7 @@
 
 import { useEffect, useState } from 'react';
 import { api, ProvisionTerminalBody, User } from '@/lib/api';
-import { X, Plus, Save, UserPlus, Search } from 'lucide-react';
+import { X, Plus, UserPlus, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Props {
@@ -65,15 +65,24 @@ export default function ProvisionTerminalModal({ onClose, onCreated }: Props) {
   ) => setForm((f) => ({ ...f, [key]: value }));
 
   const handleSubmit = async () => {
-    if (!form.imei.trim()) {
+    const trimmedImei = form.imei.trim();
+    if (!trimmedImei) {
       toast.error('IMEI is required');
+      return;
+    }
+    // Mirror the backend Zod constraint locally so the operator gets
+    // immediate feedback instead of a round-trip 400. JT/T-808 IMEIs are
+    // strictly 15 numeric digits; the regex also rejects accidental
+    // whitespace/letters that the keyboard sometimes lets through.
+    if (!/^\d{15}$/.test(trimmedImei)) {
+      toast.error('IMEI must be exactly 15 digits');
       return;
     }
     setSaving(true);
     try {
       // Strip empty strings — the backend prefers undefined for omitted
       // optional fields so it doesn't store empty rows.
-      const cleaned: ProvisionTerminalBody = { imei: form.imei.trim() };
+      const cleaned: ProvisionTerminalBody = { imei: trimmedImei };
       const optionalKeys: (keyof ProvisionTerminalBody)[] = [
         'phoneNumber', 'iccid', 'manufacturerId', 'terminalModel',
         'hardwareVersion', 'firmwareVersion', 'vehicleVin', 'vehicleMake',

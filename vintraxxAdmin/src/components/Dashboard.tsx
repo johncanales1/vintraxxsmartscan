@@ -69,13 +69,19 @@ export default function Dashboard() {
     gpsAdminWs.connect();
   }, []);
 
-  // Refresh the unack alarm count on the sidebar badge whenever the WS
-  // delivers a new alarm or an ack. We re-fetch a tiny stats payload
-  // rather than mutate locally because acks can be done by other admins.
+  // Refresh the unack alarm count on the sidebar badge AND the Recent
+  // Alarms list whenever the WS delivers a new alarm or an ack. We
+  // re-fetch stats rather than mutate locally because acks can be done by
+  // other admins. The recent-alarms list was previously frozen between
+  // mount and page reload; that blind-spot is unacceptable on an alarms
+  // console, so we fan out a second tiny fetch alongside.
   useEffect(() => {
     const refresh = () => {
       api.getGpsOverview()
         .then((res) => setGpsStats(res.stats))
+        .catch(() => {});
+      api.listGpsAlarms(1, 5)
+        .then((res) => setRecentAlarms(res.alarms))
         .catch(() => {});
     };
     const offOpen = gpsAdminWs.on('alarm.opened', refresh);
@@ -149,9 +155,14 @@ export default function Dashboard() {
     newTab: Tab,
     options?: { historyTab?: 'scans' | 'appraisals' | 'dtc'; ownerUserId?: string; terminalId?: string },
   ) => {
-    if (options?.historyTab) setHistoryInitialTab(options.historyTab);
-    if (options?.ownerUserId !== undefined) setTerminalsInitialOwnerId(options.ownerUserId);
-    if (options?.terminalId !== undefined) setAlarmsInitialTerminalId(options.terminalId);
+    // Reset sticky deep-link state whenever a field is *not* explicitly
+    // overridden. Without this, clicking the Terminals sidebar item after
+    // having drilled in from a dealer card would silently keep the list
+    // filtered to that dealer. Each field is independent so a caller can
+    // deep-link one dimension at a time.
+    setHistoryInitialTab(options?.historyTab ?? 'scans');
+    setTerminalsInitialOwnerId(options?.ownerUserId);
+    setAlarmsInitialTerminalId(options?.terminalId);
     setTab(newTab);
     setSidebarOpen(false);
   };
@@ -374,17 +385,10 @@ function OverviewTab({
       ]
     : [];
 
-  const colorMap: Record<string, string> = {
-    blue: 'from-blue-500 to-blue-600',
-    emerald: 'from-emerald-500 to-emerald-600',
-    violet: 'from-violet-500 to-violet-600',
-    amber: 'from-amber-500 to-amber-600',
-    rose: 'from-rose-500 to-rose-600',
-    cyan: 'from-cyan-500 to-cyan-600',
-    teal: 'from-teal-500 to-teal-600',
-    indigo: 'from-indigo-500 to-indigo-600',
-  };
-
+  // `colorMap` (the gradient variant) used to sit here alongside
+  // `bgColorMap` but has been unused since the OverviewCard switched to
+  // the flat bg-only palette. Keeping the bg-only map which is still
+  // consumed below.
   const bgColorMap: Record<string, string> = {
     blue: 'bg-blue-50 dark:bg-blue-500/10',
     emerald: 'bg-emerald-50 dark:bg-emerald-500/10',

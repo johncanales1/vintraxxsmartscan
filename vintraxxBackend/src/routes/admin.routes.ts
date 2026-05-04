@@ -28,6 +28,10 @@ import {
   adminBulkAckAlarmsSchema,
   adminListAuditLogsQuerySchema,
 } from '../schemas/gps-admin.schema';
+import {
+  createUserBodySchema,
+  updateUserBodySchema,
+} from '../schemas/admin-user.schema';
 
 const router = Router();
 
@@ -51,9 +55,11 @@ router.get('/dashboard', adminCtrl.dashboardStats);
 // Users CRUD
 router.get('/users', adminCtrl.listUsers);
 router.get('/users/:id', adminCtrl.getUserDetail);
-router.post('/users', adminCtrl.createUser);
-router.put('/users/:id', adminCtrl.updateUser);
-router.delete('/users/:id', adminCtrl.deleteUser);
+router.post('/users', validateRequest(createUserBodySchema), adminCtrl.createUser);
+router.put('/users/:id', validateRequest(updateUserBodySchema), adminCtrl.updateUser);
+// Destructive user delete cascades through scans/reports/devices — gate to
+// super-admins only, matching the symmetric `DELETE /gps/terminals/:id`.
+router.delete('/users/:id', requireSuperAdmin, adminCtrl.deleteUser);
 
 // Scans
 router.get('/scans', adminCtrl.listScans);

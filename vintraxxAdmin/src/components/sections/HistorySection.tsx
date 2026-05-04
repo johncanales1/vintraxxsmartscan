@@ -60,8 +60,23 @@ export default function HistorySection({ initialTab = 'scans' }: HistorySectionP
   const [composeSending, setComposeSending] = useState(false);
   const [composeSent, setComposeSent] = useState(false);
 
-  useEffect(() => { loadScans(); }, [page]);
-  useEffect(() => { loadAppraisals(); }, [appraisalPage]);
+  // Lazy-load tabs: only fetch the slow paginated lists when their tab is
+  // actually visible. The previous implementation fired both endpoints on
+  // every mount even when the admin only wanted DTC Events — wasted DB
+  // traffic and made the modal feel sluggish on slower connections.
+  useEffect(() => {
+    if (activeTab === 'scans') loadScans();
+  }, [page, activeTab]);
+  useEffect(() => {
+    if (activeTab === 'appraisals') loadAppraisals();
+  }, [appraisalPage, activeTab]);
+
+  // Mirror prop changes into state so re-navigating to this section with a
+  // different `initialTab` (e.g. from the Dashboard "DTC Events" deep-link)
+  // actually switches tabs instead of silently ignoring the new prop.
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   useEffect(() => {
     const q = search.toLowerCase();

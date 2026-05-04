@@ -1,12 +1,19 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { api } from './api';
+import { api, UnauthorizedError } from './api';
 import { gpsAdminWs } from './gpsAdminWs';
 
 interface AdminUser {
   id: string;
   email: string;
+  /**
+   * True for the seeded super-admin. The backend gates destructive routes
+   * (e.g. DELETE /admin/users/:id, DELETE /admin/gps/terminals/:id) behind
+   * `requireSuperAdmin`, so the UI must hide those buttons for non-super
+   * admins to avoid surprise 403s.
+   */
+  superAdmin?: boolean;
 }
 
 interface AuthContextType {
@@ -32,9 +39,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setTokenState(stored);
       api.getProfile()
         .then((res) => setAdmin(res.admin))
-        .catch(() => {
-          localStorage.removeItem('admin_token');
-          setTokenState(null);
+        .catch((err) => {
+          // Only clear the token on a genuine auth failure. Network hiccups,
+          // 5xx, or CORS preflight failures shouldn't force the admin to
+          // log back in — the next request will retry naturally.
+          if (err instanceof UnauthorizedError) {
+            localStorage.removeItem('admin_token');
+            setTokenState(null);
+          }
         })
         .finally(() => setIsLoading(false));
     } else {

@@ -75,11 +75,31 @@ export default function RealtimePill() {
           : s,
       );
     });
+    // Decrement the "unacknowledged" counter when an alarm is closed or
+    // acknowledged. Without these listeners the pill's badge only ever grew
+    // between 60s poll intervals — it was inflated until the next sync.
+    const decrementUnacked = () => {
+      setStats((s) =>
+        s
+          ? {
+              ...s,
+              alarms: {
+                ...s.alarms,
+                unacknowledged: Math.max(0, s.alarms.unacknowledged - 1),
+              },
+            }
+          : s,
+      );
+    };
+    const offAlarmClosed = gpsAdminWs.on('alarm.closed', decrementUnacked);
+    const offAlarmAcked = gpsAdminWs.on('alarm.acknowledged', decrementUnacked);
     return () => {
       offState();
       offUp();
       offDown();
       offAlarm();
+      offAlarmClosed();
+      offAlarmAcked();
     };
   }, []);
 

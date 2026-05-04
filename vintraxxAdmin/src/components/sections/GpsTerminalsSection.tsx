@@ -15,6 +15,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { api, GpsTerminal } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { gpsAdminWs } from '@/lib/gpsAdminWs';
 import {
   fmtRelative,
@@ -42,8 +43,20 @@ export default function GpsTerminalsSection({
   initialOwnerUserId,
   onClearInitialOwner,
 }: Props) {
+  const { admin } = useAuth();
+  // Terminal delete is gated by `requireSuperAdmin` on the backend — hide the
+  // button for non-super admins instead of surfacing a 403 after they click.
+  const canDelete = !!admin?.superAdmin;
   const [terminals, setTerminals] = useState<GpsTerminal[]>([]);
   const [search, setSearch] = useState('');
+  // Debounced mirror — `search` updates on every keystroke so the input
+  // stays responsive, but the network request only fires after 350ms of
+  // idle. Without this every keystroke hit `/admin/gps/terminals` once.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(id);
+  }, [search]);
   const [filter, setFilter] = useState<Filter>('all');
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -51,6 +64,15 @@ export default function GpsTerminalsSection({
   const [total, setTotal] = useState(0);
   const [ownerUserId, setOwnerUserId] = useState<string | undefined>(initialOwnerUserId);
   const [ownerUserName, setOwnerUserName] = useState<string | null>(null);
+
+  // Mirror prop changes into state. Without this, re-navigating from e.g.
+  // DealerA's card → Terminals → Dealers → DealerB's card → Terminals would
+  // keep the section filtered on DealerA because `useState` seeds only once.
+  useEffect(() => {
+    setOwnerUserId(initialOwnerUserId);
+    if (!initialOwnerUserId) setOwnerUserName(null);
+    if (initialOwnerUserId) setPage(1);
+  }, [initialOwnerUserId]);
 
   const [showProvision, setShowProvision] = useState(false);
   const [reassignTarget, setReassignTarget] = useState<GpsTerminal | null>(null);
@@ -84,7 +106,7 @@ export default function GpsTerminalsSection({
     try {
       const res = await api.listGpsTerminals(page, 30, {
         filter: filter === 'all' ? undefined : filter,
-        search: search.trim() || undefined,
+        search: debouncedSearch.trim() || undefined,
         ownerUserId,
       });
       setTerminals(res.terminals);
@@ -95,7 +117,7 @@ export default function GpsTerminalsSection({
     } finally {
       setLoading(false);
     }
-  }, [page, filter, search, ownerUserId]);
+  }, [page, filter, debouncedSearch, ownerUserId]);
 
   useEffect(() => {
     load();
@@ -248,7 +270,7 @@ export default function GpsTerminalsSection({
               onView={() => setDetailId(t.id)}
               onReassign={() => setReassignTarget(t)}
               onUnpair={() => setUnpairTarget(t)}
-              onDelete={() => setDeleteTarget(t)}
+              onDelete={canDelete ? () => setDeleteTarget(t) : undefined}
             />
           ))}
         </div>
@@ -304,6 +326,8 @@ export default function GpsTerminalsSection({
           message={`Unpair terminal ${unpairTarget.imei} from ${unpairTarget.ownerUser?.email || 'its owner'}? The device will keep its history but be detached.`}
           onConfirm={handleUnpair}
           onCancel={() => setUnpairTarget(null)}
+          destructive={false}
+          actionLabel="Unpair"
         />
       )}
 
@@ -338,7 +362,8 @@ function TerminalCard({
   onView: () => void;
   onReassign: () => void;
   onUnpair: () => void;
-  onDelete: () => void;
+  /** `undefined` when the current admin isn't a super-admin — hides the button. */
+  onDelete?: () => void;
 }) {
   const ownerLabel = terminal.ownerUser?.fullName || terminal.ownerUser?.email || 'Unpaired';
 
@@ -377,9 +402,11 @@ function TerminalCard({
               <Unlink size={16} />
             </button>
           )}
-          <button onClick={onDelete} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-red-500 transition-all" title="Delete">
-            <Trash2 size={16} />
-          </button>
+          {onDelete && (
+            <button onClick={onDelete} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-red-500 transition-all" title="Delete">
+              <Trash2 size={16} />
+            </button>
+          )}
         </div>
       </div>
 

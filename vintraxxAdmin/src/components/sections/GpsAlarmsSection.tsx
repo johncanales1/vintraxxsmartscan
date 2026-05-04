@@ -75,6 +75,13 @@ export default function GpsAlarmsSection({
   const [total, setTotal] = useState(0);
 
   const [search, setSearch] = useState('');
+  // 350ms debounce on the network-bound search so each keystroke doesn't
+  // hit /admin/gps/alarms. The visible input still updates instantly.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(id);
+  }, [search]);
   const [severity, setSeverity] = useState<GpsAlarmSeverity | undefined>();
   const [status, setStatus] = useState<GpsAlarmStatus | undefined>('OPEN');
   const [alarmType, setAlarmType] = useState<GpsAlarmType | undefined>();
@@ -93,7 +100,7 @@ export default function GpsAlarmsSection({
         alarmType,
         ownerUserId: initialOwnerUserId,
         terminalId: initialTerminalId,
-        search: search.trim() || undefined,
+        search: debouncedSearch.trim() || undefined,
       });
       setAlarms(res.alarms);
       setTotalPages(res.totalPages);
@@ -113,7 +120,7 @@ export default function GpsAlarmsSection({
     } finally {
       setLoading(false);
     }
-  }, [page, severity, status, alarmType, initialOwnerUserId, initialTerminalId, search]);
+  }, [page, severity, status, alarmType, initialOwnerUserId, initialTerminalId, debouncedSearch]);
 
   useEffect(() => {
     load();

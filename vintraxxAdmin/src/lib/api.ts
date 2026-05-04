@@ -14,6 +14,36 @@ function getToken(): string | null {
   return localStorage.getItem('admin_token');
 }
 
+/**
+ * Internal error thrown for HTTP 401. Consumers can narrow via `name` when
+ * they want to distinguish "token expired / invalid" from a generic error.
+ */
+export class UnauthorizedError extends Error {
+  name = 'UnauthorizedError';
+}
+
+/**
+ * Force-log-out handler. Invoked once when `request<T>` receives a 401 so
+ * the admin isn't left in a broken-session UI where every subsequent toast
+ * says "Unauthorized". Uses a guard flag to ensure only one reload fires
+ * even if a burst of requests all 401 at once.
+ */
+let authFailureHandled = false;
+function forceLogoutOn401() {
+  if (typeof window === 'undefined') return;
+  if (authFailureHandled) return;
+  authFailureHandled = true;
+  try {
+    localStorage.removeItem('admin_token');
+  } catch {
+    // ignore
+  }
+  // Hard reload — simpler and safer than trying to notify the AuthProvider
+  // via a context from a plain function. The next mount will see no token
+  // and render the LoginPage.
+  window.location.reload();
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
@@ -22,11 +52,41 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const res = await fetch(`${API_URL}${path}`, { ...options, headers });
-  const data = await res.json();
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, { ...options, headers });
+  } catch (err) {
+    // Network / CORS / DNS failures surface here. Keep the original message
+    // so the developer console retains context, but present something
+    // readable to the user.
+    throw new Error(`Network error — check your connection (${(err as Error).message})`);
+  }
+
+  // Read the body as text first so we can gracefully handle non-JSON
+  // responses (e.g. an nginx 502 page, a load-balancer 504, or an empty
+  // 204). `res.json()` on non-JSON throws a cryptic SyntaxError otherwise.
+  const text = await res.text();
+  let data: any = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { error: text.slice(0, 500) };
+    }
+  }
 
   if (!res.ok) {
-    throw new Error(data.error || `Request failed: ${res.status}`);
+    // Join Zod `details` into the surfaced message so the admin actually
+    // sees which field failed validation.
+    let message: string = data.error || `Request failed: ${res.status}`;
+    if (Array.isArray(data.details) && data.details.length) {
+      message = `${message}: ${data.details.join(', ')}`;
+    }
+    if (res.status === 401) {
+      forceLogoutOn401();
+      throw new UnauthorizedError(message);
+    }
+    throw new Error(message);
   }
   return data;
 }
@@ -34,13 +94,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 // Auth
 export const api = {
   login: (email: string, password: string) =>
-    request<{ success: boolean; admin: { id: string; email: string }; token: string }>('/login', {
+    request<{ success: boolean; admin: { id: string; email: string; superAdmin?: boolean }; token: string }>('/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     }),
 
   getProfile: () =>
-    request<{ success: boolean; admin: { id: string; email: string; createdAt: string } }>('/profile'),
+    request<{ success: boolean; admin: { id: string; email: string; createdAt: string; superAdmin?: boolean } }>('/profile'),
 
   changePassword: (currentPassword: string, newPassword: string) =>
     request<{ success: boolean }>('/password', {
@@ -55,7 +115,7 @@ export const api = {
     }),
 
   verifyEmailChange: (newEmail: string, otp: string) =>
-    request<{ success: boolean; admin: { id: string; email: string }; token: string }>('/email-change/verify', {
+    request<{ success: boolean; admin: { id: string; email: string; superAdmin?: boolean }; token: string }>('/email-change/verify', {
       method: 'POST',
       body: JSON.stringify({ newEmail, otp }),
     }),
@@ -77,7 +137,7 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  updateUser: (id: string, data: Partial<CreateUserData>) =>
+  updateUser: (id: string, data: UpdateUserData) =>
     request<{ success: boolean; user: User }>(`/users/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -462,10 +522,10 @@ export interface User {
 }
 
 export interface UserDetail extends Omit<User, '_count'> {
-  passwordHash: string | null;
-  googleId: string | null;
-  microsoftId: string | null;
-  originalLogoUrl: string | null;
+  // `passwordHash`, `googleId`, `microsoftId`, `originalLogoUrl` used to be
+  // here but the backend now strips them from the payload (admin service
+  // SAFE_USER_SELECT). Leaving them off the type forces any stale UI code
+  // that relied on them to fail at compile time.
   scans: ScanDetail[];
   usedScannerDevices: ScannerDevice[];
   usedVins: VinUsage[];
@@ -618,7 +678,7 @@ export interface ServiceAppointment {
 
 export interface CreateUserData {
   email: string;
-  password?: string;
+  password: string;
   fullName?: string;
   isDealer?: boolean;
   pricePerLaborHour?: number;
@@ -627,6 +687,15 @@ export interface CreateUserData {
   maxScannerDevices?: number | null;
   maxVins?: number | null;
 }
+
+/**
+ * `PUT /admin/users/:id` does NOT accept a `password`. The backend used to
+ * silently drop it — which made the admin think they had changed the
+ * password when nothing had happened. Password changes require a dedicated
+ * flow (forgot-password reset or the user's own settings), so keep the
+ * payload shape honest here.
+ */
+export type UpdateUserData = Omit<Partial<CreateUserData>, 'password'>;
 
 // ── GPS Telemetry types ─────────────────────────────────────────────────────
 //

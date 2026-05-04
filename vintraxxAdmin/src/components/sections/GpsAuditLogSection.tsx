@@ -12,7 +12,7 @@
  * user agent for forensic investigation.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { api, AdminAuditEntry } from '@/lib/api';
 import { fmtRelative } from '@/lib/gpsHelpers';
 import {
@@ -50,17 +50,10 @@ export default function GpsAuditLogSection() {
         targetType: targetType.trim() || undefined,
         statusClass,
       });
-      // Lightweight client-side search across path / admin email so the
-      // operator can grep without going back to the toolbar each time.
-      const q = search.trim().toLowerCase();
-      const filtered = q
-        ? res.entries.filter((e) =>
-            (e.path || '').toLowerCase().includes(q) ||
-            (e.admin?.email || '').toLowerCase().includes(q) ||
-            (e.targetId || '').toLowerCase().includes(q),
-          )
-        : res.entries;
-      setEntries(filtered);
+      // Free-text search is purely client-side (the audit endpoint exposes
+      // no `q` param). Keep the full page in state and derive the filtered
+      // view in `useMemo` so each keystroke doesn't fire a new round-trip.
+      setEntries(res.entries);
       setTotalPages(res.totalPages);
       setTotal(res.total);
     } catch (err: any) {
@@ -68,7 +61,17 @@ export default function GpsAuditLogSection() {
     } finally {
       setLoading(false);
     }
-  }, [page, action, targetType, statusClass, search]);
+  }, [page, action, targetType, statusClass]);
+
+  const filteredEntries = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return entries;
+    return entries.filter((e) =>
+      (e.path || '').toLowerCase().includes(q) ||
+      (e.admin?.email || '').toLowerCase().includes(q) ||
+      (e.targetId || '').toLowerCase().includes(q),
+    );
+  }, [entries, search]);
 
   useEffect(() => {
     load();
@@ -92,7 +95,11 @@ export default function GpsAuditLogSection() {
           />
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm text-gray-500 dark:text-gray-400">{total.toLocaleString()} entries</span>
+          <span className="text-sm text-gray-500 dark:text-gray-400">
+            {search.trim()
+              ? `${filteredEntries.length.toLocaleString()} of ${total.toLocaleString()}`
+              : `${total.toLocaleString()} entries`}
+          </span>
           <button
             onClick={() => setFiltersOpen((v) => !v)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all ${
@@ -166,14 +173,14 @@ export default function GpsAuditLogSection() {
             <div key={i} className="h-12 rounded-xl bg-gray-200 dark:bg-gray-700 animate-pulse" />
           ))}
         </div>
-      ) : entries.length === 0 ? (
+      ) : filteredEntries.length === 0 ? (
         <div className="text-center py-16">
           <ShieldCheck size={48} className="mx-auto text-gray-300 dark:text-gray-600 mb-4" />
           <p className="text-gray-500 dark:text-gray-400">No audit entries match your filters</p>
         </div>
       ) : (
         <div className="space-y-1.5">
-          {entries.map((entry) => (
+          {filteredEntries.map((entry) => (
             <AuditRow
               key={entry.id}
               entry={entry}

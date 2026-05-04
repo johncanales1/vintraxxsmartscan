@@ -34,7 +34,7 @@ import {
 } from '@/lib/gpsHelpers';
 import {
   X, MapPin, Activity, AlertTriangle, Bell, Route, Send,
-  Hash, Phone, Cpu, Calendar, RefreshCw, Smartphone, Car, Globe,
+  Hash, Cpu, Calendar, RefreshCw, Smartphone, Car, Globe,
   CheckCircle, ExternalLink, Zap,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -138,9 +138,12 @@ export default function GpsTerminalDetailModal({ terminalId, onClose, onMutated 
       if (e.terminalId === terminalId) loadTerminal();
     });
     const offAlarm = gpsAdminWs.on('alarm.opened', (e) => {
-      if (e.terminalId === terminalId) {
-        setAlarms((prev) => (prev ? prev : prev)); // don't churn; tab refreshes on open
-        if (tab === 'alarms') reloadAlarms();
+      // Only reload the list when the Alarms tab is visible — otherwise
+      // we let the next tab-open re-hydrate from scratch. Previously there
+      // was a dead `setAlarms((p) => (p ? p : p))` statement here that did
+      // nothing; removed.
+      if (e.terminalId === terminalId && tab === 'alarms') {
+        reloadAlarms();
       }
     });
     const offDtc = gpsAdminWs.on('dtc.detected', (e) => {

@@ -255,7 +255,15 @@ export default function ScheduleSection() {
 
       {/* Email Compose Modal */}
       {showEmailCompose && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={closeEmailCompose}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          onClick={() => {
+            // Don't tear the modal down mid-send — the admin would lose the
+            // "Sent!" confirmation and the draft both. Mirrors the
+            // `completing` guard on the complete-appointment modal below.
+            if (!composeSending) closeEmailCompose();
+          }}
+        >
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" />
           <div className="relative w-full max-w-lg bg-white dark:bg-gray-800 rounded-2xl shadow-2xl overflow-hidden animate-scale-in" onClick={e => e.stopPropagation()}>
             <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 px-6 py-4 flex items-center justify-between">

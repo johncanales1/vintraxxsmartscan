@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { ScanDetail, normalizePdfUrl } from '@/lib/api';
-import { X, FileText, ExternalLink, AlertTriangle, CheckCircle, Clock, Car, DollarSign, Activity, Shield } from 'lucide-react';
+import { X, FileText, ExternalLink, AlertTriangle, CheckCircle, Clock, Car, DollarSign } from 'lucide-react';
 
 interface Props {
   scan: ScanDetail | null;
@@ -19,10 +19,24 @@ export default function ScanDetailModal({ scan, loading, onClose }: Props) {
   const repairRecs = (fr?.repairRecommendations || []) as any[];
   const additionalRepairsData = (fr?.additionalRepairsData || []) as any[];
 
-  const fmtCurrency = (val: number | null | undefined) =>
-    val !== null && val !== undefined ? `$${val.toLocaleString()}` : 'N/A';
+  // Defensive coercion: the backend's BigInt/Decimal polyfill normally
+  // serialises numeric DB columns as plain numbers, but if the polyfill
+  // ever regresses (or a future Prisma Decimal column slips in here) the
+  // raw value would be a string and `+` would silently concatenate. This
+  // helper makes the math + formatting tolerant of both shapes.
+  const toNum = (v: unknown): number => {
+    if (typeof v === 'number') return v;
+    if (typeof v === 'string') {
+      const n = parseFloat(v);
+      return Number.isFinite(n) ? n : 0;
+    }
+    return 0;
+  };
 
-  const grandTotal = fr ? (fr.totalReconditioningCost + fr.additionalRepairsCost) : 0;
+  const fmtCurrency = (val: number | string | null | undefined) =>
+    val !== null && val !== undefined ? `$${toNum(val).toLocaleString()}` : 'N/A';
+
+  const grandTotal = fr ? toNum(fr.totalReconditioningCost) + toNum(fr.additionalRepairsCost) : 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[5vh] overflow-y-auto">

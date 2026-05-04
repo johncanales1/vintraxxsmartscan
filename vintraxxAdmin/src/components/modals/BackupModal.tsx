@@ -26,7 +26,24 @@ export default function BackupModal({ onClose }: Props) {
       const res = await fetch(backupUrl, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error('Backup failed');
+      if (!res.ok) {
+        // Pull the real error out of the response body so the admin knows
+        // what happened (e.g. pg_dump missing on server, insufficient disk).
+        // Fall back to the status text if the body isn't JSON.
+        let errMsg = `Backup failed: ${res.status}`;
+        try {
+          const body = await res.json();
+          if (body?.error) errMsg = body.error;
+        } catch {
+          try {
+            const text = await res.text();
+            if (text) errMsg = text.slice(0, 300);
+          } catch {
+            // give up — the status-code message above is good enough.
+          }
+        }
+        throw new Error(errMsg);
+      }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');

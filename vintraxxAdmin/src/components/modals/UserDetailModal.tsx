@@ -8,7 +8,7 @@ import ScanActivityChart from '@/components/charts/ScanActivityChart';
 import { vehicleLabel, statusDotClasses, fmtRelative } from '@/lib/gpsHelpers';
 import {
   X, Mail, Calendar, Smartphone, Car, DollarSign, Globe, Edit2, Save, Trash2,
-  FileText, ExternalLink, Hash, AlertCircle, CheckCircle, Image, Radio, Bell, ChevronRight,
+  FileText, Hash, AlertCircle, CheckCircle, Radio, Bell, ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -30,7 +30,17 @@ interface Props {
   onNavigate?: NavigateFn;
 }
 
-export default function UserDetailModal({ user, loading, onClose, onRefresh, onNavigate }: Props) {
+export default function UserDetailModal({ user: userProp, loading, onClose, onRefresh, onNavigate }: Props) {
+  // Local mirror of the detail so in-modal mutations (e.g. scan delete) can
+  // refresh without tearing down the modal. We render `user ?? userProp` so
+  // until the first in-modal refetch the prop is authoritative.
+  const [localUser, setLocalUser] = useState<UserDetail | null>(null);
+  const user = localUser ?? userProp;
+  useEffect(() => {
+    // Reset when the parent passes a new user (or clears it).
+    setLocalUser(null);
+  }, [userProp?.id]);
+
   const [editing, setEditing] = useState(false);
   const [editData, setEditData] = useState({
     email: '',
@@ -122,13 +132,22 @@ export default function UserDetailModal({ user, loading, onClose, onRefresh, onN
   };
 
   const handleDeleteScan = async () => {
-    if (!scanDeleteTarget) return;
+    if (!scanDeleteTarget || !user) return;
     try {
       await api.deleteScan(scanDeleteTarget.id);
       toast.success('Scan deleted');
       setScanDeleteTarget(null);
+      // Refresh in place so the admin can continue reviewing the same user
+      // instead of being kicked back to the list. `onRefresh` also updates
+      // the parent card counts once we land back there.
+      try {
+        const res = await api.getUserDetail(user.id);
+        setLocalUser(res.user);
+      } catch {
+        // Non-fatal — the stale local state just keeps the deleted row until
+        // the modal is reopened. The parent refresh still happens below.
+      }
       onRefresh();
-      onClose();
     } catch {
       toast.error('Failed to delete scan');
     }

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
-import { Lock, Mail, Shield, Send, CheckCircle } from 'lucide-react';
+import { Lock, Mail, Send, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function SettingsSection() {

@@ -43,6 +43,13 @@ export default function GpsDtcsSection({
   const [total, setTotal] = useState(0);
 
   const [vinQuery, setVinQuery] = useState('');
+  // Debounce the VIN filter so each keystroke doesn't fire a /admin/gps/dtcs
+  // round-trip. The visible input still updates instantly.
+  const [debouncedVin, setDebouncedVin] = useState('');
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedVin(vinQuery), 350);
+    return () => clearTimeout(id);
+  }, [vinQuery]);
   const [milOnly, setMilOnly] = useState(false);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
 
@@ -53,7 +60,7 @@ export default function GpsDtcsSection({
         terminalId: initialTerminalId,
         // The backend's `vin` filter is exact-match upper-cased - we let
         // the user type any case and trim, the controller normalises it.
-        vin: vinQuery.trim() || undefined,
+        vin: debouncedVin.trim() || undefined,
         // Note the field name is `milOnly`, NOT `milOn`. See api.ts.
         milOnly: milOnly || undefined,
       });
@@ -65,7 +72,7 @@ export default function GpsDtcsSection({
     } finally {
       setLoading(false);
     }
-  }, [page, vinQuery, milOnly, initialTerminalId]);
+  }, [page, debouncedVin, milOnly, initialTerminalId]);
 
   useEffect(() => {
     load();

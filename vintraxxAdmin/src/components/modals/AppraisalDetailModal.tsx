@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { AppraisalDetail, normalizePdfUrl } from '@/lib/api';
-import { X, FileText, ExternalLink, Car, DollarSign, TrendingUp, TrendingDown, Minus, Image as ImageIcon, MapPin, ClipboardList } from 'lucide-react';
+import { X, FileText, ExternalLink, Car, TrendingUp, TrendingDown, Minus, Image as ImageIcon, ClipboardList } from 'lucide-react';
 
 interface Props {
   appraisal: AppraisalDetail | null;

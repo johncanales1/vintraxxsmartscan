@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { api } from '@/lib/api';
-import { X, UserPlus, Upload, Camera, Image as ImageIcon } from 'lucide-react';
+import { X, UserPlus, Upload, Camera } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Props {

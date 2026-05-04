@@ -61,9 +61,17 @@ export default function GpsFleetMapSection() {
   const mapRef = useRef<google.maps.Map | null>(null);
   const subscriptionsRef = useRef<Map<string, () => void>>(new Map());
 
+  // Track whether we've already fitted once so the live location stream
+  // doesn't keep snapping the map back to the same bounds every second.
+  // Cleared on manual refresh so the operator's "Refresh" click re-frames
+  // the fleet when vehicles have moved out of the current viewport.
+  const fittedRef = useRef(false);
+
   // ── Load: terminals + latest locations in parallel ──────────────────────
   const load = useCallback(async () => {
     setLoading(true);
+    // Allow the next effect to re-fit bounds on this fresh data set.
+    fittedRef.current = false;
     try {
       const tRes = await api.listGpsTerminals(1, 200, { filter: 'online' });
       const settled = await Promise.allSettled(
@@ -185,8 +193,9 @@ export default function GpsFleetMapSection() {
     });
   }, [located, search]);
 
-  // Auto-fit bounds when the located set first becomes non-empty.
-  const fittedRef = useRef(false);
+  // Auto-fit bounds when the located set first becomes non-empty. The
+  // `fittedRef` flag is reset inside `load()` on manual refresh so the
+  // operator gets a fresh frame, but live WS updates do NOT re-fit.
   useEffect(() => {
     if (fittedRef.current) return;
     if (!mapRef.current || located.length === 0) return;

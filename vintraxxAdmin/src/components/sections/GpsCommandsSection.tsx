@@ -13,7 +13,7 @@
  * commands during incidents.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { api, GpsCommand, GpsCommandStatus } from '@/lib/api';
 import { fmtRelative } from '@/lib/gpsHelpers';
 import {
@@ -53,19 +53,11 @@ export default function GpsCommandsSection({
         terminalId: initialTerminalId,
         status,
       });
-      // Local search by command kind / admin email — the backend's
-      // command list endpoint doesn't expose a free-text filter (the
-      // table is small enough that paginated client-side filtering is
-      // fine for the admin console).
-      const q = search.trim().toLowerCase();
-      const filtered = q
-        ? res.commands.filter((c) =>
-            (c.kind || '').toLowerCase().includes(q) ||
-            (c.admin?.email || '').toLowerCase().includes(q) ||
-            (c.terminal?.imei || '').toLowerCase().includes(q),
-          )
-        : res.commands;
-      setCommands(filtered);
+      // The backend's command list endpoint doesn't expose a free-text
+      // filter — the search box is purely client-side. Keep the full page
+      // of commands in state and derive the filtered view in `useMemo`
+      // below so each keystroke doesn't trigger a fresh round-trip.
+      setCommands(res.commands);
       setTotalPages(res.totalPages);
       setTotal(res.total);
     } catch (err: any) {
@@ -73,7 +65,17 @@ export default function GpsCommandsSection({
     } finally {
       setLoading(false);
     }
-  }, [page, status, initialTerminalId, search]);
+  }, [page, status, initialTerminalId]);
+
+  const filteredCommands = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return commands;
+    return commands.filter((c) =>
+      (c.kind || '').toLowerCase().includes(q) ||
+      (c.admin?.email || '').toLowerCase().includes(q) ||
+      (c.terminal?.imei || '').toLowerCase().includes(q),
+    );
+  }, [commands, search]);
 
   useEffect(() => {
     load();
@@ -97,7 +99,11 @@ export default function GpsCommandsSection({
           />
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm text-gray-500 dark:text-gray-400">{total.toLocaleString()} total</span>
+          <span className="text-sm text-gray-500 dark:text-gray-400">
+            {search.trim()
+              ? `${filteredCommands.length.toLocaleString()} of ${total.toLocaleString()}`
+              : `${total.toLocaleString()} total`}
+          </span>
           <button
             onClick={() => setFiltersOpen((v) => !v)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all ${
@@ -157,7 +163,7 @@ export default function GpsCommandsSection({
             <div key={i} className="h-14 rounded-xl bg-gray-200 dark:bg-gray-700 animate-pulse" />
           ))}
         </div>
-      ) : commands.length === 0 ? (
+      ) : filteredCommands.length === 0 ? (
         <div className="text-center py-16">
           <Send size={48} className="mx-auto text-gray-300 dark:text-gray-600 mb-4" />
           <p className="text-gray-500 dark:text-gray-400">
@@ -178,7 +184,7 @@ export default function GpsCommandsSection({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700 bg-white dark:bg-gray-800">
-              {commands.map((c) => (
+              {filteredCommands.map((c) => (
                 <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
                   <td className="px-4 py-3"><CommandStatusPill status={c.status} /></td>
                   <td className="px-4 py-3">

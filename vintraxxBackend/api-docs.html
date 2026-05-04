@@ -23,6 +23,7 @@
         .method.post { background: #10b981; color: white; }
         .method.get { background: #3b82f6; color: white; }
         .method.put { background: #f59e0b; color: white; }
+        .method.patch { background: #8b5cf6; color: white; }
         .method.delete { background: #ef4444; color: white; }
         .endpoint-path { font-family: monospace; background: #f8f9fa; padding: 8px 12px; border-radius: 4px; margin-right: 15px; min-width: 220px; color: #495057; }
         .endpoint-desc { color: #666; flex: 1; min-width: 200px; }
@@ -127,6 +128,12 @@
                 </div>
                 <div class="endpoint">
                     <span class="method get">GET</span>
+                    <span class="endpoint-path">/scanner-owner/:deviceId</span>
+                    <span class="endpoint-desc">Get owner information for a scanner device by device ID.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
                     <span class="endpoint-path">/history</span>
                     <span class="endpoint-desc">Get user's scan history. Returns list of scans with vehicle info and status.</span>
                     <span class="auth-badge">Requires Auth</span>
@@ -174,6 +181,30 @@
                     <span class="method get">GET</span>
                     <span class="endpoint-path">/report/:scanId</span>
                     <span class="endpoint-desc">Get detailed report for single scan. Returns full DTC analysis, emissions check, repair recommendations, and costs.</span>
+                    <span class="auth-badge">Dealer Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/schedule-appointment</span>
+                    <span class="endpoint-desc">Schedule service appointment. Body: { vehicleInfo, date, time, notes }. Sends email to john@vintraxx.com.</span>
+                    <span class="auth-badge">Dealer Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/send-email</span>
+                    <span class="endpoint-desc">Send custom email from dealer portal. Body: { to, subject, html }.</span>
+                    <span class="auth-badge">Dealer Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/appointments</span>
+                    <span class="endpoint-desc">Get service appointment activity history for dealer.</span>
+                    <span class="auth-badge">Dealer Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method patch">PATCH</span>
+                    <span class="endpoint-path">/appointments/:id/complete</span>
+                    <span class="endpoint-desc">Mark appointment as completed.</span>
                     <span class="auth-badge">Dealer Only</span>
                 </div>
             </div>
@@ -253,6 +284,453 @@
             </div>
         </div>
 
+        <!-- GPS Telemetry Section -->
+        <div class="endpoint-section">
+            <div class="section-header">
+                <h2 class="section-title">GPS Telemetry</h2>
+                <p class="section-path">/api/v1/gps</p>
+            </div>
+            <div class="endpoint-list">
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/terminals</span>
+                    <span class="endpoint-desc">Get all GPS terminals owned by the authenticated user.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/terminals/:id</span>
+                    <span class="endpoint-desc">Get detailed information for a specific GPS terminal.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/terminals/:id/latest</span>
+                    <span class="endpoint-desc">Get the latest location/status for a terminal.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/terminals/:id/locations</span>
+                    <span class="endpoint-desc">Get location history for a terminal with pagination.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method patch">PATCH</span>
+                    <span class="endpoint-path">/terminals/:id/label</span>
+                    <span class="endpoint-desc">Rename a terminal. Body: { label }.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/terminals/:id/locate</span>
+                    <span class="endpoint-desc">Request immediate location update from terminal.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/terminals/:id/trips</span>
+                    <span class="endpoint-desc">Get trip history for a terminal.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/terminals/:id/trips/:tripId</span>
+                    <span class="endpoint-desc">Get detailed trip information.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/terminals/:id/stats</span>
+                    <span class="endpoint-desc">Get daily statistics for a terminal.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/alarms</span>
+                    <span class="endpoint-desc">Get alarms for user's terminals with filtering.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/alarms/:id</span>
+                    <span class="endpoint-desc">Get detailed alarm information.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/alarms/:id/ack</span>
+                    <span class="endpoint-desc">Acknowledge an alarm. Body: { notes? }.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/dtc-events</span>
+                    <span class="endpoint-desc">Get DTC events from GPS terminals with filtering.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/dtc-events/:id</span>
+                    <span class="endpoint-desc">Get detailed DTC event information.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/dtc-events/:id/analyze</span>
+                    <span class="endpoint-desc">Generate AI report from GPS DTC event. Promotes to Scan.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/devices/push-token</span>
+                    <span class="endpoint-desc">Register FCM push token for mobile notifications. Body: { token }.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method delete">DELETE</span>
+                    <span class="endpoint-path">/devices/push-token</span>
+                    <span class="endpoint-desc">Delete FCM push token.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Admin Portal Section -->
+        <div class="endpoint-section">
+            <div class="section-header">
+                <h2 class="section-title">Admin Portal</h2>
+                <p class="section-path">/api/v1/admin</p>
+            </div>
+            <div class="endpoint-list">
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/login</span>
+                    <span class="endpoint-desc">Admin login. Body: { email, password }.</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/profile</span>
+                    <span class="endpoint-desc">Get admin profile information.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method put">PUT</span>
+                    <span class="endpoint-path">/password</span>
+                    <span class="endpoint-desc">Change admin password. Body: { currentPassword, newPassword }.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/email-change/send-otp</span>
+                    <span class="endpoint-desc">Send OTP for email change. Body: { newEmail }.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/email-change/verify</span>
+                    <span class="endpoint-desc">Verify email change with OTP. Body: { newEmail, otp }.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/dashboard</span>
+                    <span class="endpoint-desc">Get admin dashboard statistics.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/users</span>
+                    <span class="endpoint-desc">List all users with pagination and filtering.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/users/:id</span>
+                    <span class="endpoint-desc">Get detailed user information.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/users</span>
+                    <span class="endpoint-desc">Create new user. Body: { email, password, role, ... }.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method put">PUT</span>
+                    <span class="endpoint-path">/users/:id</span>
+                    <span class="endpoint-desc">Update user information.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method delete">DELETE</span>
+                    <span class="endpoint-path">/users/:id</span>
+                    <span class="endpoint-desc">Delete user account.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/scans</span>
+                    <span class="endpoint-desc">List all scans with pagination.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/scans/:id</span>
+                    <span class="endpoint-desc">Get detailed scan information.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method delete">DELETE</span>
+                    <span class="endpoint-path">/scans/:id</span>
+                    <span class="endpoint-desc">Delete scan record.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/inspections</span>
+                    <span class="endpoint-desc">List all inspections.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method delete">DELETE</span>
+                    <span class="endpoint-path">/inspections/:id</span>
+                    <span class="endpoint-desc">Delete inspection.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/appraisals</span>
+                    <span class="endpoint-desc">List all appraisals.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/appraisals/:id</span>
+                    <span class="endpoint-desc">Get detailed appraisal information.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method delete">DELETE</span>
+                    <span class="endpoint-path">/appraisals/:id</span>
+                    <span class="endpoint-desc">Delete appraisal.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/service-appointments</span>
+                    <span class="endpoint-desc">List all service appointments.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method patch">PATCH</span>
+                    <span class="endpoint-path">/service-appointments/:id/complete</span>
+                    <span class="endpoint-desc">Mark service appointment as completed.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method delete">DELETE</span>
+                    <span class="endpoint-path">/service-appointments/:id</span>
+                    <span class="endpoint-desc">Delete service appointment.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/send-email</span>
+                    <span class="endpoint-desc">Send email from admin. Body: { to, subject, html }.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/verify-password</span>
+                    <span class="endpoint-desc">Verify admin password. Body: { password }.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/backup</span>
+                    <span class="endpoint-desc">Generate database backup.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/gps/stats/overview</span>
+                    <span class="endpoint-desc">Get GPS telemetry overview statistics.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/gps/terminals</span>
+                    <span class="endpoint-desc">List all GPS terminals.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/gps/terminals</span>
+                    <span class="endpoint-desc">Provision new GPS terminal. Body: { terminalId, ownerId, label }.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/gps/terminals/:id</span>
+                    <span class="endpoint-desc">Get detailed terminal information.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method patch">PATCH</span>
+                    <span class="endpoint-path">/gps/terminals/:id/owner</span>
+                    <span class="endpoint-desc">Reassign terminal to different owner. Body: { newOwnerId }.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/gps/terminals/:id/unpair</span>
+                    <span class="endpoint-desc">Unpair terminal from owner.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method delete">DELETE</span>
+                    <span class="endpoint-path">/gps/terminals/:id</span>
+                    <span class="endpoint-desc">Delete terminal (super-admin only).</span>
+                    <span class="auth-badge">Super Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/gps/terminals/:id/latest</span>
+                    <span class="endpoint-desc">Get latest location/status for terminal.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/gps/terminals/:id/locations</span>
+                    <span class="endpoint-desc">Get location history for terminal.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/gps/terminals/:id/obd</span>
+                    <span class="endpoint-desc">Get OBD data history for terminal.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/gps/alarms</span>
+                    <span class="endpoint-desc">List all alarms with filtering.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/gps/alarms/:id</span>
+                    <span class="endpoint-desc">Get detailed alarm information.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/gps/alarms/:id/ack</span>
+                    <span class="endpoint-desc">Acknowledge alarm. Body: { notes? }.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/gps/alarms/ack-bulk</span>
+                    <span class="endpoint-desc">Bulk acknowledge multiple alarms. Body: { alarmIds[], notes? }.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/gps/dtc-events</span>
+                    <span class="endpoint-desc">List all DTC events with filtering.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/gps/dtc-events/:id</span>
+                    <span class="endpoint-desc">Get detailed DTC event information.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/gps/dtc-events/:id/analyze</span>
+                    <span class="endpoint-desc">Generate AI report from DTC event. Promotes to Scan.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/gps/trips</span>
+                    <span class="endpoint-desc">List all trips with filtering.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/gps/trips/:id</span>
+                    <span class="endpoint-desc">Get detailed trip information.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/gps/stats/daily</span>
+                    <span class="endpoint-desc">Get daily GPS statistics.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/gps/terminals/:id/commands</span>
+                    <span class="endpoint-desc">Enqueue command to terminal. Body: { commandType, params }.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/gps/commands</span>
+                    <span class="endpoint-desc">List all commands with filtering.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/gps/commands/:id</span>
+                    <span class="endpoint-desc">Get detailed command information.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/audit-logs</span>
+                    <span class="endpoint-desc">List admin audit logs with filtering.</span>
+                    <span class="auth-badge">Admin Only</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Schedule Section -->
+        <div class="endpoint-section">
+            <div class="section-header">
+                <h2 class="section-title">Schedule</h2>
+                <p class="section-path">/api/v1/schedule</p>
+            </div>
+            <div class="endpoint-list">
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/submit</span>
+                    <span class="endpoint-desc">Submit service appointment request. Body: { vehicleInfo, date, time, notes }.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Debug Section -->
+        <div class="endpoint-section">
+            <div class="section-header">
+                <h2 class="section-title">Debug</h2>
+                <p class="section-path">/api/v1/debug</p>
+            </div>
+            <div class="endpoint-list">
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/client-log</span>
+                    <span class="endpoint-desc">Upload batched mobile log entries for debugging. Body: { logs[] }.</span>
+                    <span class="auth-badge">Requires Auth</span>
+                </div>
+            </div>
+        </div>
+
         <!-- System Section -->
         <div class="endpoint-section">
             <div class="section-header">
@@ -263,7 +741,7 @@
                 <div class="endpoint">
                     <span class="method get">GET</span>
                     <span class="endpoint-path">/api/v1/health</span>
-                    <span class="endpoint-desc">Health check endpoint. Returns { status: 'ok' }</span>
+                    <span class="endpoint-desc">Health check endpoint. Returns { status: 'ok', smtp, timestamp }.</span>
                 </div>
             </div>
         </div>

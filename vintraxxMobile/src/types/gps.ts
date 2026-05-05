@@ -287,6 +287,7 @@ export interface DailyStatsResponse {
 export interface RegisterPushTokenRequest {
   platform: 'ios' | 'android';
   token: string;
+  provider: 'fcm';
   appVersion?: string;
 }
 

@@ -286,6 +286,7 @@ export const registerPushTokenSchema = z.object({
   body: z.object({
     platform: z.enum(['ios', 'android']),
     token: z.string().min(10).max(4096),
+    provider: z.enum(['fcm']).optional(),
     appVersion: z.string().max(64).optional(),
   }),
 });

@@ -22,6 +22,7 @@ export enum LogCategory {
   CLEAR_DTC = 'CLEAR_DTC',
   VIN_SCANNER = 'VIN_SCANNER',
   OCR = 'OCR',
+  PUSH = 'PUSH',
 }
 
 interface LogEntry {

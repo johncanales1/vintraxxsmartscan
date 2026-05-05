@@ -105,9 +105,9 @@ export const RootNavigator: React.FC = () => {
     // not narrow the (name, params) overload chain — TS rejects two `never`
     // casts. `any` keeps this single hop simple without polluting the rest
     // of the file.
-    const offDeepLink = pushService.onDeepLink((alarmId) => {
+    const offDeepLink = pushService.onDeepLink((alarmId, terminalId) => {
       if (rootNavigationRef.isReady()) {
-        (rootNavigationRef as any).navigate('AlertDetail', { alarmId });
+        (rootNavigationRef as any).navigate('AlertDetail', { alarmId, terminalId });
       }
     });
     return () => {

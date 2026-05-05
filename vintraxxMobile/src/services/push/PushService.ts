@@ -62,7 +62,7 @@ class PushService {
   async initialise(): Promise<void> {
     try {
       if (!authService.isAuthenticated()) {
-        logger.debug(LogCategory.APP, '[Push] Not authenticated; skipping init');
+        logger.debug(LogCategory.PUSH, '[Push] Not authenticated; skipping init');
         return;
       }
 
@@ -77,11 +77,11 @@ class PushService {
         // value means the user accepted (or it's auto-granted).
         const granted = status === 1 || status === 2;
         if (!granted) {
-          logger.warn(LogCategory.APP, '[Push] Permission denied', { status });
+          logger.warn(LogCategory.PUSH, '[Push] Permission denied', { status });
           return;
         }
       } catch (err) {
-        logger.warn(LogCategory.APP, '[Push] requestPermission failed', err);
+        logger.warn(LogCategory.PUSH, '[Push] requestPermission failed', err);
       }
 
       // Fetch token + register. On iOS we also wait for the APNs token to
@@ -90,7 +90,7 @@ class PushService {
       try {
         token = await messaging.getToken();
       } catch (err) {
-        logger.error(LogCategory.APP, '[Push] getToken failed', err);
+        logger.error(LogCategory.PUSH, '[Push] getToken failed', err);
         return;
       }
       if (!token) return;
@@ -102,7 +102,7 @@ class PushService {
         this.attachListeners(messaging);
       }
     } catch (err) {
-      logger.error(LogCategory.APP, '[Push] initialise threw', err);
+      logger.error(LogCategory.PUSH, '[Push] initialise threw', err);
     }
   }
 
@@ -117,7 +117,7 @@ class PushService {
     } catch (err) {
       // Backend cleanup is best-effort. The token will eventually expire on
       // FCM's side anyway.
-      logger.warn(LogCategory.APP, '[Push] unregister failed (non-fatal)', err);
+      logger.warn(LogCategory.PUSH, '[Push] unregister failed (non-fatal)', err);
     }
     this.currentToken = null;
   }
@@ -164,7 +164,7 @@ class PushService {
       const messaging = mod.default ? mod.default() : mod();
       return messaging;
     } catch (err) {
-      logger.warn(LogCategory.APP, '[Push] Firebase messaging unavailable', err);
+      logger.warn(LogCategory.PUSH, '[Push] Firebase messaging unavailable', err);
       return null;
     }
   }
@@ -177,18 +177,20 @@ class PushService {
     const result = await gpsApi.registerPushToken({
       platform,
       token,
+      provider: 'fcm',
       // App version is best-effort: read from a `react-native-version-info`
       // helper if the host has it, otherwise omit. We deliberately don't
       // hard-require it.
       appVersion: undefined,
     });
     if (result.success) {
-      logger.info(LogCategory.APP, '[Push] Token registered', {
+      logger.info(LogCategory.PUSH, '[Push] Token registered', {
         platform,
+        provider: 'fcm',
         tokenPrefix: token.slice(0, 12) + '…',
       });
     } else {
-      logger.warn(LogCategory.APP, '[Push] Token registration failed', {
+      logger.warn(LogCategory.PUSH, '[Push] Token registration failed', {
         message: result.message,
       });
     }
@@ -197,32 +199,49 @@ class PushService {
   private attachListeners(messaging: any): void {
     // Token refresh — FCM rotates tokens on app reinstall, data wipe, etc.
     const offRefresh = messaging.onTokenRefresh(async (token: string) => {
-      logger.info(LogCategory.APP, '[Push] Token refreshed');
+      logger.info(LogCategory.PUSH, '[Push] Token refreshed');
       await this.registerToken(token);
     });
     this.unsubscribeFns.push(offRefresh);
 
-    // Foreground message — fire UI handlers. The backend sends both a
-    // `notification` block AND `data` so we can read either.
+    // Foreground message — fire UI handlers ONLY for CRITICAL alarms.
+    // Non-critical location updates and INFO/WARNING alarms are logged at
+    // DEBUG level and discarded; they must not produce in-app banners.
     const offMessage = messaging.onMessage(async (msg: any) => {
       const payload = this.extractPayload(msg);
-      logger.info(LogCategory.APP, '[Push] Foreground message', {
+      if (payload.severity !== 'CRITICAL') {
+        logger.debug(LogCategory.PUSH, '[Push] Foreground message ignored (non-critical)', {
+          alarmId: payload.alarmId,
+          severity: payload.severity,
+        });
+        return;
+      }
+      logger.info(LogCategory.PUSH, '[Push] Foreground CRITICAL alarm', {
         alarmId: payload.alarmId,
-        severity: payload.severity,
+        alarmType: payload.alarmType,
+        terminalId: payload.terminalId,
       });
       for (const fn of this.foregroundHandlers) {
         try {
           fn(payload);
         } catch (err) {
-          logger.warn(LogCategory.APP, '[Push] foreground handler threw', err);
+          logger.warn(LogCategory.PUSH, '[Push] foreground handler threw', err);
         }
       }
     });
     this.unsubscribeFns.push(offMessage);
 
     // User tapped a notification while the app was backgrounded.
+    // Only CRITICAL alarms produce tap-able notifications (backend guards
+    // this at send time), but we guard again here for safety.
     const offOpened = messaging.onNotificationOpenedApp((msg: any) => {
       const payload = this.extractPayload(msg);
+      if (payload.severity !== 'CRITICAL') {
+        logger.debug(LogCategory.PUSH, '[Push] onNotificationOpenedApp ignored (non-critical)', {
+          severity: payload.severity,
+        });
+        return;
+      }
       this.deliverDeepLink(payload);
     });
     this.unsubscribeFns.push(offOpened);
@@ -233,6 +252,16 @@ class PushService {
       .then((msg: any) => {
         if (!msg) return;
         const payload = this.extractPayload(msg);
+        if (payload.severity !== 'CRITICAL') {
+          logger.debug(LogCategory.PUSH, '[Push] getInitialNotification ignored (non-critical)', {
+            severity: payload.severity,
+          });
+          return;
+        }
+        logger.info(LogCategory.PUSH, '[Push] App launched from notification tap', {
+          alarmId: payload.alarmId,
+          terminalId: payload.terminalId,
+        });
         this.deliverDeepLink(payload);
       })
       .catch(() => {
@@ -242,7 +271,7 @@ class PushService {
 
   private deliverDeepLink(payload: PushAlarmPayload): void {
     if (!payload.alarmId) return;
-    logger.info(LogCategory.APP, '[Push] Deep-link tap', {
+    logger.info(LogCategory.PUSH, '[Push] Deep-link tap', {
       alarmId: payload.alarmId,
       terminalId: payload.terminalId,
     });
@@ -250,7 +279,7 @@ class PushService {
       try {
         fn(payload.alarmId, payload.terminalId);
       } catch (err) {
-        logger.warn(LogCategory.APP, '[Push] deep-link handler threw', err);
+        logger.warn(LogCategory.PUSH, '[Push] deep-link handler threw', err);
       }
     }
   }

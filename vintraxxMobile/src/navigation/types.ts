@@ -55,8 +55,10 @@ export type RootStackParamList = {
   DeviceSettings: { terminalId: string };
   /** Alerts inbox; optional terminalId filter when entered from a vehicle card. */
   Alerts: { terminalId?: string } | undefined;
-  /** Single alarm detail (deep-link target for FCM taps). */
-  AlertDetail: { alarmId: string };
+  /** Single alarm detail (deep-link target for FCM taps).
+   *  `terminalId` is forwarded from the FCM data payload so the screen can
+   *  pre-populate optimistically without an extra API round-trip. */
+  AlertDetail: { alarmId: string; terminalId?: string };
   /** Trips list for a terminal. */
   Trips: { terminalId: string };
   /** Single trip with map polyline, scrubber, and event pins. */

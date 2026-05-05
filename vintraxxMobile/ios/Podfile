@@ -47,12 +47,82 @@ target 'VTSmartScan' do
       # :ccache_enabled => true
     )
 
+    # Fix: React-jsitooling and React-RuntimeCore both live in the react_runtime/ public
+    # headers directory and both originally use `umbrella header`. Clang only allows ONE
+    # module to own a directory via umbrella, so we rewrite React-jsitooling.modulemap
+    # to use a plain `header` (no directory ownership) and give it a unique module name.
+    jsitooling_modulemap = File.join(
+      installer.sandbox.root,
+      'Headers/Public/react_runtime/React-jsitooling.modulemap'
+    )
+    if File.exist?(jsitooling_modulemap)
+      content = File.read(jsitooling_modulemap)
+      # Rewrite the whole file: rename module AND replace umbrella header with plain header
+      # so it no longer competes with react_runtime for directory ownership.
+      fixed = <<~MODULEMAP
+        module react_jsitooling {
+          header "React-jsitooling-umbrella.h"
+
+          export *
+        }
+      MODULEMAP
+      File.write(jsitooling_modulemap, fixed) unless content == fixed
+    end
+
+    # Fix: React-RuntimeApple and ReactCommon both live in the ReactCommon/ public headers
+    # directory and both declare `module ReactCommon` with `umbrella header`. Rewrite
+    # React-RuntimeApple.modulemap with a unique name and plain header (no directory ownership).
+    runtime_apple_modulemap = File.join(
+      installer.sandbox.root,
+      'Headers/Public/ReactCommon/React-RuntimeApple.modulemap'
+    )
+    if File.exist?(runtime_apple_modulemap)
+      content = File.read(runtime_apple_modulemap)
+      fixed = <<~MODULEMAP
+        module React_RuntimeApple {
+          header "React-RuntimeApple-umbrella.h"
+
+          export *
+        }
+      MODULEMAP
+      File.write(runtime_apple_modulemap, fixed) unless content == fixed
+    end
+
+    # Fix: React-RuntimeHermes module conflict with React-RuntimeCore
+    # Both declare umbrella module 'react_runtime', causing build failures in Xcode 15+
+    # React-RuntimeHermes is in react_runtime_hermes directory, so rename its module
+    hermes_modulemap = File.join(
+      installer.sandbox.root,
+      'Target Support Files/React-RuntimeHermes/React-RuntimeHermes.modulemap'
+    )
+    if File.exist?(hermes_modulemap)
+      content = File.read(hermes_modulemap)
+      if content.include?('module react_runtime {')
+        File.write(hermes_modulemap, content.sub('module react_runtime {', 'module react_runtime_hermes {'))
+      end
+    end
+
+    # Also update React-RuntimeCore to exclude React-RuntimeHermes headers
+    core_modulemap = File.join(
+      installer.sandbox.root,
+      'Target Support Files/React-RuntimeCore/React-RuntimeCore.modulemap'
+    )
+    if File.exist?(core_modulemap)
+      content = File.read(core_modulemap)
+      if content.include?('exclude header "React-jsitooling-umbrella.h"') && !content.include?('exclude header "React-RuntimeHermes-umbrella.h"')
+        File.write(core_modulemap, content.sub('exclude header "React-jsitooling-umbrella.h"', 'exclude header "React-jsitooling-umbrella.h"' + "\n  exclude header \"React-RuntimeHermes-umbrella.h\""))
+      end
+    end
+
     # Some RN pods (and their transitive headers) can trigger
     # "non-modular-include-in-framework-module" when frameworks/modules are enabled.
     # Allowing non-modular includes prevents these builds from failing with -Werror.
     installer.pods_project.targets.each do |target|
       target.build_configurations.each do |build_config|
         build_config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+        # Fix deployment target for Xcode 15+
+        build_config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.5'
+        build_config.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
       end
     end
   end

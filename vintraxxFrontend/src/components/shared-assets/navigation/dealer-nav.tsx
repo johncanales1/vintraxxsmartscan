@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Search, Menu, ChevronDown, ChevronRight, User, LogOut, UserCircle, X, Upload, Calendar, DollarSign, Mail, Hash, ZoomIn, ZoomOut, Move, Check, Pencil, Activity, Scan, Cpu } from "lucide-react";
+import { Search, Menu, ChevronDown, ChevronRight, User, LogOut, UserCircle, X, Upload, Calendar, DollarSign, Mail, Hash, ZoomIn, ZoomOut, Move, Check, Pencil, Activity, Scan, Cpu, Wallet } from "lucide-react";
 import { Button as AriaButton, Dialog as AriaDialog, DialogTrigger as AriaDialogTrigger, Popover as AriaPopover } from "react-aria-components";
 import { cx } from "@/utils/cx";
 import { API_BASE } from "@/lib/api-config";
@@ -20,6 +20,8 @@ interface DealerNavProps {
     qrCodeUrl?: string | null;
     createdAt?: string;
     onProfileUpdate?: (data: { logoUrl?: string; originalLogoUrl?: string; pricePerLaborHour?: number; qrCodeUrl?: string; fullName?: string; email?: string }) => void;
+    /** Optional element rendered on the right of the nav (e.g. realtime status pill). */
+    rightSlot?: ReactNode;
 }
 
 interface ProfileModalProps {
@@ -758,17 +760,25 @@ const SmartScanMenu = ({ onItemClick }: { onItemClick?: () => void }) => {
                 aria-expanded={isOpen}
                 onClick={() => setIsOpen((v) => !v)}
                 className={cx(
-                    "inline-flex items-center gap-1 text-sm font-semibold transition-colors duration-150",
-                    isAnyActive
-                        ? "text-blue-600"
-                        : "text-[#1B3A5F] hover:text-blue-600",
+                    "group relative inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-colors duration-150",
+                    isAnyActive || isOpen
+                        ? "text-blue-600 bg-blue-50/70"
+                        : "text-[#1B3A5F] hover:text-blue-600 hover:bg-slate-100/80",
                 )}
             >
-                Smart Scan
+                <Activity className="w-4 h-4" />
+                <span>Smart Scan</span>
                 <ChevronDown
                     className={cx(
                         "w-4 h-4 transition-transform duration-150",
                         isOpen ? "rotate-180" : "rotate-0",
+                    )}
+                />
+                <span
+                    aria-hidden="true"
+                    className={cx(
+                        "pointer-events-none absolute left-1/2 -translate-x-1/2 -bottom-1 h-0.5 rounded-full bg-blue-600 transition-all duration-200 ease-out",
+                        isAnyActive ? "w-6 opacity-100" : "w-0 opacity-0 group-hover:w-3 group-hover:opacity-70",
                     )}
                 />
             </button>
@@ -825,7 +835,34 @@ const SmartScanMenu = ({ onItemClick }: { onItemClick?: () => void }) => {
     );
 };
 
-export const DealerNav = ({ dealerLogo, originalLogoUrl, dealerName, userEmail, userId, fullName, pricePerLaborHour, qrCodeUrl, createdAt, onProfileUpdate }: DealerNavProps) => {
+const CapitalPortalLink = ({ onItemClick }: { onItemClick?: () => void }) => {
+    const pathname = usePathname();
+    const active = pathname === "/CapitalDealerPortal" || pathname.startsWith("/CapitalDealerPortal/");
+    return (
+        <Link
+            href="/CapitalDealerPortal"
+            onClick={onItemClick}
+            className={cx(
+                "group relative inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-colors duration-150",
+                active
+                    ? "text-blue-600 bg-blue-50/70"
+                    : "text-[#1B3A5F] hover:text-blue-600 hover:bg-slate-100/80",
+            )}
+        >
+            <Wallet className="w-4 h-4" />
+            <span>Capital Portal</span>
+            <span
+                aria-hidden="true"
+                className={cx(
+                    "pointer-events-none absolute left-1/2 -translate-x-1/2 -bottom-1 h-0.5 rounded-full bg-blue-600 transition-all duration-200 ease-out",
+                    active ? "w-6 opacity-100" : "w-0 opacity-0 group-hover:w-3 group-hover:opacity-70",
+                )}
+            />
+        </Link>
+    );
+};
+
+export const DealerNav = ({ dealerLogo, originalLogoUrl, dealerName, userEmail, userId, fullName, pricePerLaborHour, qrCodeUrl, createdAt, onProfileUpdate, rightSlot }: DealerNavProps) => {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
     const [isUserPopoverOpen, setIsUserPopoverOpen] = useState(false);
@@ -1010,18 +1047,19 @@ export const DealerNav = ({ dealerLogo, originalLogoUrl, dealerName, userEmail, 
                     </Link>
 
                     {/* Desktop Navigation */}
-                    <div className="hidden lg:flex items-center gap-6">
+                    <div className="hidden lg:flex items-center gap-2">
                         <SmartScanMenu />
-                        <Link
-                            href="/CapitalDealerPortal"
-                            className="text-sm font-semibold text-[#1B3A5F] hover:text-blue-600 transition-colors duration-150"
-                        >
-                            Capital Portal
-                        </Link>
+                        <CapitalPortalLink />
                     </div>
 
                     {/* Right side actions */}
                     <div className="flex items-center gap-2">
+                        {/* Realtime status / custom slot — visible at all viewport sizes. */}
+                        {rightSlot && (
+                            <div className="flex items-center">
+                                {rightSlot}
+                            </div>
+                        )}
                         {/* Search (desktop only) */}
                         <div className="hidden md:flex items-center">
                             <div className="relative flex items-center">

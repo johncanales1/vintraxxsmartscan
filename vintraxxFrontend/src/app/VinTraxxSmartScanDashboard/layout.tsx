@@ -113,6 +113,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         pricePerLaborHour={dealer?.pricePerLaborHour}
         qrCodeUrl={dealer?.qrCodeUrl}
         createdAt={dealer?.createdAt}
+        rightSlot={<RealtimePill />}
         onProfileUpdate={(data) =>
           setDealer((prev) =>
             prev
@@ -133,16 +134,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       />
       {/* DealerNav is `fixed top-0 h-16`, so the rest of the page must
           start 64px (4rem) lower. The GPS tab bar is `sticky top-16` and
-          only renders on GPS Fleet routes. The realtime pill floats in the
-          top-right corner so it stays visible on every Smart Scan page. */}
+          only renders on GPS Fleet routes. The realtime pill now lives
+          inside the nav (passed via rightSlot above) so it is visible on
+          every Smart Scan page at every viewport size. */}
       <div className="pt-16">
-        {showGpsTabs && <GpsTabBar rightSlot={<RealtimePill />} />}
+        {showGpsTabs && <GpsTabBar />}
       </div>
-      {!showGpsTabs && (
-        <div className="fixed top-3 right-4 sm:right-6 z-[60] hidden md:block">
-          <RealtimePill />
-        </div>
-      )}
       <main className="min-h-[calc(100vh-7rem)]">
         <GoogleMapsProvider>
           <ScanDetailProvider>

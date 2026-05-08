@@ -139,12 +139,14 @@ deploy_frontend() {
     
     # Copy public folder and static assets to standalone build
     print_status "Copying static assets..."
-    cp -r public .next/standalone/ 2>/dev/null || true
-    cp -r .next/static .next/standalone/.next/ 2>/dev/null || true
+    rm -rf .next/standalone/public .next/standalone/.next/static
+    mkdir -p .next/standalone/.next
+    cp -a public .next/standalone/public
+    cp -a .next/static .next/standalone/.next/static
     
     # Restart frontend service (delete and start fresh to ensure correct mode)
     pm2 delete vintraxx-frontend 2>/dev/null || true
-    if pm2 start /home/ec2-user/vintraxxsmartscan/ecosystem.config.js --only vintraxx-frontend; then
+    if HOSTNAME=127.0.0.1 PORT=3001 pm2 start /home/ec2-user/vintraxxsmartscan/ecosystem.config.js --only vintraxx-frontend; then
         print_status "Frontend service restarted"
     else
         print_error "Failed to restart frontend service"

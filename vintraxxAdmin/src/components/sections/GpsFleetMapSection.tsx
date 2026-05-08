@@ -184,7 +184,8 @@ export default function GpsFleetMapSection() {
     return located.filter(({ entry }) => {
       const t = entry.terminal;
       return (
-        t.imei.toLowerCase().includes(q) ||
+        t.deviceIdentifier.toLowerCase().includes(q) ||
+        (t.imei || '').toLowerCase().includes(q) ||
         (t.vehicleVin || '').toLowerCase().includes(q) ||
         (t.nickname || '').toLowerCase().includes(q) ||
         (t.ownerUser?.email || '').toLowerCase().includes(q) ||
@@ -227,7 +228,7 @@ export default function GpsFleetMapSection() {
           <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder="Search fleet by IMEI, VIN, nickname, owner..."
+            placeholder="Search fleet by device ID, IMEI, VIN, nickname, owner..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -279,6 +280,7 @@ export default function GpsFleetMapSection() {
                     vehicleModel: entry.terminal.vehicleModel,
                     vehicleVin: entry.terminal.vehicleVin,
                     nickname: entry.terminal.nickname,
+                    deviceIdentifier: entry.terminal.deviceIdentifier,
                     imei: entry.terminal.imei,
                   })}
                   onClick={() => setSelectedId(entry.terminal.id)}
@@ -319,6 +321,7 @@ export default function GpsFleetMapSection() {
                         vehicleModel: entry.terminal.vehicleModel,
                         vehicleVin: entry.terminal.vehicleVin,
                         nickname: entry.terminal.nickname,
+                        deviceIdentifier: entry.terminal.deviceIdentifier,
                         imei: entry.terminal.imei,
                       })}
                     </p>

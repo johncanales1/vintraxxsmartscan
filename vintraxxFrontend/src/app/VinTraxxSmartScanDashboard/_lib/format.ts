@@ -75,7 +75,10 @@ export function vehicleLabel(t: {
   vehicleMake?: string | null;
   vehicleModel?: string | null;
   vehicleVin?: string | null;
-  imei: string;
+  /** Canonical JT/T 808 device identifier — always present. */
+  deviceIdentifier?: string | null;
+  /** Optional 15-digit IMEI metadata. Falls back to deviceIdentifier. */
+  imei?: string | null;
 }): string {
   if (t.nickname && t.nickname.trim()) return t.nickname;
   const ymm = [t.vehicleYear, t.vehicleMake, t.vehicleModel]
@@ -83,5 +86,5 @@ export function vehicleLabel(t: {
     .join(" ");
   if (ymm.length > 0) return ymm;
   if (t.vehicleVin) return t.vehicleVin;
-  return t.imei;
+  return t.deviceIdentifier ?? t.imei ?? "—";
 }

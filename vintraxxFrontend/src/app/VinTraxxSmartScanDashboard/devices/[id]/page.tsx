@@ -89,7 +89,7 @@ function DeviceHeader({ terminal }: { terminal: GpsTerminal | null }) {
           {vehicleLabel(terminal)}
         </h1>
         <p className="text-xs text-slate-500 mt-1 font-mono">
-          IMEI {terminal.imei} \u2022 {terminal.vehicleVin ?? "VIN —"}
+          {terminal.deviceIdentifier} \u2022 {terminal.vehicleVin ?? "VIN —"}
         </p>
       </div>
       <div className="flex items-center gap-3 text-xs">
@@ -342,7 +342,8 @@ function SettingsTab({ terminal }: { terminal: GpsTerminal }) {
             </div>
           )}
         </div>
-        <SettingsRow label="IMEI" value={terminal.imei} mono />
+        <SettingsRow label="Device ID" value={terminal.deviceIdentifier} mono />
+        <SettingsRow label="IMEI" value={terminal.imei ?? "—"} mono />
         <SettingsRow label="Phone" value={terminal.phoneNumber ?? "—"} />
         <SettingsRow label="Model" value={terminal.terminalModel ?? "—"} />
         <SettingsRow label="Firmware" value={terminal.firmwareVersion ?? "—"} />

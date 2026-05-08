@@ -713,7 +713,18 @@ export type GpsTerminalStatus =
 
 export interface GpsTerminal {
   id: string;
-  imei: string;
+  /**
+   * Canonical JT/T 808 terminal identifier — the value the device transmits
+   * in the BCD[6] header field of every packet. The runtime gateway lookup
+   * key. Required, 1–30 alphanumeric chars.
+   */
+  deviceIdentifier: string;
+  /**
+   * Optional 15-digit IMEI. Populated either by the admin at provisioning
+   * (when known) or by the gateway from the 2019-spec 0x0102 auth body.
+   * Never used as the runtime lookup key — see `deviceIdentifier`.
+   */
+  imei: string | null;
   phoneNumber: string | null;
   iccid: string | null;
   manufacturerId: string | null;
@@ -761,7 +772,10 @@ export interface GpsTerminalDetail extends GpsTerminal {
 }
 
 export interface ProvisionTerminalBody {
-  imei: string;
+  /** Canonical JT/T 808 device identifier — required, 1–30 alphanumeric. */
+  deviceIdentifier: string;
+  /** Optional 15-digit IMEI metadata. */
+  imei?: string;
   phoneNumber?: string;
   iccid?: string;
   manufacturerId?: string;
@@ -884,11 +898,12 @@ export interface GpsAlarm {
    * Admin-scoped lists return a richer terminal block with vehicle
    * descriptors and the owner user — used by GpsAlarmsSection to render
    * vehicle labels and owner chips. User-scoped lists return only the
-   * slim id/imei/nickname/vin fields.
+   * slim id/deviceIdentifier/imei/nickname/vin fields.
    */
   terminal?: {
     id: string;
-    imei: string;
+    deviceIdentifier: string;
+    imei: string | null;
     nickname: string | null;
     vehicleVin: string | null;
     vehicleYear?: number | null;
@@ -921,7 +936,8 @@ export interface GpsDtcEvent {
   scanId?: string | null;       // populated when a Scan was promoted
   terminal?: {
     id: string;
-    imei: string;
+    deviceIdentifier: string;
+    imei: string | null;
     nickname: string | null;
   };
 }
@@ -973,7 +989,8 @@ export interface GpsCommand {
   errorText: string | null;
   terminal?: {
     id: string;
-    imei: string;
+    deviceIdentifier: string;
+    imei: string | null;
     nickname: string | null;
   };
   admin?: { id: string; email: string } | null;

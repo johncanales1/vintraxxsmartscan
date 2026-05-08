@@ -311,7 +311,7 @@ export async function listCommands(opts: ListOptions) {
       skip: (opts.page - 1) * opts.limit,
       include: {
         terminal: {
-          select: { id: true, imei: true, nickname: true, vehicleVin: true },
+          select: { id: true, deviceIdentifier: true, imei: true, nickname: true, vehicleVin: true },
         },
         admin: {
           select: { id: true, email: true },
@@ -354,6 +354,7 @@ export async function getCommandDetail(commandId: string) {
       terminal: {
         select: {
           id: true,
+          deviceIdentifier: true,
           imei: true,
           nickname: true,
           vehicleVin: true,

@@ -9,7 +9,14 @@ import prisma from '../config/db';
 import { AppError } from '../middleware/errorHandler';
 
 interface ProvisionInput {
-  imei: string;
+  /**
+   * Canonical JT/T 808 terminal identifier — the value the device transmits
+   * in the BCD[6] header field of every packet. Required. See the
+   * `provisionTerminalSchema` Zod schema for the validation regex.
+   */
+  deviceIdentifier: string;
+  /** Optional 15-digit IMEI (2019-spec metadata only). */
+  imei?: string;
   phoneNumber?: string;
   iccid?: string;
   manufacturerId?: string;
@@ -33,13 +40,42 @@ interface ProvisionInput {
  * sends its 0x0100 — we deliberately leave it null here so the value on disk
  * is never stale.
  *
- * Throws 409 if the IMEI already exists, 404 if `ownerUserId` is set but the
- * user can't be found.
+ * Throws 409 if the device identifier (or, when provided, the IMEI) already
+ * exists; 404 if `ownerUserId` is set but the user can't be found.
  */
 export async function provisionTerminal(input: ProvisionInput) {
-  const existing = await prisma.gpsTerminal.findUnique({ where: { imei: input.imei } });
-  if (existing) {
-    throw new AppError(`Terminal with IMEI ${input.imei} already exists`, 409);
+  const existingByIdentifier = await prisma.gpsTerminal.findUnique({
+    where: { deviceIdentifier: input.deviceIdentifier },
+  });
+  if (existingByIdentifier) {
+    throw new AppError(
+      `Terminal with device identifier ${input.deviceIdentifier} already exists`,
+      409,
+    );
+  }
+
+  // IMEI is no longer the unique key, but if the operator provides one we
+  // still want to prevent two rows from claiming the same physical IMEI.
+  if (input.imei) {
+    const existingByImei = await prisma.gpsTerminal.findFirst({
+      where: { imei: input.imei },
+    });
+    if (existingByImei) {
+      throw new AppError(`Terminal with IMEI ${input.imei} already exists`, 409);
+    }
+  }
+
+  // phoneNumber is @unique — prevent a P2002 generic 500 by pre-checking.
+  if (input.phoneNumber) {
+    const existingByPhone = await prisma.gpsTerminal.findFirst({
+      where: { phoneNumber: input.phoneNumber },
+    });
+    if (existingByPhone) {
+      throw new AppError(
+        `Terminal with phone number ${input.phoneNumber} already exists`,
+        409,
+      );
+    }
   }
 
   if (input.ownerUserId) {
@@ -49,7 +85,8 @@ export async function provisionTerminal(input: ProvisionInput) {
 
   return prisma.gpsTerminal.create({
     data: {
-      imei: input.imei,
+      deviceIdentifier: input.deviceIdentifier,
+      imei: input.imei ?? null,
       phoneNumber: input.phoneNumber ?? null,
       iccid: input.iccid ?? null,
       manufacturerId: input.manufacturerId ?? null,
@@ -114,7 +151,12 @@ export async function listTerminals(opts: ListOptions) {
   }
 
   if (opts.search && opts.search.length > 0) {
+    // deviceIdentifier is the canonical JT/T 808 identity the gateway keys
+    // on; surface it to admin search first. We keep `imei` in the OR for
+    // back-compat — operators commonly paste an IMEI that happens to match
+    // the legacy column.
     where.OR = [
+      { deviceIdentifier: { contains: opts.search, mode: 'insensitive' } },
       { imei: { contains: opts.search, mode: 'insensitive' } },
       { phoneNumber: { contains: opts.search, mode: 'insensitive' } },
       { vehicleVin: { contains: opts.search, mode: 'insensitive' } },

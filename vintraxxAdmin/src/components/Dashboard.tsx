@@ -490,7 +490,7 @@ function OverviewTab({
                 <tr className="text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   <th className="px-6 py-3">Severity</th>
                   <th className="px-6 py-3">Type</th>
-                  <th className="px-6 py-3">Vehicle / IMEI</th>
+                  <th className="px-6 py-3">Vehicle / Device ID</th>
                   <th className="px-6 py-3">State</th>
                   <th className="px-6 py-3">Opened</th>
                 </tr>
@@ -513,7 +513,7 @@ function OverviewTab({
                         {alarmTypeLabel(alarm.alarmType)}
                       </td>
                       <td className="px-6 py-3.5 text-sm text-gray-600 dark:text-gray-300">
-                        {alarm.terminal?.nickname || alarm.terminal?.vehicleVin || alarm.terminal?.imei || '—'}
+                        {alarm.terminal?.nickname || alarm.terminal?.vehicleVin || alarm.terminal?.deviceIdentifier || alarm.terminal?.imei || '—'}
                       </td>
                       <td className="px-6 py-3.5 text-sm">
                         {alarm.acknowledged ? (

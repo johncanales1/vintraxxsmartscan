@@ -81,7 +81,7 @@ export function RealtimePill() {
                     className="flex items-center justify-between text-xs"
                   >
                     <span className="truncate">
-                      {t.nickname || t.vehicleVin || t.imei}
+                      {t.nickname || t.vehicleVin || t.deviceIdentifier || t.imei}
                     </span>
                     <span className="text-slate-400 ml-2 flex-shrink-0">
                       {t.lastHeartbeatAt

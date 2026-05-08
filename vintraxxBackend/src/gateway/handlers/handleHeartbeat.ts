@@ -19,25 +19,30 @@ export async function handleHeartbeat(session: Session, msgSerial: number): Prom
   const now = new Date();
   session.lastHeartbeatAt = now;
 
-  if (session.terminalId && session.authenticated) {
-    const terminal = await prisma.gpsTerminal.findUnique({
-      where: { id: session.terminalId },
-      select: { status: true },
-    });
-    if (!terminal || terminal.status === 'REVOKED') {
-      session.log.warn('Heartbeat from REVOKED/missing terminal — closing', {
-        terminalId: session.terminalId,
-        status: terminal?.status,
-      });
-      session.ack(MsgId.TERMINAL_HEARTBEAT, msgSerial, PlatformResult.FAILURE);
-      session.close('terminal revoked mid-session');
-      return;
-    }
-    await prisma.gpsTerminal.update({
-      where: { id: session.terminalId },
-      data: { lastHeartbeatAt: now, status: 'ONLINE' },
-    });
+  if (!session.terminalId || !session.authenticated) {
+    // Pre-auth heartbeat: ack with FAILURE to signal the device should
+    // complete register/auth first instead of idling in heartbeat-only mode.
+    session.ack(MsgId.TERMINAL_HEARTBEAT, msgSerial, PlatformResult.FAILURE);
+    return;
   }
+
+  const terminal = await prisma.gpsTerminal.findUnique({
+    where: { id: session.terminalId },
+    select: { status: true },
+  });
+  if (!terminal || terminal.status === 'REVOKED') {
+    session.log.warn('Heartbeat from REVOKED/missing terminal — closing', {
+      terminalId: session.terminalId,
+      status: terminal?.status,
+    });
+    session.ack(MsgId.TERMINAL_HEARTBEAT, msgSerial, PlatformResult.FAILURE);
+    session.close('terminal revoked mid-session');
+    return;
+  }
+  await prisma.gpsTerminal.update({
+    where: { id: session.terminalId },
+    data: { lastHeartbeatAt: now, status: 'ONLINE' },
+  });
 
   session.ack(MsgId.TERMINAL_HEARTBEAT, msgSerial);
 }

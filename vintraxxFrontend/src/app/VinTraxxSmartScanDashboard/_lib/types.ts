@@ -18,7 +18,17 @@ export type GpsTerminalStatus =
 
 export interface GpsTerminal {
   id: string;
-  imei: string;
+  /**
+   * Canonical JT/T 808 terminal identifier — the value the device transmits
+   * in the BCD[6] header of every packet. Always present.
+   */
+  deviceIdentifier: string;
+  /**
+   * Optional 15-digit IMEI metadata (only populated for devices that emit
+   * it via the 2019-spec 0x0102 auth body or were provisioned with one).
+   * Never the gateway lookup key — see `deviceIdentifier`.
+   */
+  imei: string | null;
   phoneNumber: string | null;
   iccid: string | null;
   manufacturerId: string | null;

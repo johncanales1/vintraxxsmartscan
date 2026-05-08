@@ -67,9 +67,27 @@ export function fmtRelative(iso: string | null | undefined): string {
 }
 
 /**
+ * Canonical short label for a terminal. Prefers the JT/T 808 device
+ * identifier (the value the device transmits in its packet header — the
+ * gateway's runtime lookup key), falls back to the optional 15-digit IMEI
+ * metadata for legacy callers that haven't been redeployed against the
+ * new schema, then finally em-dash.
+ *
+ * Use this instead of reading `t.imei` directly so the UI keeps working
+ * for terminals provisioned without an IMEI (registration-body terminal
+ * IDs, MSISDN-only devices, etc.).
+ */
+export function terminalLabel(t: {
+  deviceIdentifier?: string | null;
+  imei?: string | null;
+}): string {
+  return t.deviceIdentifier ?? t.imei ?? '—';
+}
+
+/**
  * Best-effort vehicle label. Falls back through year-make-model → VIN →
- * nickname → IMEI so the admin always sees something recognisable on a
- * row without sprawling conditionals at the call site.
+ * nickname → device identifier so the admin always sees something
+ * recognisable on a row without sprawling conditionals at the call site.
  */
 export function vehicleLabel(t: {
   vehicleYear?: number | null;
@@ -77,14 +95,15 @@ export function vehicleLabel(t: {
   vehicleModel?: string | null;
   vehicleVin?: string | null;
   nickname?: string | null;
-  imei?: string;
+  deviceIdentifier?: string | null;
+  imei?: string | null;
 }): string {
   if (t.vehicleYear && t.vehicleMake) {
     return `${t.vehicleYear} ${t.vehicleMake}${t.vehicleModel ? ' ' + t.vehicleModel : ''}`;
   }
   if (t.vehicleVin) return t.vehicleVin;
   if (t.nickname) return t.nickname;
-  return t.imei ?? '—';
+  return terminalLabel(t);
 }
 
 export function severityColor(sev: 'INFO' | 'WARNING' | 'CRITICAL'): {

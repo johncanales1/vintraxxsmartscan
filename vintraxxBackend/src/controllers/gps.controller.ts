@@ -754,7 +754,9 @@ export async function myRenameTerminal(
     if (result.count === 0) {
       throw new AppError('Terminal not found', 404);
     }
-    const terminal = await prisma.gpsTerminal.findUnique({ where: { id } });
+    const terminal = await prisma.gpsTerminal.findFirst({
+      where: { id, ownerUserId: userId },
+    });
     res.json({ success: true, terminal });
   } catch (err) {
     next(err);
@@ -811,7 +813,9 @@ export async function myAnalyzeDtcEvent(
     const userId = req.user!.userId;
     const id = req.params.id as string;
     const result = await promoteDtcEventToScan({ dtcEventId: id, userId });
-    res.status(result.reused ? 200 : 202).json({
+    // Always 202: even reused scans may still be in `processing` state and
+    // the client must poll `/scan/report/:scanId` regardless.
+    res.status(202).json({
       success: true,
       scanId: result.scanId,
       reused: result.reused,

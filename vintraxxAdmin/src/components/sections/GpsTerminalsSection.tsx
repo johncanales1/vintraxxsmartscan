@@ -20,6 +20,7 @@ import { gpsAdminWs } from '@/lib/gpsAdminWs';
 import {
   fmtRelative,
   vehicleLabel,
+  terminalLabel,
   statusDotClasses,
 } from '@/lib/gpsHelpers';
 import GpsTerminalDetailModal from '@/components/modals/GpsTerminalDetailModal';
@@ -190,7 +191,7 @@ export default function GpsTerminalsSection({
           <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder="Search by IMEI, VIN, nickname, owner..."
+            placeholder="Search by device ID, IMEI, VIN, nickname, owner..."
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
@@ -323,7 +324,7 @@ export default function GpsTerminalsSection({
       {unpairTarget && (
         <ConfirmDeleteModal
           title="Unpair Terminal"
-          message={`Unpair terminal ${unpairTarget.imei} from ${unpairTarget.ownerUser?.email || 'its owner'}? The device will keep its history but be detached.`}
+          message={`Unpair terminal ${terminalLabel(unpairTarget)} from ${unpairTarget.ownerUser?.email || 'its owner'}? The device will keep its history but be detached.`}
           onConfirm={handleUnpair}
           onCancel={() => setUnpairTarget(null)}
           destructive={false}
@@ -334,7 +335,7 @@ export default function GpsTerminalsSection({
       {deleteTarget && (
         <ConfirmDeleteModal
           title="Delete Terminal"
-          message={`Permanently delete terminal ${deleteTarget.imei} and all its locations, alarms, DTC events, trips, and commands? This cannot be undone.`}
+          message={`Permanently delete terminal ${terminalLabel(deleteTarget)} and all its locations, alarms, DTC events, trips, and commands? This cannot be undone.`}
           onConfirm={handleDelete}
           onCancel={() => setDeleteTarget(null)}
         />
@@ -383,10 +384,11 @@ function TerminalCard({
                 vehicleModel: terminal.vehicleModel,
                 vehicleVin: terminal.vehicleVin,
                 nickname: terminal.nickname,
+                deviceIdentifier: terminal.deviceIdentifier,
                 imei: terminal.imei,
               })}
             </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">{terminal.imei}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">{terminalLabel(terminal)}</p>
             <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 mt-0.5">{terminal.status.replace(/_/g, ' ')}</p>
           </div>
         </div>

@@ -406,10 +406,13 @@ const VehicleCard: React.FC<{
 }> = ({ terminal: t, location, unreadAlarmCount, onPress, onAlertsPress, onMorePress }) => {
   const online = t.status === 'ONLINE';
   const lastSeen = formatRelativeTime(t.lastHeartbeatAt);
+  // Canonical device identifier is always populated; IMEI is metadata that
+  // may be null on auto-provisioned or legacy 2013-spec devices.
+  const fallbackTail = (t.deviceIdentifier ?? t.imei ?? '').slice(-6);
   const vehicleLabel =
     t.nickname ||
     [t.vehicleYear, t.vehicleMake, t.vehicleModel].filter(Boolean).join(' ') ||
-    `IMEI ${t.imei.slice(-6)}`;
+    `Device ${fallbackTail}`;
 
   return (
     <TouchableOpacity

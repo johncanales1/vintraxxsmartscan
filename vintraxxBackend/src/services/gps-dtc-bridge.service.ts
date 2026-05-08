@@ -129,7 +129,11 @@ export async function promoteDtcEventToScan(
         milStatusByEcu: undefined,
         stockNumber: null,
         additionalRepairs: [],
-        scannerDeviceId: terminal.imei, // mark provenance — IMEI of the scanner
+        // Provenance — the JT/T 808 device identifier the scanner transmits
+        // in every header. Falls back to the (possibly null) IMEI metadata
+        // only if the row predates the deviceIdentifier migration; in
+        // practice the backfill ensures deviceIdentifier is always set.
+        scannerDeviceId: terminal.deviceIdentifier ?? terminal.imei,
         userFullName: owner.fullName ?? null,
         vehicleOwnerName: null,
         // rawPayload is required (non-null) — store the source DTC-event JSON
@@ -137,6 +141,7 @@ export async function promoteDtcEventToScan(
         rawPayload: {
           source: 'gps_terminal',
           terminalId: terminal.id,
+          deviceIdentifier: terminal.deviceIdentifier,
           imei: terminal.imei,
           dtcEventId: dtcEvent.id,
           reportedAt: dtcEvent.reportedAt.toISOString(),

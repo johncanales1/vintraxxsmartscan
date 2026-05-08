@@ -15,7 +15,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { api, GpsCommand, GpsCommandStatus } from '@/lib/api';
-import { fmtRelative } from '@/lib/gpsHelpers';
+import { fmtRelative, terminalLabel } from '@/lib/gpsHelpers';
 import {
   Search, RefreshCw, Send, ChevronLeft, ChevronRight, Filter,
   X as XIcon,
@@ -73,6 +73,7 @@ export default function GpsCommandsSection({
     return commands.filter((c) =>
       (c.kind || '').toLowerCase().includes(q) ||
       (c.admin?.email || '').toLowerCase().includes(q) ||
+      (c.terminal?.deviceIdentifier || '').toLowerCase().includes(q) ||
       (c.terminal?.imei || '').toLowerCase().includes(q),
     );
   }, [commands, search]);
@@ -89,7 +90,7 @@ export default function GpsCommandsSection({
           <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder="Search by kind, admin, or IMEI..."
+            placeholder="Search by kind, admin, or device ID..."
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
@@ -196,7 +197,7 @@ export default function GpsCommandsSection({
                     )}
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">
-                    {c.terminal?.nickname || c.terminal?.imei || c.terminalId.substring(0, 8) + '…'}
+                    {c.terminal?.nickname || (c.terminal && terminalLabel(c.terminal)) || c.terminalId.substring(0, 8) + '…'}
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 truncate max-w-[160px]">
                     {c.admin?.email || 'system'}

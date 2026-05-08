@@ -12,6 +12,11 @@ import {
   Animated,
   Easing,
   Modal,
+  KeyboardAvoidingView,
+  Platform,
+  InputAccessoryView,
+  Keyboard,
+  Pressable,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -188,6 +193,10 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
   const [cancelRequested, setCancelRequested] = useState(false);
   const [stockNumber, setStockNumber] = useState('');
   const [showStockNumber, setShowStockNumber] = useState(false);
+  // Modal-based stock number editor: the draft is only committed to
+  // `stockNumber` when the user taps Save. Cancel discards the draft.
+  const [stockModalVisible, setStockModalVisible] = useState(false);
+  const [draftStockNumber, setDraftStockNumber] = useState('');
   const [vehicleOwnerName, setVehicleOwnerName] = useState('');
   const [showAdditionalRepairs, setShowAdditionalRepairs] = useState(false);
   const [selectedAdditionalRepairs, setSelectedAdditionalRepairs] = useState<string[]>([]);
@@ -248,6 +257,8 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
       setCancelRequested(false);
       setStockNumber('');
       setShowStockNumber(false);
+      setStockModalVisible(false);
+      setDraftStockNumber('');
       setVehicleOwnerName('');
       setShowAdditionalRepairs(false);
       setSelectedAdditionalRepairs([]);
@@ -924,7 +935,21 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
                 <View style={styles.stockNumberContainer}>
                   <TouchableOpacity
                     style={styles.stockNumberToggle}
-                    onPress={() => setShowStockNumber(!showStockNumber)}
+                    onPress={() => {
+                      // Toggle ON → open the modal in "fresh" mode; toggle OFF
+                      // → clear the saved value so it doesn't get re-submitted
+                      // by mistake.
+                      if (showStockNumber) {
+                        setShowStockNumber(false);
+                        setStockNumber('');
+                        setStockModalVisible(false);
+                        setDraftStockNumber('');
+                      } else {
+                        setShowStockNumber(true);
+                        setDraftStockNumber(stockNumber);
+                        setStockModalVisible(true);
+                      }
+                    }}
                     activeOpacity={0.7}
                   >
                     <View style={styles.stockNumberHeaderLeft}>
@@ -939,24 +964,30 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
                   </TouchableOpacity>
                   {showStockNumber && (
                     <View style={styles.stockNumberInputWrap}>
-                      <TextInput
-                        style={styles.stockNumberInput}
-                        placeholder="Enter stock number"
-                        placeholderTextColor={colors.text.muted}
-                        value={stockNumber}
-                        onChangeText={(text) => {
-                          // Allow only digits, max 20
-                          const cleaned = text.replace(/[^0-9]/g, '').slice(0, 20);
-                          logger.debug(LogCategory.APP, 'Stock number input changed', {
-                            input: text,
-                            cleaned,
-                            length: cleaned.length,
-                          });
-                          setStockNumber(cleaned);
+                      {/* Modal launcher — tapping anywhere on this row opens
+                          the focused editor so the keyboard never overlaps
+                          the field. */}
+                      <TouchableOpacity
+                        style={styles.stockNumberDisplay}
+                        onPress={() => {
+                          setDraftStockNumber(stockNumber);
+                          setStockModalVisible(true);
                         }}
-                        keyboardType="numeric"
-                        maxLength={20}
-                      />
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.stockNumberDisplayText,
+                            !stockNumber && styles.stockNumberDisplayPlaceholder,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {stockNumber ? stockNumber : 'Tap to enter stock number'}
+                        </Text>
+                        <Text style={styles.stockNumberDisplayAction}>
+                          {stockNumber ? 'Edit' : 'Add'}
+                        </Text>
+                      </TouchableOpacity>
                       {stockNumber.length > 0 && (
                         <Text style={styles.stockNumberValid}>
                           {stockNumber.length}/20 digit{stockNumber.length !== 1 ? 's' : ''}
@@ -1017,6 +1048,88 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
         visible={showDebugModal}
         onClose={() => setShowDebugModal(false)}
       />
+
+      {/* Stock Number Modal — keeps the numeric input visible above the
+          keyboard. The inline field was hidden behind the iOS numeric pad
+          on smaller screens. */}
+      <Modal
+        visible={stockModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setStockModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.stockModalOverlay}
+        >
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setStockModalVisible(false)}
+            accessibilityLabel="Dismiss stock number editor"
+          />
+          <View style={styles.stockModalCard}>
+            <Text style={styles.stockModalTitle}>Stock Number</Text>
+            <Text style={styles.stockModalSubtitle}>
+              Up to 20 digits. Optional — leave blank to skip.
+            </Text>
+            <TextInput
+              style={styles.stockModalInput}
+              placeholder="Enter stock number"
+              placeholderTextColor={colors.text.muted}
+              value={draftStockNumber}
+              onChangeText={(text) => {
+                const cleaned = text.replace(/[^0-9]/g, '').slice(0, 20);
+                setDraftStockNumber(cleaned);
+              }}
+              keyboardType="numeric"
+              maxLength={20}
+              autoFocus
+              inputAccessoryViewID={
+                Platform.OS === 'ios' ? 'stockNumberDoneAccessory' : undefined
+              }
+            />
+            <Text style={styles.stockModalCounter}>
+              {draftStockNumber.length}/20 digit{draftStockNumber.length !== 1 ? 's' : ''}
+            </Text>
+            <View style={styles.stockModalButtons}>
+              <TouchableOpacity
+                style={[styles.stockModalBtn, styles.stockModalBtnCancel]}
+                onPress={() => setStockModalVisible(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.stockModalBtnCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.stockModalBtn, styles.stockModalBtnSave]}
+                onPress={() => {
+                  const cleaned = draftStockNumber.replace(/[^0-9]/g, '').slice(0, 20);
+                  logger.info(LogCategory.APP, 'Stock number saved via modal', {
+                    length: cleaned.length,
+                  });
+                  setStockNumber(cleaned);
+                  setStockModalVisible(false);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.stockModalBtnSaveText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+        {Platform.OS === 'ios' && (
+          <InputAccessoryView nativeID="stockNumberDoneAccessory">
+            <View style={styles.inputAccessory}>
+              <TouchableOpacity
+                onPress={() => Keyboard.dismiss()}
+                style={styles.inputAccessoryDoneBtn}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.inputAccessoryDoneText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </InputAccessoryView>
+        )}
+      </Modal>
 
       {/* Error Logging Modal */}
       <Modal
@@ -1551,6 +1664,134 @@ const styles = StyleSheet.create({
     color: colors.status.success,
     marginTop: spacing.xs,
     fontWeight: '600' as const,
+  },
+  // Stock Number modal launcher (inside the inline card) ───────────────
+  stockNumberDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.background.primary,
+    borderRadius: spacing.inputRadius,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+  },
+  stockNumberDisplayText: {
+    ...typography.styles.body,
+    color: colors.text.primary,
+    flex: 1,
+    marginRight: spacing.sm,
+    fontVariant: ['tabular-nums'],
+  },
+  stockNumberDisplayPlaceholder: {
+    color: colors.text.muted,
+    fontWeight: '500' as const,
+  },
+  stockNumberDisplayAction: {
+    ...typography.styles.caption,
+    color: colors.primary.red,
+    fontWeight: '700' as const,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  // Stock Number focused editor modal ──────────────────────────────────
+  stockModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  stockModalCard: {
+    backgroundColor: colors.background.primary,
+    borderRadius: spacing.cardRadius,
+    padding: spacing.lg,
+    width: '100%',
+    maxWidth: 420,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.25,
+    shadowRadius: 32,
+    elevation: 16,
+  },
+  stockModalTitle: {
+    ...typography.styles.h3,
+    color: colors.primary.navy,
+    marginBottom: 4,
+  },
+  stockModalSubtitle: {
+    ...typography.styles.caption,
+    color: colors.text.muted,
+    marginBottom: spacing.md,
+  },
+  stockModalInput: {
+    backgroundColor: colors.background.secondary,
+    borderRadius: spacing.inputRadius,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    fontSize: 18,
+    fontWeight: '600' as const,
+    color: colors.text.primary,
+    letterSpacing: 1,
+  },
+  stockModalCounter: {
+    ...typography.styles.caption,
+    color: colors.text.muted,
+    marginTop: spacing.xs,
+    textAlign: 'right',
+  },
+  stockModalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  stockModalBtn: {
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.lg,
+    borderRadius: spacing.inputRadius,
+    minWidth: 96,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stockModalBtnCancel: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  },
+  stockModalBtnCancelText: {
+    ...typography.styles.button,
+    color: colors.text.secondary,
+  },
+  stockModalBtnSave: {
+    backgroundColor: colors.primary.red,
+  },
+  stockModalBtnSaveText: {
+    ...typography.styles.button,
+    color: colors.text.inverse,
+    fontWeight: '700' as const,
+  },
+  // iOS numeric-keyboard "Done" accessory ─────────────────────────────
+  inputAccessory: {
+    backgroundColor: '#F3F4F6',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(17,24,39,0.08)',
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  inputAccessoryDoneBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+  },
+  inputAccessoryDoneText: {
+    color: colors.primary.navy,
+    fontWeight: '700' as const,
+    fontSize: 16,
   },
   // Error Modal Styles
   errorModalOverlay: {

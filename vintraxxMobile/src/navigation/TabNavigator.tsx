@@ -1,35 +1,35 @@
-// Tab Navigator (Option B) — white pill bar with elevated red Scan button.
+// Tab Navigator — uniform 5-tab paginating bottom bar.
 //
-// Layout: [ Devices | History | (centre) | Appraisal | Schedule ].
-// The centre slot is reserved for an elevated circular Scan button that
-// short-presses into a smart-default route and long-presses into a radial
-// fan with three sub-actions (Bluetooth scan / Go live / New appraisal).
+// Five tabs in fixed order: Devices, Scan, Appraisal, Schedule, History.
+// Only three are visible at once inside a viewport that clips the inner
+// strip; when the active tab changes, the strip auto-slides (spring) so
+// the active tab is always visible:
 //
-// Smart default for short-press:
-//   • If user has a paired GPS terminal currently ONLINE       → LiveTrack
-//   • Else if a BLE OBD device was previously paired           → Scan
-//   • Else                                                      → Devices
+//   active 0 (Devices)   → window 0 = [Devices, Scan, Appraisal]
+//   active 1 (Scan)      → window 0 = [Devices, Scan, Appraisal]
+//   active 2 (Appraisal) → window 1 = [Scan, Appraisal, Schedule]
+//   active 3 (Schedule)  → window 2 = [Appraisal, Schedule, History]
+//   active 4 (History)   → window 2 = [Appraisal, Schedule, History]
 //
-// `DealerBadgeHeader` from the previous design is removed; the dealer pill
-// now lives inside the Devices tab header (DevicesScreen).
+// The selected tab uses a filled pill background plus a small red dot
+// underneath the label. No elevated centre button, no radial fan — those
+// destinations are reachable by tapping the Scan / Devices / Appraisal
+// tabs directly.
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
   StyleSheet,
   Animated,
   Pressable,
-  Easing,
   Keyboard,
   KeyboardEvent,
   Platform,
+  LayoutChangeEvent,
 } from 'react-native';
 import { createBottomTabNavigator, BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { ScanScreen } from '../screens/ScanScreen';
 import { AppraisalTabScreen } from '../screens/AppraisalTabScreen';
@@ -38,14 +38,15 @@ import { ScheduleScreen } from '../screens/ScheduleScreen';
 import { DevicesScreen } from '../screens/DevicesScreen';
 
 import { useAppStore } from '../store/appStore';
+import type { GpsAlarm } from '../types/gps';
 import { navigationTheme } from '../theme/navigation';
-import { TabParamList, RootStackParamList } from './types';
+import { TabParamList } from './types';
 
-import ConnectIcon from '../assets/icons/connect.svg';
-import ScanIcon from '../assets/icons/scan.svg';
-import WalletIcon from '../assets/icons/wallet.svg';
-import HistoryIcon from '../assets/icons/history.svg';
-import CalendarIcon from '../assets/icons/calendar.svg';
+import DevicesIcon from '../assets/icons/tab-devices.svg';
+import ScanIcon from '../assets/icons/tab-scan.svg';
+import AppraisalIcon from '../assets/icons/tab-appraisal.svg';
+import ScheduleIcon from '../assets/icons/tab-schedule.svg';
+import HistoryIcon from '../assets/icons/tab-history.svg';
 
 const Tab = createBottomTabNavigator<TabParamList>();
 
@@ -55,40 +56,49 @@ interface SvgIconProps {
   color: string;
 }
 
-const TAB_META: Record<
-  Exclude<keyof TabParamList, 'Scan'>,
-  { label: string; Icon: React.FC<SvgIconProps> }
-> = {
-  Devices:      { label: 'Devices',   Icon: ConnectIcon },
-  History:      { label: 'History',   Icon: HistoryIcon },
-  AppraisalTab: { label: 'Appraisal', Icon: WalletIcon },
-  Schedule:     { label: 'Schedule',  Icon: CalendarIcon },
-};
+// ── Tab metadata ───────────────────────────────────────────────────────────
+//
+// Order here determines visual order in the strip. It MUST match the order
+// of `<Tab.Screen>` declarations below so `state.index` lines up with the
+// strip indices.
 
-// ── Side tab item ──────────────────────────────────────────────────────────
+const TAB_META: {
+  routeName: keyof TabParamList;
+  label: string;
+  Icon: React.FC<SvgIconProps>;
+}[] = [
+  { routeName: 'Devices',      label: 'Devices',   Icon: DevicesIcon },
+  { routeName: 'Scan',         label: 'Scan',      Icon: ScanIcon },
+  { routeName: 'AppraisalTab', label: 'Appraisal', Icon: AppraisalIcon },
+  { routeName: 'Schedule',     label: 'Schedule',  Icon: ScheduleIcon },
+  { routeName: 'History',      label: 'History',   Icon: HistoryIcon },
+];
+
+// ── Tab item ───────────────────────────────────────────────────────────────
 
 const TabItem: React.FC<{
-  routeName: keyof TabParamList;
+  width: number;
+  label: string;
+  Icon: React.FC<SvgIconProps>;
   focused: boolean;
   onPress: () => void;
   onLongPress: () => void;
   badge?: number;
-}> = ({ routeName, focused, onPress, onLongPress, badge }) => {
-  const meta = TAB_META[routeName as Exclude<keyof TabParamList, 'Scan'>];
-  if (!meta) return null;
-  const { label, Icon } = meta;
+}> = ({ width, label, Icon, focused, onPress, onLongPress, badge }) => {
+  const focus = useRef(new Animated.Value(focused ? 1 : 0)).current;
 
-  const scale = useRef(new Animated.Value(focused ? 1 : 0)).current;
   useEffect(() => {
-    Animated.spring(scale, {
+    Animated.spring(focus, {
       toValue: focused ? 1 : 0,
       useNativeDriver: true,
       tension: 200,
       friction: 18,
     }).start();
-  }, [focused, scale]);
+  }, [focused, focus]);
 
-  const iconScale = scale.interpolate({ inputRange: [0, 1], outputRange: [1, 1.1] });
+  const iconScale = focus.interpolate({ inputRange: [0, 1], outputRange: [1, 1.1] });
+  const dotScale = focus.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
+  const dotOpacity = focus;
 
   const labelColor = focused
     ? navigationTheme.tabItem.labelColorFocused
@@ -101,11 +111,10 @@ const TabItem: React.FC<{
     : navigationTheme.tabItem.iconSizeRest;
 
   return (
-    <TouchableOpacity
-      style={styles.tabItem}
+    <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
-      activeOpacity={0.7}
+      android_ripple={{ color: 'rgba(0,0,0,0.05)', borderless: true }}
       hitSlop={{
         top: navigationTheme.tabItem.hitSlop,
         bottom: navigationTheme.tabItem.hitSlop,
@@ -115,6 +124,7 @@ const TabItem: React.FC<{
       accessibilityRole="tab"
       accessibilityState={{ selected: focused }}
       accessibilityLabel={label}
+      style={[styles.tabItem, { width }]}
     >
       <View style={[styles.tabItemInner, focused && styles.tabItemInnerFocused]}>
         <Animated.View style={{ transform: [{ scale: iconScale }] }}>
@@ -144,190 +154,17 @@ const TabItem: React.FC<{
         >
           {label}
         </Text>
-      </View>
-    </TouchableOpacity>
-  );
-};
-
-// ── Elevated centre Scan button + radial fan ───────────────────────────────
-
-const RadialFanItem: React.FC<{
-  /** 0..n-1; controls staggered enter delay and arc angle. */
-  index: number;
-  total: number;
-  Icon: React.FC<SvgIconProps>;
-  caption: string;
-  disabled?: boolean;
-  onPress: () => void;
-  expanded: boolean;
-}> = ({ index, total, Icon, caption, disabled, onPress, expanded }) => {
-  const progress = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.timing(progress, {
-      toValue: expanded ? 1 : 0,
-      duration: 220,
-      delay: expanded ? index * navigationTheme.radial.staggerMs : 0,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, [expanded, index, progress]);
-
-  // Compute (dx, dy) along an arc centered straight up (-90°).
-  const arcDeg = navigationTheme.radial.arcDegrees;
-  const r = navigationTheme.radial.spacing;
-  const startDeg = -90 - arcDeg / 2;
-  const stepDeg = total > 1 ? arcDeg / (total - 1) : 0;
-  const angleDeg = startDeg + stepDeg * index;
-  const angleRad = (angleDeg * Math.PI) / 180;
-  const dx = Math.cos(angleRad) * r;
-  const dy = Math.sin(angleRad) * r;
-
-  const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [0, dx] });
-  const translateY = progress.interpolate({ inputRange: [0, 1], outputRange: [0, dy] });
-  const scale = progress.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] });
-
-  return (
-    <Animated.View
-      pointerEvents={expanded ? 'auto' : 'none'}
-      style={[
-        styles.radialChip,
-        {
-          width: navigationTheme.radial.chipSize,
-          height: navigationTheme.radial.chipSize,
-          borderRadius: navigationTheme.radial.chipSize / 2,
-          backgroundColor: disabled
-            ? navigationTheme.radial.bgDisabled
-            : navigationTheme.radial.bg,
-          opacity: progress,
-          transform: [{ translateX }, { translateY }, { scale }],
-        },
-      ]}
-    >
-      <Pressable
-        onPress={() => {
-          if (!disabled) onPress();
-        }}
-        style={styles.radialChipInner}
-        accessibilityRole="button"
-        accessibilityLabel={caption}
-        accessibilityState={{ disabled: !!disabled }}
-      >
-        <Icon
-          width={navigationTheme.radial.iconSize}
-          height={navigationTheme.radial.iconSize}
-          color={navigationTheme.radial.iconColor}
-        />
-      </Pressable>
-    </Animated.View>
-  );
-};
-
-const PrimaryCenterButton: React.FC<{
-  onPrimary: () => void;
-  onSecondary: (kind: 'ble-scan' | 'go-live' | 'appraisal') => void;
-  hasOnlineGps: boolean;
-}> = ({ onPrimary, onSecondary, hasOnlineGps }) => {
-  const [expanded, setExpanded] = useState(false);
-  const press = useRef(new Animated.Value(0)).current;
-
-  const onPressIn = () => {
-    Animated.timing(press, {
-      toValue: 1,
-      duration: 120,
-      useNativeDriver: true,
-    }).start();
-  };
-  const onPressOut = () => {
-    Animated.spring(press, {
-      toValue: 0,
-      useNativeDriver: true,
-      tension: 200,
-      friction: 14,
-    }).start();
-  };
-
-  const buttonScale = press.interpolate({ inputRange: [0, 1], outputRange: [1, 0.92] });
-
-  return (
-    <View style={styles.primaryWrap} pointerEvents="box-none">
-      {/* Radial backdrop — taps outside collapse the fan. */}
-      {expanded && (
-        <Pressable
-          style={styles.radialBackdrop}
-          onPress={() => setExpanded(false)}
-          accessibilityElementsHidden
-        />
-      )}
-
-      {/* Radial fan — three sub-actions. */}
-      <View style={styles.radialAnchor} pointerEvents="box-none">
-        <RadialFanItem
-          index={0}
-          total={3}
-          expanded={expanded}
-          Icon={ConnectIcon}
-          caption="Bluetooth scan"
-          onPress={() => {
-            setExpanded(false);
-            onSecondary('ble-scan');
-          }}
-        />
-        <RadialFanItem
-          index={1}
-          total={3}
-          expanded={expanded}
-          Icon={ScanIcon}
-          caption="Go live"
-          disabled={!hasOnlineGps}
-          onPress={() => {
-            setExpanded(false);
-            onSecondary('go-live');
-          }}
-        />
-        <RadialFanItem
-          index={2}
-          total={3}
-          expanded={expanded}
-          Icon={WalletIcon}
-          caption="New appraisal"
-          onPress={() => {
-            setExpanded(false);
-            onSecondary('appraisal');
-          }}
+        <Animated.View
+          style={[
+            styles.dot,
+            {
+              opacity: dotOpacity,
+              transform: [{ scale: dotScale }],
+            },
+          ]}
         />
       </View>
-
-      <Animated.View
-        style={[
-          styles.primaryButton,
-          { transform: [{ scale: buttonScale }] },
-        ]}
-      >
-        <Pressable
-          onPress={() => {
-            if (expanded) {
-              setExpanded(false);
-              return;
-            }
-            onPrimary();
-          }}
-          onLongPress={() => setExpanded(true)}
-          delayLongPress={300}
-          onPressIn={onPressIn}
-          onPressOut={onPressOut}
-          style={styles.primaryButtonInner}
-          accessibilityRole="button"
-          accessibilityLabel="Primary action"
-          accessibilityHint="Double tap to scan. Hold for more options."
-        >
-          <ScanIcon
-            width={navigationTheme.primary.iconSize}
-            height={navigationTheme.primary.iconSize}
-            color={navigationTheme.primary.iconColor}
-          />
-        </Pressable>
-      </Animated.View>
-    </View>
+    </Pressable>
   );
 };
 
@@ -337,6 +174,7 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) => {
   const insets = useSafeAreaInsets();
   const bottomOffset = insets.bottom > 0 ? insets.bottom : 8;
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [viewportW, setViewportW] = useState(0);
 
   // iOS pushes the tab bar over the keyboard unless we hide it. Android's
   // soft-input adjust handles it for us.
@@ -352,60 +190,64 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) => {
     };
   }, []);
 
-  const {
-    gpsTerminals,
-    gpsAlarms,
-    selectedTerminalId,
-    userDevice,
-    setLastPrimaryAction,
-  } = useAppStore();
-
-  const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-
-  // Smart-default helpers — center button & radial fan share these so the
-  // copy stays consistent.
-  const onlineTerminals = gpsTerminals.filter((t) => t.status === 'ONLINE');
-  const liveTarget =
-    onlineTerminals.find((t) => t.id === selectedTerminalId) ?? onlineTerminals[0];
-  const hasOnlineGps = !!liveTarget;
-  const hasBleScanner = !!userDevice?.macAddress;
-
-  const goPrimary = () => {
-    if (liveTarget) {
-      setLastPrimaryAction('go-live');
-      rootNav.navigate('LiveTrack', { terminalId: liveTarget.id });
-      return;
-    }
-    if (hasBleScanner) {
-      setLastPrimaryAction('ble-scan');
-      // React Navigation's typed `navigate(name, params)` overload is
-      // strict; cast through `any` so the (name, params) tuple resolves.
-      (navigation as any).navigate('Scan', { autoStart: true });
-      return;
-    }
-    (navigation as any).navigate('Devices');
-  };
-
-  const goSecondary = (kind: 'ble-scan' | 'go-live' | 'appraisal') => {
-    setLastPrimaryAction(kind);
-    if (kind === 'ble-scan') {
-      (navigation as any).navigate('Scan', { autoStart: true });
-      return;
-    }
-    if (kind === 'go-live') {
-      if (liveTarget) rootNav.navigate('LiveTrack', { terminalId: liveTarget.id });
-      else (navigation as any).navigate('Devices', { segment: 'gps' });
-      return;
-    }
-    rootNav.navigate('Appraiser');
-  };
-
-  const unreadAlarms = gpsAlarms.filter((a) => !a.acknowledged && !a.closedAt).length;
-  const criticalAlarms = gpsAlarms.filter(
-    (a) => !a.acknowledged && !a.closedAt && a.severity === 'CRITICAL',
+  const { gpsAlarms } = useAppStore();
+  // Explicit GpsAlarm annotation sidesteps the store's implicit-any
+  // inference and keeps this file clean of TS7006 cascades.
+  const unreadAlarms = (gpsAlarms as GpsAlarm[]).filter(
+    (a: GpsAlarm) => !a.acknowledged && !a.closedAt,
+  ).length;
+  const criticalAlarms = (gpsAlarms as GpsAlarm[]).filter(
+    (a: GpsAlarm) => !a.acknowledged && !a.closedAt && a.severity === 'CRITICAL',
   ).length;
 
+  // Map the active tab to a strip offset (0, 1, or 2). When the active
+  // index is at either edge the offset clamps so we never reveal empty
+  // space past the strip.
+  const activeIndex = state.index;
+  const totalCount = navigationTheme.tabBar.totalCount;
+  const windowCount = navigationTheme.tabBar.windowCount;
+  const maxOffset = totalCount - windowCount; // = 2
+
+  const offsetIndex = useMemo(() => {
+    if (activeIndex <= 0) return 0;
+    if (activeIndex >= totalCount - 1) return maxOffset;
+    // Try to centre the active tab in the window: offset = activeIndex - 1.
+    return Math.max(0, Math.min(maxOffset, activeIndex - 1));
+  }, [activeIndex, totalCount, maxOffset]);
+
+  // Per-tab width is derived from the measured viewport width once layout
+  // resolves. Until then we render a 0-width strip (invisible) so we don't
+  // briefly flash the wrong layout.
+  const tabWidth = viewportW > 0 ? viewportW / windowCount : 0;
+  const stripWidth = tabWidth * totalCount;
+
+  const translateX = useRef(new Animated.Value(0)).current;
+  const targetX = -offsetIndex * tabWidth;
+
+  useEffect(() => {
+    if (viewportW <= 0) return;
+    Animated.spring(translateX, {
+      toValue: targetX,
+      useNativeDriver: true,
+      tension: navigationTheme.tabBar.slideSpring.tension,
+      friction: navigationTheme.tabBar.slideSpring.friction,
+    }).start();
+  }, [targetX, viewportW, translateX]);
+
+  const onViewportLayout = (e: LayoutChangeEvent) => {
+    const w = e.nativeEvent.layout.width;
+    if (w !== viewportW) setViewportW(w);
+  };
+
   if (keyboardVisible) return null;
+
+  // Build the 5 tab entries in declared order. We index into `state.routes`
+  // by route name so re-ordering stays robust if `<Tab.Screen>` declarations
+  // ever drift from TAB_META.
+  type RouteT = typeof state.routes[number];
+  const routeByName: Map<keyof TabParamList, RouteT> = new Map(
+    state.routes.map((r): [keyof TabParamList, RouteT] => [r.name as keyof TabParamList, r]),
+  );
 
   return (
     <View
@@ -413,60 +255,64 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) => {
       pointerEvents="box-none"
     >
       <View style={styles.tabBarPill}>
-        {state.routes.map((route, tabIndex) => {
-          const focused = state.index === tabIndex;
+        <View style={styles.viewport} onLayout={onViewportLayout}>
+          <Animated.View
+            style={[
+              styles.strip,
+              {
+                width: stripWidth || '100%',
+                transform: [{ translateX }],
+              },
+            ]}
+          >
+            {TAB_META.map(({ routeName, label, Icon }) => {
+              const route = routeByName.get(routeName);
+              if (!route) return null;
+              const tabIndex = state.routes.findIndex((r) => r.key === route.key);
+              const focused = tabIndex === activeIndex;
 
-          // The centre slot is owned by the elevated button — render an
-          // empty spacer so the side icons keep their even spacing.
-          if (route.name === 'Scan') {
-            return <View key={route.key} style={styles.tabItem} />;
-          }
+              const onPress = () => {
+                const event = navigation.emit({
+                  type: 'tabPress',
+                  target: route.key,
+                  canPreventDefault: true,
+                });
+                if (!focused && !event.defaultPrevented) {
+                  (navigation as any).navigate(route.name);
+                }
+              };
+              const onLongPress = () => {
+                navigation.emit({ type: 'tabLongPress', target: route.key });
+              };
 
-          const onPress = () => {
-            const event = navigation.emit({
-              type: 'tabPress',
-              target: route.key,
-              canPreventDefault: true,
-            });
-            if (!focused && !event.defaultPrevented) {
-              (navigation as any).navigate(route.name);
-            }
-          };
-          const onLongPress = () => {
-            navigation.emit({ type: 'tabLongPress', target: route.key });
-          };
+              let badge: number | undefined;
+              if (routeName === 'Devices') badge = criticalAlarms || undefined;
+              if (routeName === 'History') badge = unreadAlarms || undefined;
 
-          // Badges: Devices shows critical alarm count; History shows unread
-          // alarm count (general). UX rationale: critical is the urgent
-          // signal; History counts everything new.
-          let badge: number | undefined;
-          if (route.name === 'Devices') badge = criticalAlarms || undefined;
-          if (route.name === 'History') badge = unreadAlarms || undefined;
-
-          return (
-            <TabItem
-              key={route.key}
-              routeName={route.name as keyof TabParamList}
-              focused={focused}
-              onPress={onPress}
-              onLongPress={onLongPress}
-              badge={badge}
-            />
-          );
-        })}
+              return (
+                <TabItem
+                  key={route.key}
+                  width={tabWidth}
+                  label={label}
+                  Icon={Icon}
+                  focused={focused}
+                  onPress={onPress}
+                  onLongPress={onLongPress}
+                  badge={badge}
+                />
+              );
+            })}
+          </Animated.View>
+        </View>
       </View>
-
-      {/* Elevated centre Scan button overlays the bar's middle slot. */}
-      <PrimaryCenterButton
-        onPrimary={goPrimary}
-        onSecondary={goSecondary}
-        hasOnlineGps={hasOnlineGps}
-      />
     </View>
   );
 };
 
 // ── Navigator ──────────────────────────────────────────────────────────────
+//
+// Screen order MUST match TAB_META. React Navigation's `state.index` reflects
+// the declaration order, and the slide animation uses that index directly.
 
 export const TabNavigator: React.FC = () => {
   return (
@@ -476,13 +322,10 @@ export const TabNavigator: React.FC = () => {
       initialRouteName="Devices"
     >
       <Tab.Screen name="Devices"      component={DevicesScreen} />
-      <Tab.Screen name="History"      component={HistoryScreen} />
-      {/* Scan is in the tab list so the centre slot has a target route, but
-          it's never rendered as a normal tab — the elevated button drives
-          navigation directly. */}
       <Tab.Screen name="Scan"         component={ScanScreen} />
       <Tab.Screen name="AppraisalTab" component={AppraisalTabScreen} />
       <Tab.Screen name="Schedule"     component={ScheduleScreen} />
+      <Tab.Screen name="History"      component={HistoryScreen} />
     </Tab.Navigator>
   );
 };
@@ -498,9 +341,6 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   tabBarPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
     backgroundColor: navigationTheme.tabBar.bg,
     borderRadius: navigationTheme.tabBar.borderRadius,
     height: navigationTheme.tabBar.height,
@@ -512,11 +352,26 @@ const styles = StyleSheet.create({
     shadowRadius: navigationTheme.tabBar.shadowRadius,
     shadowOffset: { width: 0, height: navigationTheme.tabBar.shadowOffsetY },
     elevation: navigationTheme.tabBar.elevation,
+    paddingHorizontal: navigationTheme.tabBar.innerPadH,
+    overflow: 'hidden',
+    justifyContent: 'center',
+  },
+  viewport: {
+    width: '100%',
+    height: '100%',
+    overflow: 'hidden',
+    justifyContent: 'center',
+  },
+  strip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: '100%',
   },
   tabItem: {
-    flex: 1,
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 4,
   },
   tabItemInner: {
     alignItems: 'center',
@@ -524,14 +379,22 @@ const styles = StyleSheet.create({
     paddingVertical: navigationTheme.tabItem.pillPadV,
     paddingHorizontal: navigationTheme.tabItem.pillPadH,
     borderRadius: navigationTheme.tabItem.pillRadius,
+    minWidth: 64,
   },
   tabItemInnerFocused: {
     backgroundColor: navigationTheme.tabItem.pillBg,
   },
   tabLabel: {
     marginTop: 2,
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
     textAlign: 'center',
+  },
+  dot: {
+    marginTop: navigationTheme.tabItem.dotMarginTop,
+    width: navigationTheme.tabItem.dotSize,
+    height: navigationTheme.tabItem.dotSize,
+    borderRadius: navigationTheme.tabItem.dotSize / 2,
+    backgroundColor: navigationTheme.tabItem.dotColor,
   },
   badge: {
     position: 'absolute',
@@ -549,64 +412,5 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 10,
     fontWeight: '700',
-  },
-
-  // ── Centre raised button ─────────────────────────────────────────────
-  primaryWrap: {
-    position: 'absolute',
-    top: -navigationTheme.primary.raiseOffset,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  primaryButton: {
-    width: navigationTheme.primary.size,
-    height: navigationTheme.primary.size,
-    borderRadius: navigationTheme.primary.size / 2,
-    backgroundColor: navigationTheme.primary.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: navigationTheme.primary.ringWidth,
-    borderColor: navigationTheme.primary.ringColor,
-    shadowColor: navigationTheme.primary.shadowColor,
-    shadowOpacity: navigationTheme.primary.shadowOpacity,
-    shadowRadius: navigationTheme.primary.shadowRadius,
-    shadowOffset: { width: 0, height: navigationTheme.primary.shadowOffsetY },
-    elevation: navigationTheme.primary.elevation,
-  },
-  primaryButtonInner: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radialAnchor: {
-    position: 'absolute',
-    top: navigationTheme.primary.size / 2 - navigationTheme.radial.chipSize / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radialChip: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
-  },
-  radialChipInner: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radialBackdrop: {
-    position: 'absolute',
-    top: -800,
-    left: -2000,
-    right: -2000,
-    bottom: -200,
   },
 });

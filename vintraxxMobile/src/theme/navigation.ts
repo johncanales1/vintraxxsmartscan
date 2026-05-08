@@ -7,7 +7,7 @@ import { colors } from './colors';
 
 export const navigationTheme = {
   tabBar: {
-    height: 68,
+    height: 76,
     horizontalInset: 12,
     borderRadius: 28,
     bg: '#FFFFFF',
@@ -18,23 +18,35 @@ export const navigationTheme = {
     shadowRadius: 24,
     shadowOffsetY: 8,
     elevation: 16,
+    /** Number of tabs visible at once inside the pill viewport. */
+    windowCount: 3,
+    /** Total tabs (Devices, Scan, Appraisal, Schedule, History). */
+    totalCount: 5,
+    /** Spring used to slide the inner strip when the active tab changes. */
+    slideSpring: { tension: 120, friction: 14 },
+    /** Inner padding so tab pills don't touch the rounded pill edges. */
+    innerPadH: 6,
   },
   tabItem: {
     iconSizeRest: 22,
     iconSizeFocused: 24,
     iconColorRest: '#6B7280',
     iconColorFocused: colors.primary.navy,
-    labelSizeRest: 11,
-    labelSizeFocused: 12,
+    labelSizeRest: 13,
+    labelSizeFocused: 14,
     labelWeightRest: '600' as const,
     labelWeightFocused: '700' as const,
     labelColorRest: '#4B5563',
     labelColorFocused: colors.primary.navy,
     pillBg: 'rgba(30,58,95,0.08)',
-    pillRadius: 16,
+    pillRadius: 18,
     pillPadV: 6,
-    pillPadH: 14,
+    pillPadH: 10,
     hitSlop: 8,
+    /** Small dot beneath the selected tab's label. */
+    dotSize: 6,
+    dotMarginTop: 4,
+    dotColor: colors.primary.red,
   },
   primary: {
     /** Diameter of the elevated centre button. Spec calls for 64. */

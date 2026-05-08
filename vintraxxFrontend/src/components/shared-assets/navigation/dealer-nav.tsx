@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Search, Menu, ChevronDown, User, LogOut, UserCircle, X, Upload, Calendar, DollarSign, Mail, Hash, ZoomIn, ZoomOut, Move, Check, Pencil } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { Search, Menu, ChevronDown, ChevronRight, User, LogOut, UserCircle, X, Upload, Calendar, DollarSign, Mail, Hash, ZoomIn, ZoomOut, Move, Check, Pencil, Activity, Scan, Cpu } from "lucide-react";
 import { Button as AriaButton, Dialog as AriaDialog, DialogTrigger as AriaDialogTrigger, Popover as AriaPopover } from "react-aria-components";
 import { cx } from "@/utils/cx";
 import { API_BASE } from "@/lib/api-config";
@@ -693,6 +694,137 @@ const UserDropdownMenu = ({ className, userEmail, fullName, onProfileClick, onCl
     );
 };
 
+// --- Smart Scan dropdown items shared by desktop + mobile menus.
+const SMART_SCAN_ITEMS = [
+    {
+        href: "/VinTraxxSmartScanDashboard",
+        label: "Overview",
+        description: "Dashboard summary",
+        Icon: Activity,
+    },
+    {
+        href: "/VinTraxxSmartScanDashboard/obd",
+        label: "OBD Scan",
+        description: "Scans, appraisals & service",
+        Icon: Scan,
+    },
+    {
+        href: "/VinTraxxSmartScanDashboard/gps",
+        label: "GPS Fleet",
+        description: "Live map, alerts & trips",
+        Icon: Cpu,
+    },
+] as const;
+
+const SmartScanMenu = ({ onItemClick }: { onItemClick?: () => void }) => {
+    const pathname = usePathname();
+    const [isOpen, setIsOpen] = useState(false);
+    const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const open = () => {
+        if (closeTimer.current) clearTimeout(closeTimer.current);
+        setIsOpen(true);
+    };
+    const scheduleClose = () => {
+        if (closeTimer.current) clearTimeout(closeTimer.current);
+        closeTimer.current = setTimeout(() => setIsOpen(false), 120);
+    };
+
+    const isAnyActive = SMART_SCAN_ITEMS.some(
+        (i) =>
+            pathname === i.href ||
+            (i.href !== "/VinTraxxSmartScanDashboard" &&
+                pathname.startsWith(`${i.href}/`)),
+    );
+    // The Overview link should win if we are exactly on the dashboard root or a
+    // sub-route that is NOT under /obd or /gps (i.e. devices/map/alerts/etc.).
+    const overviewActive =
+        pathname === "/VinTraxxSmartScanDashboard" ||
+        (pathname.startsWith("/VinTraxxSmartScanDashboard/") &&
+            !pathname.startsWith("/VinTraxxSmartScanDashboard/obd") &&
+            !pathname.startsWith("/VinTraxxSmartScanDashboard/gps"));
+
+    return (
+        <div
+            className="relative"
+            onMouseEnter={open}
+            onMouseLeave={scheduleClose}
+            onFocus={open}
+            onBlur={scheduleClose}
+        >
+            <button
+                type="button"
+                aria-haspopup="menu"
+                aria-expanded={isOpen}
+                onClick={() => setIsOpen((v) => !v)}
+                className={cx(
+                    "inline-flex items-center gap-1 text-sm font-semibold transition-colors duration-150",
+                    isAnyActive
+                        ? "text-blue-600"
+                        : "text-[#1B3A5F] hover:text-blue-600",
+                )}
+            >
+                Smart Scan
+                <ChevronDown
+                    className={cx(
+                        "w-4 h-4 transition-transform duration-150",
+                        isOpen ? "rotate-180" : "rotate-0",
+                    )}
+                />
+            </button>
+            {isOpen && (
+                <div
+                    role="menu"
+                    className="absolute left-0 top-full mt-2 w-72 origin-top rounded-xl border border-slate-200 bg-white/95 backdrop-blur-xl shadow-xl shadow-slate-300/30 p-1.5 animate-in fade-in slide-in-from-top-1 duration-150"
+                    onMouseEnter={open}
+                    onMouseLeave={scheduleClose}
+                >
+                    {SMART_SCAN_ITEMS.map(({ href, label, description, Icon }) => {
+                        const active =
+                            href === "/VinTraxxSmartScanDashboard"
+                                ? overviewActive
+                                : pathname === href || pathname.startsWith(`${href}/`);
+                        return (
+                            <Link
+                                key={href}
+                                href={href}
+                                role="menuitem"
+                                onClick={() => {
+                                    setIsOpen(false);
+                                    onItemClick?.();
+                                }}
+                                className={cx(
+                                    "flex items-start gap-3 px-3 py-2.5 rounded-lg transition-colors",
+                                    active
+                                        ? "bg-blue-50 text-[#1B3A5F]"
+                                        : "text-slate-700 hover:bg-slate-50",
+                                )}
+                            >
+                                <span
+                                    className={cx(
+                                        "flex h-8 w-8 items-center justify-center rounded-lg shrink-0",
+                                        active
+                                            ? "bg-[#1B3A5F] text-white"
+                                            : "bg-slate-100 text-[#1B3A5F]",
+                                    )}
+                                >
+                                    <Icon className="w-4 h-4" />
+                                </span>
+                                <span className="flex flex-col leading-tight">
+                                    <span className="text-sm font-semibold">{label}</span>
+                                    <span className="text-xs text-slate-500">
+                                        {description}
+                                    </span>
+                                </span>
+                            </Link>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+};
+
 export const DealerNav = ({ dealerLogo, originalLogoUrl, dealerName, userEmail, userId, fullName, pricePerLaborHour, qrCodeUrl, createdAt, onProfileUpdate }: DealerNavProps) => {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
@@ -879,17 +1011,12 @@ export const DealerNav = ({ dealerLogo, originalLogoUrl, dealerName, userEmail, 
 
                     {/* Desktop Navigation */}
                     <div className="hidden lg:flex items-center gap-6">
-                        <Link
-                            href="/VinTraxxSmartScanDashboard"
-                            className="text-sm font-semibold text-[#1B3A5F] hover:text-blue-600 transition-colors duration-150"
-                        >
-                            VinTraxx Smart Scan
-                        </Link>
+                        <SmartScanMenu />
                         <Link
                             href="/CapitalDealerPortal"
                             className="text-sm font-semibold text-[#1B3A5F] hover:text-blue-600 transition-colors duration-150"
                         >
-                            VinTraxx Capital Portal
+                            Capital Portal
                         </Link>
                     </div>
 
@@ -990,19 +1117,31 @@ export const DealerNav = ({ dealerLogo, originalLogoUrl, dealerName, userEmail, 
                     <div className="lg:hidden border-t border-slate-200 bg-white">
                         <div className="px-4 py-3 space-y-1">
                             {/* Navigation Links */}
-                            <Link
-                                href="/VinTraxxSmartScanDashboard"
-                                onClick={() => setIsMobileMenuOpen(false)}
-                                className="block px-3 py-2 text-md font-semibold text-[#1B3A5F] hover:bg-slate-100 rounded-lg"
-                            >
-                                VinTraxx Smart Scan
-                            </Link>
+                            <div className="px-3 pt-1 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                                Smart Scan
+                            </div>
+                            {SMART_SCAN_ITEMS.map(({ href, label, description, Icon }) => (
+                                <Link
+                                    key={href}
+                                    href={href}
+                                    onClick={() => setIsMobileMenuOpen(false)}
+                                    className="flex items-start gap-3 px-3 py-2 rounded-lg hover:bg-slate-100"
+                                >
+                                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-[#1B3A5F] shrink-0">
+                                        <Icon className="w-4 h-4" />
+                                    </span>
+                                    <span className="flex flex-col leading-tight">
+                                        <span className="text-sm font-semibold text-[#1B3A5F]">{label}</span>
+                                        <span className="text-xs text-slate-500">{description}</span>
+                                    </span>
+                                </Link>
+                            ))}
                             <Link
                                 href="/CapitalDealerPortal"
                                 onClick={() => setIsMobileMenuOpen(false)}
-                                className="block px-3 py-2 text-md font-semibold text-[#1B3A5F] hover:bg-slate-100 rounded-lg"
+                                className="block px-3 py-2 mt-2 text-md font-semibold text-[#1B3A5F] hover:bg-slate-100 rounded-lg"
                             >
-                                VinTraxx Capital Portal
+                                Capital Portal
                             </Link>
                             
                             {/* User Dropdown */}

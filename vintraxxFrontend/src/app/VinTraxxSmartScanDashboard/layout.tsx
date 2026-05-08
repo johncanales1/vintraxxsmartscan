@@ -19,9 +19,9 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { DealerNav } from "@/components/shared-assets/navigation/dealer-nav";
-import { DashboardTabBar } from "./_components/DashboardTabBar";
+import { GpsTabBar, isGpsRoute } from "./_components/GpsTabBar";
 import { RealtimePill } from "./_components/RealtimePill";
 import { ScanDetailProvider } from "./_components/ScanDetailContext";
 import { GoogleMapsProvider } from "./_lib/GoogleMapsContext";
@@ -43,6 +43,8 @@ interface DealerProfile {
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const showGpsTabs = isGpsRoute(pathname);
   const [dealer, setDealer] = useState<DealerProfile | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
 
@@ -130,11 +132,17 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         }
       />
       {/* DealerNav is `fixed top-0 h-16`, so the rest of the page must
-          start 64px (4rem) lower. The tab bar is `sticky top-16`, so it
-          pins immediately under the nav when the user scrolls. */}
+          start 64px (4rem) lower. The GPS tab bar is `sticky top-16` and
+          only renders on GPS Fleet routes. The realtime pill floats in the
+          top-right corner so it stays visible on every Smart Scan page. */}
       <div className="pt-16">
-        <DashboardTabBar rightSlot={<RealtimePill />} />
+        {showGpsTabs && <GpsTabBar rightSlot={<RealtimePill />} />}
       </div>
+      {!showGpsTabs && (
+        <div className="fixed top-3 right-4 sm:right-6 z-[60] hidden md:block">
+          <RealtimePill />
+        </div>
+      )}
       <main className="min-h-[calc(100vh-7rem)]">
         <GoogleMapsProvider>
           <ScanDetailProvider>

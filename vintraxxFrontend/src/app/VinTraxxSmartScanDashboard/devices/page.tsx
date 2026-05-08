@@ -23,7 +23,8 @@ export default function DevicesPage() {
       (t.vehicleVin ?? "").toLowerCase().includes(q) ||
       (t.vehicleMake ?? "").toLowerCase().includes(q) ||
       (t.vehicleModel ?? "").toLowerCase().includes(q) ||
-      t.imei.toLowerCase().includes(q)
+      t.deviceIdentifier.toLowerCase().includes(q) ||
+      (t.imei ?? "").toLowerCase().includes(q)
     );
   });
 
@@ -63,7 +64,7 @@ export default function DevicesPage() {
       <input
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search by VIN, IMEI, or vehicle..."
+        placeholder="Search by VIN, device ID, IMEI, or vehicle..."
         className="w-full h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B3A5F]"
       />
       <DeviceTable terminals={filtered} loading={loading} />

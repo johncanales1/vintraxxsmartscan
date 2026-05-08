@@ -104,10 +104,13 @@ function attachSocket(socket: net.Socket): void {
     // for the same terminal is in the registry, we were superseded by
     // `SessionRegistry.bind()` and must NOT flip the terminal OFFLINE — the
     // newer session is now the source of truth.
+    const currentForTerminal = session.terminalId
+      ? SessionRegistry.getByTerminalId(session.terminalId)
+      : undefined;
     const replaced =
       session.terminalId !== null &&
-      SessionRegistry.getByTerminalId(session.terminalId) !== undefined &&
-      SessionRegistry.getByTerminalId(session.terminalId) !== session;
+      currentForTerminal !== undefined &&
+      currentForTerminal !== session;
 
     SessionRegistry.remove(session);
 
@@ -259,6 +262,18 @@ async function bootstrap(): Promise<void> {
   // unreachable we'd just queue write failures forever.
   await prisma.$queryRawUnsafe('SELECT 1');
   logger.info('vintraxx-gateway: Prisma connection healthy');
+
+  // Reconcile: any terminal still marked ONLINE from a prior crash/SIGKILL
+  // (where the socket-close handler never ran) should be flipped to OFFLINE.
+  // Without this, the admin dashboard's "online count" would lie until each
+  // device reconnects and re-auths.
+  const staleOnline = await prisma.gpsTerminal.updateMany({
+    where: { status: 'ONLINE' },
+    data: { status: 'OFFLINE', disconnectedAt: new Date() },
+  });
+  if (staleOnline.count > 0) {
+    logger.info(`vintraxx-gateway: reconciled ${staleOnline.count} stale ONLINE terminals → OFFLINE`);
+  }
 
   // Start the downstream-command dispatcher (LISTEN gps_command + 30s sweep).
   // Failure to connect is non-fatal — the dispatcher retries, and inbound

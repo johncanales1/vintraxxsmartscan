@@ -10,6 +10,7 @@
 
 import { useEffect, useState } from 'react';
 import { api, GpsTerminal, User } from '@/lib/api';
+import { terminalLabel } from '@/lib/gpsHelpers';
 import { X, Save, Search, UserMinus } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -69,7 +70,7 @@ export default function ReassignTerminalModal({ terminal, onClose, onUpdated }: 
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <div>
             <h2 className="text-lg font-bold text-gray-900 dark:text-white">Reassign Terminal</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 font-mono">{terminal.imei}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 font-mono">{terminalLabel(terminal)}</p>
           </div>
           <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-all">
             <X size={18} />

@@ -16,6 +16,7 @@ import { api, GpsAlarm } from '@/lib/api';
 import {
   fmtRelative,
   vehicleLabel,
+  terminalLabel,
   severityColor,
   alarmTypeLabel,
 } from '@/lib/gpsHelpers';
@@ -169,10 +170,11 @@ function Body({ alarm }: { alarm: GpsAlarm }) {
               vehicleModel: alarm.terminal.vehicleModel ?? null,
               vehicleVin: alarm.terminal.vehicleVin,
               nickname: alarm.terminal.nickname,
+              deviceIdentifier: alarm.terminal.deviceIdentifier,
               imei: alarm.terminal.imei,
             })}
           </p>
-          <p className="text-xs font-mono text-gray-500 dark:text-gray-400 mt-1">{alarm.terminal.imei}</p>
+          <p className="text-xs font-mono text-gray-500 dark:text-gray-400 mt-1">{terminalLabel(alarm.terminal)}</p>
           {alarm.terminal.vehicleVin && (
             <p className="text-xs font-mono text-gray-500 dark:text-gray-400">{alarm.terminal.vehicleVin}</p>
           )}

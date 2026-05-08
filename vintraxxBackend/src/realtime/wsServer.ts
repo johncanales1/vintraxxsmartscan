@@ -107,13 +107,19 @@ export function attachGpsWebSocket(httpServer: HttpServer): WebSocketServer {
       total: clients.size,
     });
 
+    // Admin clients are auto-subscribed to the 'admin' firehose so they
+    // receive all GPS events without needing an explicit subscribe op.
+    if (client.isAdmin) {
+      client.subscriptions.add('admin');
+    }
+
     // Welcome frame includes the auto-applied scope so clients don't have to
     // guess. They're free to .subscribe() to narrower channels afterwards.
     safeSend(ws, {
       type: 'welcome',
       userId: client.userId,
       isAdmin: client.isAdmin,
-      autoChannels: ['user'],
+      autoChannels: client.isAdmin ? ['user', 'admin'] : ['user'],
     });
 
     ws.on('message', (data: RawData) => {

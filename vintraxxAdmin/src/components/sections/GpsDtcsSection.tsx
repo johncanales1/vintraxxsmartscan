@@ -233,6 +233,7 @@ function DtcEventRow({
         vehicleModel: null,
         vehicleVin: event.vin,
         nickname: event.terminal.nickname,
+        deviceIdentifier: event.terminal.deviceIdentifier,
         imei: event.terminal.imei,
       })
     : event.vin;

@@ -2,8 +2,8 @@
  * rate-limit — small in-memory leaky-bucket helper for gateway hot paths.
  *
  * Two callers use it today:
- *   • handleAuth   — caps failed auth-code attempts per IMEI to defeat
- *                    brute-force of the 8-byte auth-code space.
+ *   • handleAuth   — caps failed auth-code attempts per JT/T 808 device
+ *                    identifier to defeat brute-force of the auth-code space.
  *   • handleRegister — caps registration storms from a single source IP.
  *
  * The buckets are PROCESS-LOCAL (Map). With one gateway pod this is the
@@ -92,11 +92,12 @@ export class RateLimiter {
 // ── Pre-configured limiters used by gateway handlers ────────────────────────
 
 /**
- * Auth-code attempts: 5 per minute per IMEI. The legitimate device sends one
- * auth attempt per session and reconnects every few minutes at most, so 5/min
- * absorbs a flapping cell tower without ever hitting the limit. A brute-
- * force at 5 attempts/min would need ~3.6 trillion years to walk a 32-bit
- * code space — well past the operational horizon.
+ * Auth-code attempts: 5 per minute per device identifier. The legitimate
+ * device sends one auth attempt per session and reconnects every few
+ * minutes at most, so 5/min absorbs a flapping cell tower without ever
+ * hitting the limit. A brute-force at 5 attempts/min would need ~3.6
+ * trillion years to walk a 32-bit code space — well past the operational
+ * horizon.
  */
 export const authCodeLimiter = new RateLimiter({
   capacity: 5,

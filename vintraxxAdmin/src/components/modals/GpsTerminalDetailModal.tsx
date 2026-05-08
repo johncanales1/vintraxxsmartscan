@@ -27,6 +27,7 @@ import {
   fmtVolts,
   fmtPct,
   vehicleLabel,
+  terminalLabel,
   statusDotClasses,
   severityColor,
   alarmTypeLabel,
@@ -268,11 +269,12 @@ export default function GpsTerminalDetailModal({ terminalId, onClose, onMutated 
                         vehicleModel: terminal.vehicleModel,
                         vehicleVin: terminal.vehicleVin,
                         nickname: terminal.nickname,
+                        deviceIdentifier: terminal.deviceIdentifier,
                         imei: terminal.imei,
                       })
                     : 'Loading…'}
                 </h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">{terminal?.imei}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">{terminal ? terminalLabel(terminal) : ''}</p>
                 {terminal && (
                   <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 mt-0.5">
                     {terminal.status.replace(/_/g, ' ')} · {terminal.ownerUser?.email || 'Unpaired'}
@@ -383,7 +385,8 @@ function OverviewPane({ terminal, latest }: { terminal: GpsTerminalDetail; lates
       {/* Identity */}
       <Section title="Identification" icon={<Hash size={14} />}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Stat label="IMEI" value={terminal.imei} mono />
+          <Stat label="Device Identifier" value={terminal.deviceIdentifier} mono />
+          <Stat label="IMEI" value={terminal.imei || '—'} mono />
           <Stat label="Phone" value={terminal.phoneNumber || '—'} mono />
           <Stat label="ICCID" value={terminal.iccid || '—'} mono />
           <Stat label="Manufacturer" value={terminal.manufacturerId || '—'} />

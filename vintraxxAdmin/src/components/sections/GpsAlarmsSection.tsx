@@ -198,7 +198,7 @@ export default function GpsAlarmsSection({
           <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder="Search by IMEI, VIN, owner..."
+            placeholder="Search by device ID, IMEI, VIN, owner..."
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
@@ -399,6 +399,7 @@ function AlarmRow({
         vehicleModel: alarm.terminal.vehicleModel,
         vehicleVin: alarm.terminal.vehicleVin,
         nickname: alarm.terminal.nickname,
+        deviceIdentifier: alarm.terminal.deviceIdentifier,
         imei: alarm.terminal.imei,
       })
     : '—';

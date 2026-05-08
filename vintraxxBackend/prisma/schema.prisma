@@ -373,8 +373,24 @@ enum GpsTripStatus {
 }
 
 model GpsTerminal {
-  id              String  @id @default(uuid())
-  imei            String  @unique
+  id String @id @default(uuid())
+
+  // Canonical JT/T 808 terminal identifier — the value the device transmits
+  // in the BCD[6] "end phone number" field of EVERY message header (§1.5.2).
+  // Per spec this is an MSISDN (zero-padded to 12 digits) for 2013-spec
+  // devices and is conventionally an IMEI for 2019-spec devices, but the
+  // protocol itself never says "IMEI"; we accept anything the device puts
+  // there. Range: 1..30 alphanumeric chars to also cover the registration
+  // body's `terminal ID` field (BYTE[7] / BYTE[30], "uppercase letters and
+  // numbers, defined by the manufacturer", §3.3) for admins who provision
+  // by sticker SN before the device first connects.
+  deviceIdentifier String @unique
+
+  // Optional 15-digit IMEI. Populated either by the admin at provisioning
+  // (when known) or by the gateway from the 2019-spec 0x0102 auth body
+  // (which carries 15 ASCII bytes of IMEI after the auth code). Never used
+  // as the runtime lookup key — see deviceIdentifier above.
+  imei            String?
   phoneNumber     String? @unique
   iccid           String?
   manufacturerId  String?

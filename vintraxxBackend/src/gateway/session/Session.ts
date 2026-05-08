@@ -41,8 +41,20 @@ export class Session {
   public readonly connectedAt: Date;
   public readonly log: Logger;
 
-  /** BCD phone/IMEI from the most recent inbound header (set on first frame). */
+  /**
+   * Raw BCD identifier from the first inbound JT/T 808 header. Always 12 BCD
+   * digits, left-padded with zeros. Set once on the first frame and NEVER
+   * mutated afterwards — downstream frame encoding relies on this being the
+   * exact value the device sent so response headers match.
+   */
   public phoneBcd: string | null = null;
+
+  /**
+   * Canonical device identifier (leading-zero-stripped form of `phoneBcd`).
+   * Set by `bindTerminal()` after successful registration/authentication.
+   * Used as the DB lookup key and log annotation.
+   */
+  public canonicalDeviceId: string | null = null;
 
   /** GpsTerminal.id once we've successfully matched/created the DB row. */
   public terminalId: string | null = null;
@@ -87,15 +99,15 @@ export class Session {
   /**
    * Attach this session to a particular terminal (after successful auth or
    * registration). Updates the structured logger so every subsequent line
-   * carries the terminal id and IMEI.
+   * carries the terminal id and JT/T 808 device identifier.
    */
-  bindTerminal(args: { terminalId: string; imei: string }): void {
+  bindTerminal(args: { terminalId: string; deviceIdentifier: string }): void {
     this.terminalId = args.terminalId;
-    this.phoneBcd = args.imei;
+    this.canonicalDeviceId = args.deviceIdentifier;
     (this.log as Logger & { defaultMeta?: Record<string, unknown> }).defaultMeta = {
       ...(this.log as Logger & { defaultMeta?: Record<string, unknown> }).defaultMeta,
       terminalId: args.terminalId,
-      imei: args.imei,
+      deviceIdentifier: args.deviceIdentifier,
     };
   }
 

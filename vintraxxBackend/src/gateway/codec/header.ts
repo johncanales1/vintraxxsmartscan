@@ -37,6 +37,16 @@ export function decodeHeader(frame: Buffer): { header: MessageHeader; headerLeng
   const msgId = frame.readUInt16BE(0);
   const bodyProps = frame.readUInt16BE(2);
 
+  // JT/T 808-2019 uses bit 14 as a version flag. When set, the header layout
+  // is 17 bytes (adds 1-byte protocolVersion + 10-byte BCD instead of 6).
+  // This codec only supports the 2013 12-byte layout. Reject early with a
+  // clear error rather than silently misaligning all subsequent fields.
+  if ((bodyProps & 0x4000) !== 0) {
+    throw new Error(
+      'JT/T 808-2019 extended header (version flag bit 14 set) is not supported by this codec',
+    );
+  }
+
   const bodyLength = bodyProps & BODY_PROPS.BODY_LENGTH_MASK;
   const encryptType = (bodyProps & BODY_PROPS.ENCRYPT_MASK) >> BODY_PROPS.ENCRYPT_SHIFT;
   const isSubpackage = (bodyProps & BODY_PROPS.SUBPACKAGE_BIT) !== 0;

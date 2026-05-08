@@ -71,9 +71,10 @@ interface ListOptions {
    */
   ownerUserId?: string;
   /**
-   * Admin-only free-text search across terminal IMEI / VIN / owner email.
-   * Implemented with a Prisma `OR` over related fields. Only applied when
-   * `admin` is true so we never broaden a user-scoped query.
+   * Admin-only free-text search across terminal device-identifier / IMEI /
+   * VIN / owner email. Implemented with a Prisma `OR` over related fields.
+   * Only applied when `admin` is true so we never broaden a user-scoped
+   * query.
    */
   search?: string;
   since?: Date;
@@ -111,6 +112,7 @@ export async function listAlarms(opts: ListOptions) {
     // less-indexable shape is acceptable.
     const q = opts.search.trim();
     where.OR = [
+      { terminal: { deviceIdentifier: { contains: q, mode: 'insensitive' } } },
       { terminal: { imei: { contains: q, mode: 'insensitive' } } },
       { terminal: { vehicleVin: { contains: q, mode: 'insensitive' } } },
       { terminal: { nickname: { contains: q, mode: 'insensitive' } } },
@@ -128,6 +130,7 @@ export async function listAlarms(opts: ListOptions) {
         terminal: {
           select: {
             id: true,
+            deviceIdentifier: true,
             imei: true,
             nickname: true,
             vehicleVin: true,
@@ -142,7 +145,7 @@ export async function listAlarms(opts: ListOptions) {
       }
     : {
         terminal: {
-          select: { id: true, imei: true, nickname: true, vehicleVin: true },
+          select: { id: true, deviceIdentifier: true, imei: true, nickname: true, vehicleVin: true },
         },
       };
 

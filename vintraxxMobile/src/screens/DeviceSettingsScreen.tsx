@@ -101,7 +101,8 @@ export const DeviceSettingsScreen: React.FC = () => {
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
       <Section title="Identity">
-        <Row label="IMEI" value={terminal.imei} mono />
+        <Row label="Device ID" value={terminal.deviceIdentifier} mono />
+        <Row label="IMEI" value={terminal.imei ?? '—'} mono />
         <Row label="Manufacturer" value={terminal.manufacturerId ?? '—'} />
         <Row label="Model" value={terminal.terminalModel ?? '—'} />
         <Row label="Firmware" value={terminal.firmwareVersion ?? '—'} />

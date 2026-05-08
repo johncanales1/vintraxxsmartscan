@@ -58,8 +58,8 @@ export function DeviceTable({
           No GPS terminals are paired with your account yet.
         </p>
         <p className="text-xs text-slate-400 mt-1">
-          Pairing is admin-only \u2014 share an IMEI with your administrator to
-          provision a new device.
+          Pairing is admin-only \u2014 share your device identifier with your
+          administrator to provision a new device.
         </p>
       </div>
     );

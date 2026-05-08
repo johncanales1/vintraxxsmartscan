@@ -10,15 +10,40 @@ import { z } from 'zod';
 
 // ── Admin: terminal CRUD + assignment ────────────────────────────────────────
 
-/** 15-digit IMEI per the JT/T 808 2019 spec. We allow 10..15 to support some
- * 2013-spec devices that still use a shorter SIM-MSISDN-derived identifier. */
-const imeiSchema = z
+/**
+ * Canonical JT/T 808 terminal identifier.
+ *
+ * Per spec this is the value the device transmits in the BCD[6] "end phone
+ * number" field of every message header (§1.5.2). For 2013-spec devices
+ * that's an MSISDN; for 2019-spec it's commonly an IMEI; some manufacturers
+ * also use the alphanumeric registration-body `terminal ID` (§3.3, BYTE[7]
+ * for 2013 / BYTE[30] for 2019, "uppercase letters and numbers").
+ *
+ * We accept 1..30 alphanumeric characters to cover all three cases without
+ * forcing the operator to know which dialect their device speaks.
+ */
+const deviceIdentifierSchema = z
   .string()
-  .regex(/^\d{10,15}$/, 'IMEI must be 10–15 digits');
+  .regex(
+    /^[A-Za-z0-9]{1,30}$/,
+    'Device identifier must be 1–30 alphanumeric characters',
+  );
+
+/**
+ * Optional 15-digit IMEI. Only the 2019-spec 0x0102 auth body actually
+ * carries the IMEI on the wire (15 ASCII bytes after the auth code). When
+ * provided at provision time, we just store it as metadata; the runtime
+ * lookup key is `deviceIdentifier`.
+ */
+const optionalImeiSchema = z
+  .string()
+  .regex(/^\d{15}$/, 'IMEI must be exactly 15 digits when provided')
+  .optional();
 
 export const provisionTerminalSchema = z.object({
   body: z.object({
-    imei: imeiSchema,
+    deviceIdentifier: deviceIdentifierSchema,
+    imei: optionalImeiSchema,
     phoneNumber: z.string().regex(/^\d{1,15}$/).optional(),
     iccid: z.string().min(1).max(32).optional(),
     manufacturerId: z.string().max(8).optional(),

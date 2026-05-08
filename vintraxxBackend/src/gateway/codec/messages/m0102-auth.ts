@@ -27,7 +27,9 @@ export function decode(body: Buffer): DecodedAuth {
   // 2019 layout? First byte = code length, then code, then 15+20 fixed tail.
   const firstByte = body.readUInt8(0);
   const expected2019Len = 1 + firstByte + IMEI_LEN + SW_VER_LEN;
-  if (firstByte > 0 && firstByte < 64 && body.length === expected2019Len) {
+  // authCodeLength == 0 is valid (some devices send empty auth code in 2019
+  // mode but still include the IMEI+software tail).
+  if (firstByte >= 0 && firstByte < 64 && body.length === expected2019Len) {
     const authCode = body.toString('latin1', 1, 1 + firstByte).trim();
     const imei = body.toString('latin1', 1 + firstByte, 1 + firstByte + IMEI_LEN).trim();
     const softwareVersion = body

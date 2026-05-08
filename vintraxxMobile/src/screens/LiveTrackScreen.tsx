@@ -282,12 +282,16 @@ export const LiveTrackScreen: React.FC = () => {
     );
   }
 
+  // Fallback identifier prefers the canonical device identifier (always
+  // populated), falls back to IMEI metadata when available.
+  const fallbackId = terminal?.deviceIdentifier ?? terminal?.imei ?? '';
+  const fallbackTail = fallbackId.slice(-6);
   const vehicleLabel =
     terminal?.nickname ||
     [terminal?.vehicleYear, terminal?.vehicleMake, terminal?.vehicleModel]
       .filter(Boolean)
       .join(' ') ||
-    `IMEI ${terminal?.imei.slice(-6) ?? ''}`;
+    (fallbackTail ? `Device ${fallbackTail}` : 'Device');
   const online = terminal?.status === 'ONLINE';
 
   return (

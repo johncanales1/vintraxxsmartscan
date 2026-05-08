@@ -49,7 +49,7 @@ export async function listTrips(opts: ListOptions) {
       skip: (opts.page - 1) * opts.limit,
       include: {
         terminal: {
-          select: { id: true, imei: true, nickname: true, vehicleVin: true },
+          select: { id: true, deviceIdentifier: true, imei: true, nickname: true, vehicleVin: true },
         },
       },
     }),
@@ -132,7 +132,7 @@ export async function listDailyStats(opts: DailyStatsOptions) {
     orderBy: [{ day: 'asc' }, { terminalId: 'asc' }],
     include: {
       terminal: {
-        select: { id: true, imei: true, nickname: true, vehicleVin: true },
+        select: { id: true, deviceIdentifier: true, imei: true, nickname: true, vehicleVin: true },
       },
     },
   });

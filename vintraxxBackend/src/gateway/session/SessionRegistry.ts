@@ -23,11 +23,15 @@ class SessionRegistryImpl {
   }
 
   /**
-   * Bind a session to a (terminalId, imei). If another session is already
-   * registered under the same terminalId, that one is closed and replaced —
-   * this happens when a device reboots without a clean disconnect.
+   * Bind a session to a (terminalId, deviceIdentifier). If another session
+   * is already registered under the same terminalId, that one is closed
+   * and replaced — this happens when a device reboots without a clean
+   * disconnect.
+   *
+   * `deviceIdentifier` is the JT/T 808 header BCD value with leading zeros
+   * stripped; it's the same value handleRegister/handleAuth resolved.
    */
-  bind(session: Session, terminalId: string, imei: string): void {
+  bind(session: Session, terminalId: string, deviceIdentifier: string): void {
     const existing = this.byTerminalId.get(terminalId);
     if (existing && existing !== session) {
       existing.log.info('Replacing stale session for terminal', { terminalId });
@@ -35,7 +39,7 @@ class SessionRegistryImpl {
       this.remove(existing);
     }
     this.byTerminalId.set(terminalId, session);
-    this.byPhoneBcd.set(imei, session);
+    this.byPhoneBcd.set(deviceIdentifier, session);
   }
 
   remove(session: Session): void {
@@ -48,8 +52,11 @@ class SessionRegistryImpl {
     if (session.terminalId && this.byTerminalId.get(session.terminalId) === session) {
       this.byTerminalId.delete(session.terminalId);
     }
-    if (session.phoneBcd && this.byPhoneBcd.get(session.phoneBcd) === session) {
-      this.byPhoneBcd.delete(session.phoneBcd);
+    // `byPhoneBcd` is keyed by the canonical (stripped) device identifier set
+    // in `bind()`, which matches `session.canonicalDeviceId`.
+    const devId = session.canonicalDeviceId;
+    if (devId && this.byPhoneBcd.get(devId) === session) {
+      this.byPhoneBcd.delete(devId);
     }
   }
 

@@ -3,9 +3,18 @@
 /**
  * ProvisionTerminalModal — admin form to register a new GPS terminal.
  *
- * Backend route: POST /admin/gps/terminals (zod schema in
- * `gps-terminal.schema.ts::provisionBodySchema`). All fields except IMEI
- * are optional. `ownerUserId`, when provided, must be a valid user UUID.
+ * Backend route: POST /admin/gps/terminals (Zod schema in
+ * `schemas/gps.schema.ts::provisionTerminalSchema`).
+ *
+ * Required: `deviceIdentifier` — the canonical JT/T 808 terminal identity
+ * the device transmits in the BCD[6] header field of every packet (per
+ * spec §1.5.2). 1–30 alphanumeric chars; covers MSISDN-style 2013
+ * devices, IMEI-style 2019 devices, and the manufacturer-defined
+ * registration-body terminal ID (§3.3, "uppercase letters and numbers").
+ *
+ * Everything else — IMEI, phone/MSISDN, ICCID, manufacturer ID, model,
+ * firmware, vehicle metadata, owner — is optional. `ownerUserId`, when
+ * provided, must be a valid user UUID.
  */
 
 import { useEffect, useState } from 'react';
@@ -20,6 +29,7 @@ interface Props {
 
 export default function ProvisionTerminalModal({ onClose, onCreated }: Props) {
   const [form, setForm] = useState<ProvisionTerminalBody>({
+    deviceIdentifier: '',
     imei: '',
     phoneNumber: '',
     iccid: '',
@@ -65,24 +75,35 @@ export default function ProvisionTerminalModal({ onClose, onCreated }: Props) {
   ) => setForm((f) => ({ ...f, [key]: value }));
 
   const handleSubmit = async () => {
-    const trimmedImei = form.imei.trim();
-    if (!trimmedImei) {
-      toast.error('IMEI is required');
+    const trimmedDeviceId = form.deviceIdentifier.trim();
+    if (!trimmedDeviceId) {
+      toast.error('Device identifier is required');
       return;
     }
-    // Mirror the backend Zod constraint locally so the operator gets
-    // immediate feedback instead of a round-trip 400. JT/T-808 IMEIs are
-    // strictly 15 numeric digits; the regex also rejects accidental
-    // whitespace/letters that the keyboard sometimes lets through.
-    if (!/^\d{15}$/.test(trimmedImei)) {
-      toast.error('IMEI must be exactly 15 digits');
+    // Mirror the backend Zod constraint exactly so the operator gets
+    // immediate feedback instead of a round-trip 400. The JT/T 808 spec
+    // permits up to 30 alphanumeric characters (uppercase letters + digits
+    // for the registration-body terminal ID; pure digits for the BCD
+    // header MSISDN/IMEI). We accept lowercase too — some manufacturer
+    // SNs are mixed-case — and let the device echo whatever case it
+    // actually transmits.
+    if (!/^[A-Za-z0-9]{1,30}$/.test(trimmedDeviceId)) {
+      toast.error('Device identifier must be 1–30 alphanumeric characters');
+      return;
+    }
+    // IMEI is optional but, when present, must be exactly 15 digits per
+    // the 2019-spec 0x0102 auth body layout. Empty string → omit.
+    const trimmedImei = form.imei?.trim() ?? '';
+    if (trimmedImei && !/^\d{15}$/.test(trimmedImei)) {
+      toast.error('IMEI must be exactly 15 digits when provided');
       return;
     }
     setSaving(true);
     try {
       // Strip empty strings — the backend prefers undefined for omitted
       // optional fields so it doesn't store empty rows.
-      const cleaned: ProvisionTerminalBody = { imei: trimmedImei };
+      const cleaned: ProvisionTerminalBody = { deviceIdentifier: trimmedDeviceId };
+      if (trimmedImei) cleaned.imei = trimmedImei;
       const optionalKeys: (keyof ProvisionTerminalBody)[] = [
         'phoneNumber', 'iccid', 'manufacturerId', 'terminalModel',
         'hardwareVersion', 'firmwareVersion', 'vehicleVin', 'vehicleMake',
@@ -112,7 +133,7 @@ export default function ProvisionTerminalModal({ onClose, onCreated }: Props) {
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <div>
             <h2 className="text-lg font-bold text-gray-900 dark:text-white">Provision GPS Terminal</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Register a new device by its IMEI</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Register a JT/T 808 GPS terminal by its device identifier.</p>
           </div>
           <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-all">
             <X size={18} />
@@ -122,31 +143,48 @@ export default function ProvisionTerminalModal({ onClose, onCreated }: Props) {
         <div className="overflow-y-auto flex-1 p-6 space-y-5">
           {/* Identification */}
           <Section title="Identification">
-            <Field label="IMEI *" required>
+            <Field
+              label="Device Identifier / Terminal ID *"
+              required
+              hint="The value the device transmits in its JT/T 808 message header. 1–30 alphanumeric characters — may be an IMEI, MSISDN, or manufacturer-defined terminal ID."
+            >
               <input
                 type="text"
-                value={form.imei}
+                value={form.deviceIdentifier}
+                onChange={(e) => setField('deviceIdentifier', e.target.value)}
+                placeholder="e.g. 013912345678 or DEV0001"
+                className="input font-mono"
+                maxLength={30}
+                autoFocus
+              />
+            </Field>
+            <Field label="IMEI (optional)" hint="Only the 2019-spec 0x0102 auth body carries an IMEI. Leave blank if unknown — the gateway will record it from the device on first connect.">
+              <input
+                type="text"
+                inputMode="numeric"
+                value={form.imei || ''}
                 onChange={(e) => setField('imei', e.target.value)}
-                placeholder="15-digit IMEI"
-                className="input"
+                placeholder="15-digit IMEI (optional)"
+                className="input font-mono"
+                maxLength={15}
               />
             </Field>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field label="Phone Number">
+              <Field label="Phone Number / MSISDN (optional)">
                 <input type="text" value={form.phoneNumber || ''} onChange={(e) => setField('phoneNumber', e.target.value)} placeholder="+1234567890" className="input" />
               </Field>
-              <Field label="ICCID">
+              <Field label="ICCID (optional)">
                 <input type="text" value={form.iccid || ''} onChange={(e) => setField('iccid', e.target.value)} placeholder="SIM ICCID" className="input" />
               </Field>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Field label="Manufacturer ID">
+              <Field label="Manufacturer ID (optional)">
                 <input type="text" value={form.manufacturerId || ''} onChange={(e) => setField('manufacturerId', e.target.value)} className="input" />
               </Field>
-              <Field label="Model">
+              <Field label="Model (optional)">
                 <input type="text" value={form.terminalModel || ''} onChange={(e) => setField('terminalModel', e.target.value)} className="input" />
               </Field>
-              <Field label="Firmware">
+              <Field label="Firmware (optional)">
                 <input type="text" value={form.firmwareVersion || ''} onChange={(e) => setField('firmwareVersion', e.target.value)} className="input" />
               </Field>
             </div>
@@ -266,7 +304,7 @@ export default function ProvisionTerminalModal({ onClose, onCreated }: Props) {
           </button>
           <button
             onClick={handleSubmit}
-            disabled={saving || !form.imei.trim()}
+            disabled={saving || !form.deviceIdentifier.trim()}
             className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium flex items-center gap-2 transition-all"
           >
             {saving ? (
@@ -312,7 +350,18 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Field({ label, children, required }: { label: string; children: React.ReactNode; required?: boolean }) {
+function Field({
+  label,
+  children,
+  required,
+  hint,
+}: {
+  label: string;
+  children: React.ReactNode;
+  required?: boolean;
+  /** Optional helper text rendered below the input. */
+  hint?: string;
+}) {
   return (
     <div>
       <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -320,6 +369,9 @@ function Field({ label, children, required }: { label: string; children: React.R
         {required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       {children}
+      {hint && (
+        <p className="mt-1 text-[11px] leading-snug text-gray-500 dark:text-gray-400">{hint}</p>
+      )}
     </div>
   );
 }

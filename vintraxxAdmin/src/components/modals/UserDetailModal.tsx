@@ -5,7 +5,7 @@ import { api, UserDetail, GpsTerminal, normalizePdfUrl } from '@/lib/api';
 import { StatusBadge } from '@/components/Dashboard';
 import ConfirmDeleteModal from '@/components/modals/ConfirmDeleteModal';
 import ScanActivityChart from '@/components/charts/ScanActivityChart';
-import { vehicleLabel, statusDotClasses, fmtRelative } from '@/lib/gpsHelpers';
+import { vehicleLabel, terminalLabel, statusDotClasses, fmtRelative } from '@/lib/gpsHelpers';
 import {
   X, Mail, Calendar, Smartphone, Car, DollarSign, Globe, Edit2, Save, Trash2,
   FileText, Hash, AlertCircle, CheckCircle, Radio, Bell, ChevronRight,
@@ -376,10 +376,11 @@ export default function UserDetailModal({ user: userProp, loading, onClose, onRe
                                 vehicleModel: t.vehicleModel,
                                 vehicleVin: t.vehicleVin,
                                 nickname: t.nickname,
+                                deviceIdentifier: t.deviceIdentifier,
                                 imei: t.imei,
                               })}
                             </p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">{t.imei}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">{terminalLabel(t)}</p>
                           </div>
                           <span className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 flex-shrink-0">
                             {t.status === 'ONLINE' ? 'online' : fmtRelative(t.lastHeartbeatAt)}

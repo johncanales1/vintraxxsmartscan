@@ -5,9 +5,13 @@ import { api, User, UserDetail } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import UserDetailModal from '@/components/modals/UserDetailModal';
 import CreateUserModal from '@/components/modals/CreateUserModal';
-import ConfirmDeleteModal from '@/components/modals/ConfirmDeleteModal';
+import ConfirmPasswordModal from '@/components/modals/ConfirmPasswordModal';
+import BulkActionBar from '@/components/shared/BulkActionBar';
+import { useMultiSelect } from '@/lib/useMultiSelect';
+import { runBulkDelete } from '@/lib/bulkDelete';
 import {
   Search, Plus, Trash2, Eye, UserCheck, Smartphone, Car, Calendar, DollarSign, RefreshCw, Radio,
+  CheckSquare, Square,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -39,12 +43,17 @@ export default function DealerSection({ onNavigate }: DealerSectionProps = {}) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; email: string } | null>(null);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+
+  const sel = useMultiSelect();
 
   useEffect(() => { loadDealers(); }, []);
 
   useEffect(() => {
     const q = search.toLowerCase();
     setFiltered(dealers.filter(d => d.email.toLowerCase().includes(q) || d.id.toLowerCase().includes(q) || (d.fullName && d.fullName.toLowerCase().includes(q))));
+    sel.clear();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, dealers]);
 
   const loadDealers = async () => {
@@ -68,13 +77,24 @@ export default function DealerSection({ onNavigate }: DealerSectionProps = {}) {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    try {
-      await api.deleteUser(deleteTarget.id);
-      toast.success('Dealer deleted');
-      setDeleteTarget(null);
-      loadDealers();
-    } catch { toast.error('Failed to delete dealer'); }
+    await api.deleteUser(deleteTarget.id);
+    toast.success('Dealer deleted');
+    setDeleteTarget(null);
+    loadDealers();
   };
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(sel.selectedIds);
+    await runBulkDelete({
+      ids,
+      itemLabel: 'dealer',
+      delete: (id) => api.deleteUser(id),
+    });
+    sel.clear();
+    loadDealers();
+  };
+
+  const visibleIds = filtered.map((d) => d.id);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -90,6 +110,15 @@ export default function DealerSection({ onNavigate }: DealerSectionProps = {}) {
           />
         </div>
         <div className="flex gap-2">
+          {canDelete && filtered.length > 0 && (
+            <button
+              onClick={() => sel.toggleAll(visibleIds)}
+              className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+              title={sel.allSelected(visibleIds) ? 'Clear selection' : `Select all ${visibleIds.length} visible`}
+            >
+              {sel.allSelected(visibleIds) ? <CheckSquare size={18} /> : <Square size={18} />}
+            </button>
+          )}
           <button onClick={loadDealers} className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
             <RefreshCw size={18} />
           </button>
@@ -102,6 +131,16 @@ export default function DealerSection({ onNavigate }: DealerSectionProps = {}) {
           </button>
         </div>
       </div>
+
+      <BulkActionBar
+        count={sel.selectedIds.size}
+        total={visibleIds.length}
+        allSelected={sel.allSelected(visibleIds)}
+        onDelete={() => setBulkDeleteOpen(true)}
+        onCancel={sel.clear}
+        onToggleAll={() => sel.toggleAll(visibleIds)}
+        itemLabel="dealer"
+      />
 
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -116,83 +155,101 @@ export default function DealerSection({ onNavigate }: DealerSectionProps = {}) {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filtered.map((dealer) => (
-            <div
-              key={dealer.id}
-              className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 hover:shadow-lg hover:shadow-gray-200/50 dark:hover:shadow-black/20 transition-all group"
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400 flex-shrink-0">
-                    <UserCheck size={20} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{dealer.fullName || dealer.email}</p>
-                    {dealer.fullName && <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{dealer.email}</p>}
-                    <span className="inline-flex px-1.5 py-0.5 text-[10px] font-semibold rounded-md bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 mt-0.5">
-                      DEALER
-                    </span>
-                  </div>
-                </div>
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => openDetail(dealer.id)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-blue-500 transition-all">
-                    <Eye size={16} />
-                  </button>
-                  {canDelete && (
-                    <button onClick={() => setDeleteTarget({ id: dealer.id, email: dealer.email })} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-red-500 transition-all">
-                      <Trash2 size={16} />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-                  <DollarSign size={14} />
-                  <span>Labor Rate: {dealer.pricePerLaborHour ? `$${dealer.pricePerLaborHour}/hr` : 'Not set'}</span>
-                </div>
-                <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-                  <Car size={14} />
-                  <span>{dealer._count.scans} scans</span>
-                </div>
-                <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-                  <Smartphone size={14} />
-                  <span>{dealer._count.usedScannerDevices} devices &middot; {dealer._count.usedVins} VINs</span>
-                </div>
-                {/*
-                  GPS terminals chip — only render when the user has at least
-                  one terminal AND we have a navigate handler. The chip routes
-                  the admin to /gps-terminals?ownerUserId=… so they land on a
-                  pre-filtered list of just this dealer's vehicles.
-                 */}
-                {(dealer._count.gpsTerminals ?? 0) > 0 && onNavigate && (
+          {filtered.map((dealer) => {
+            const selected = sel.isSelected(dealer.id);
+            return (
+              <div
+                key={dealer.id}
+                className={`relative bg-white dark:bg-gray-800 rounded-2xl border p-5 hover:shadow-lg hover:shadow-gray-200/50 dark:hover:shadow-black/20 transition-all group ${
+                  selected ? 'border-blue-500 ring-2 ring-blue-500/30' : 'border-gray-200 dark:border-gray-700'
+                }`}
+              >
+                {canDelete && (
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onNavigate('gps-terminals', { ownerUserId: dealer.id });
-                    }}
-                    className="flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+                    type="button"
+                    onClick={() => sel.toggle(dealer.id)}
+                    className={`absolute top-3 left-3 z-10 w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
+                      selected
+                        ? 'bg-blue-600 border-blue-600 text-white opacity-100'
+                        : 'bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 text-transparent opacity-0 group-hover:opacity-100'
+                    }`}
+                    title={selected ? 'Deselect' : 'Select'}
+                    aria-label={selected ? 'Deselect dealer' : 'Select dealer'}
                   >
-                    <Radio size={14} />
-                    <span className="underline-offset-2 hover:underline">
-                      {dealer._count.gpsTerminals} GPS terminal{dealer._count.gpsTerminals === 1 ? '' : 's'}
-                    </span>
+                    {selected && <CheckSquare size={14} />}
                   </button>
                 )}
-                <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-                  <Calendar size={14} />
-                  <span>Joined {new Date(dealer.createdAt).toLocaleDateString()}</span>
+                <div className="flex items-start justify-between mb-4">
+                  <div className={`flex items-center gap-3 min-w-0 ${canDelete ? 'ml-6' : ''}`}>
+                    <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400 flex-shrink-0">
+                      <UserCheck size={20} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{dealer.fullName || dealer.email}</p>
+                      {dealer.fullName && <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{dealer.email}</p>}
+                      <span className="inline-flex px-1.5 py-0.5 text-[10px] font-semibold rounded-md bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 mt-0.5">
+                        DEALER
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => openDetail(dealer.id)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-blue-500 transition-all">
+                      <Eye size={16} />
+                    </button>
+                    {canDelete && (
+                      <button onClick={() => setDeleteTarget({ id: dealer.id, email: dealer.email })} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-red-500 transition-all">
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              <button
-                onClick={() => openDetail(dealer.id)}
-                className="w-full mt-4 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
-              >
-                View Scan History
-              </button>
-            </div>
-          ))}
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+                    <DollarSign size={14} />
+                    <span>Labor Rate: {dealer.pricePerLaborHour ? `$${dealer.pricePerLaborHour}/hr` : 'Not set'}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+                    <Car size={14} />
+                    <span>{dealer._count.scans} scans</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+                    <Smartphone size={14} />
+                    <span>{dealer._count.usedScannerDevices} devices &middot; {dealer._count.usedVins} VINs</span>
+                  </div>
+                  {/*
+                    GPS terminals chip — only render when the user has at least
+                    one terminal AND we have a navigate handler.
+                  */}
+                  {(dealer._count.gpsTerminals ?? 0) > 0 && onNavigate && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onNavigate('gps-terminals', { ownerUserId: dealer.id });
+                      }}
+                      className="flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+                    >
+                      <Radio size={14} />
+                      <span className="underline-offset-2 hover:underline">
+                        {dealer._count.gpsTerminals} GPS terminal{dealer._count.gpsTerminals === 1 ? '' : 's'}
+                      </span>
+                    </button>
+                  )}
+                  <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+                    <Calendar size={14} />
+                    <span>Joined {new Date(dealer.createdAt).toLocaleDateString()}</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => openDetail(dealer.id)}
+                  className="w-full mt-4 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+                >
+                  View Scan History
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -202,9 +259,6 @@ export default function DealerSection({ onNavigate }: DealerSectionProps = {}) {
           loading={detailLoading}
           onClose={() => { setShowDetailModal(false); setSelectedUser(null); }}
           onRefresh={loadDealers}
-          // Forwarding the Dashboard navigate fn lets the modal route the
-          // admin to GPS sections (terminals / alarms) pre-filtered by
-          // this user's id when the user clicks an in-modal GPS chip.
           onNavigate={onNavigate}
         />
       )}
@@ -218,11 +272,28 @@ export default function DealerSection({ onNavigate }: DealerSectionProps = {}) {
       )}
 
       {deleteTarget && (
-        <ConfirmDeleteModal
+        <ConfirmPasswordModal
           title="Delete Dealer"
-          message={`Delete dealer "${deleteTarget.email}" and all their data (scans, reports, devices)?`}
+          message={
+            <span>
+              Delete dealer <span className="font-semibold">{deleteTarget.email}</span> and all their data (scans, reports, devices)?
+            </span>
+          }
           onConfirm={handleDelete}
-          onCancel={() => setDeleteTarget(null)}
+          onClose={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {bulkDeleteOpen && (
+        <ConfirmPasswordModal
+          title="Delete Dealers"
+          message={
+            <span>
+              Delete <span className="font-semibold">{sel.selectedIds.size}</span> selected dealers and all their data (scans, reports, devices)?
+            </span>
+          }
+          onConfirm={handleBulkDelete}
+          onClose={() => setBulkDeleteOpen(false)}
         />
       )}
     </div>

@@ -53,7 +53,10 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: 3002,
-        HOSTNAME: '0.0.0.0',
+        // nginx admin.vintraxx.com proxies to 127.0.0.1:3002 — bind there.
+        // Was 0.0.0.0 which (somehow) only bound to the ENI interface IP
+        // on this host, so nginx → admin returned 502.
+        HOSTNAME: '127.0.0.1',
         NEXT_PUBLIC_API_URL: 'https://api.vintraxx.com/api/v1/admin',
         NEXT_PUBLIC_ADMIN_URL: 'https://admin.vintraxx.com'
       },

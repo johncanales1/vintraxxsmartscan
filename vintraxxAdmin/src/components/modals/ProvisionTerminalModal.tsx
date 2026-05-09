@@ -158,7 +158,7 @@ export default function ProvisionTerminalModal({ onClose, onCreated }: Props) {
                 autoFocus
               />
             </Field>
-            <Field label="IMEI (optional)" hint="Only the 2019-spec 0x0102 auth body carries an IMEI. Leave blank if unknown — the gateway will record it from the device on first connect.">
+            <Field label="IMEI (optional)" hint="15 digits. Only the 2019-spec 0x0102 auth body carries an IMEI. Leave blank if unknown — the gateway will record it from the device on first connect.">
               <input
                 type="text"
                 inputMode="numeric"
@@ -170,22 +170,60 @@ export default function ProvisionTerminalModal({ onClose, onCreated }: Props) {
               />
             </Field>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field label="Phone Number / MSISDN (optional)">
-                <input type="text" value={form.phoneNumber || ''} onChange={(e) => setField('phoneNumber', e.target.value)} placeholder="+1234567890" className="input" />
+              <Field label="Phone Number / MSISDN (optional)" hint="1–15 digits, no + or spaces.">
+                <input
+                  type="text"
+                  value={form.phoneNumber || ''}
+                  onChange={(e) => setField('phoneNumber', e.target.value)}
+                  placeholder="12345678901"
+                  className="input"
+                  maxLength={15}
+                />
               </Field>
-              <Field label="ICCID (optional)">
-                <input type="text" value={form.iccid || ''} onChange={(e) => setField('iccid', e.target.value)} placeholder="SIM ICCID" className="input" />
+              <Field
+                label="ICCID (optional)"
+                hint="SIM card serial (typically 19–20 digits). Example: 8F944538532107506820"
+              >
+                <input
+                  type="text"
+                  value={form.iccid || ''}
+                  onChange={(e) => setField('iccid', e.target.value)}
+                  placeholder="SIM ICCID"
+                  className="input font-mono"
+                  maxLength={32}
+                />
               </Field>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Field label="Manufacturer ID (optional)">
-                <input type="text" value={form.manufacturerId || ''} onChange={(e) => setField('manufacturerId', e.target.value)} className="input" />
+              <Field
+                label="Manufacturer ID (optional)"
+                hint="Short vendor code assigned in the JT/T 808 registration packet (≤8 chars). Do NOT paste a full ICCID here."
+              >
+                <input
+                  type="text"
+                  value={form.manufacturerId || ''}
+                  onChange={(e) => setField('manufacturerId', e.target.value)}
+                  className="input"
+                  maxLength={8}
+                />
               </Field>
               <Field label="Model (optional)">
-                <input type="text" value={form.terminalModel || ''} onChange={(e) => setField('terminalModel', e.target.value)} className="input" />
+                <input
+                  type="text"
+                  value={form.terminalModel || ''}
+                  onChange={(e) => setField('terminalModel', e.target.value)}
+                  className="input"
+                  maxLength={32}
+                />
               </Field>
               <Field label="Firmware (optional)">
-                <input type="text" value={form.firmwareVersion || ''} onChange={(e) => setField('firmwareVersion', e.target.value)} className="input" />
+                <input
+                  type="text"
+                  value={form.firmwareVersion || ''}
+                  onChange={(e) => setField('firmwareVersion', e.target.value)}
+                  className="input"
+                  maxLength={32}
+                />
               </Field>
             </div>
           </Section>

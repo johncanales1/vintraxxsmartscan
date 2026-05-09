@@ -2,9 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { api, Inspection } from '@/lib/api';
-import ConfirmDeleteModal from '@/components/modals/ConfirmDeleteModal';
+import ConfirmPasswordModal from '@/components/modals/ConfirmPasswordModal';
+import BulkActionBar from '@/components/shared/BulkActionBar';
+import { useMultiSelect } from '@/lib/useMultiSelect';
+import { runBulkDelete } from '@/lib/bulkDelete';
 import {
-  Search, Trash2, Eye, RefreshCw, ChevronLeft, ChevronRight, ClipboardCheck, X, Car, Calendar, User, Palette
+  Search, Trash2, Eye, RefreshCw, ChevronLeft, ChevronRight, ClipboardCheck, X, Car, Calendar, User, Palette,
+  CheckSquare, Square,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -74,7 +78,9 @@ export default function InspectionSection() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; vehicleInfo: string } | null>(null);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [selectedInspection, setSelectedInspection] = useState<Inspection | null>(null);
+  const sel = useMultiSelect();
 
   useEffect(() => { loadInspections(); }, [page]);
 
@@ -89,6 +95,8 @@ export default function InspectionSection() {
         i.mileage?.toLowerCase().includes(q)
       )
     );
+    sel.clear();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, inspections]);
 
   const loadInspections = async () => {
@@ -104,12 +112,21 @@ export default function InspectionSection() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    try {
-      await api.deleteInspection(deleteTarget.id);
-      toast.success('Inspection deleted');
-      setDeleteTarget(null);
-      loadInspections();
-    } catch { toast.error('Failed to delete inspection'); }
+    await api.deleteInspection(deleteTarget.id);
+    toast.success('Inspection deleted');
+    setDeleteTarget(null);
+    loadInspections();
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(sel.selectedIds);
+    await runBulkDelete({
+      ids,
+      itemLabel: 'inspection',
+      delete: (id) => api.deleteInspection(id),
+    });
+    sel.clear();
+    loadInspections();
   };
 
   const countRatings = (ratings: Record<string, string> | null) => {
@@ -150,11 +167,30 @@ export default function InspectionSection() {
         </div>
         <div className="flex items-center gap-2">
           <span className="text-sm text-gray-500 dark:text-gray-400">{total.toLocaleString()} total</span>
+          {filtered.length > 0 && (
+            <button
+              onClick={() => sel.toggleAll(filtered.map((i) => i.id))}
+              className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+              title={sel.allSelected(filtered.map((i) => i.id)) ? 'Clear selection' : `Select all ${filtered.length} visible`}
+            >
+              {sel.allSelected(filtered.map((i) => i.id)) ? <CheckSquare size={18} /> : <Square size={18} />}
+            </button>
+          )}
           <button onClick={loadInspections} className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
             <RefreshCw size={18} />
           </button>
         </div>
       </div>
+
+      <BulkActionBar
+        count={sel.selectedIds.size}
+        total={filtered.length}
+        allSelected={sel.allSelected(filtered.map((i) => i.id))}
+        onDelete={() => setBulkDeleteOpen(true)}
+        onCancel={sel.clear}
+        onToggleAll={() => sel.toggleAll(filtered.map((i) => i.id))}
+        itemLabel="inspection"
+      />
 
       {/* Inspections Grid */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -174,13 +210,29 @@ export default function InspectionSection() {
             {filtered.map((inspection) => {
               const ratings = countRatings(inspection.ratings);
               const damageCount = Array.isArray(inspection.damageMarks) ? inspection.damageMarks.length : 0;
+              const selected = sel.isSelected(inspection.id);
               return (
                 <div
                   key={inspection.id}
-                  className="bg-gray-50 dark:bg-gray-700/50 rounded-xl border border-gray-200 dark:border-gray-600 p-4 hover:shadow-md transition-all"
+                  className={`group relative bg-gray-50 dark:bg-gray-700/50 rounded-xl border p-4 hover:shadow-md transition-all ${
+                    selected ? 'border-blue-500 ring-2 ring-blue-500/30' : 'border-gray-200 dark:border-gray-600'
+                  }`}
                 >
+                  <button
+                    type="button"
+                    onClick={() => sel.toggle(inspection.id)}
+                    className={`absolute top-2 left-2 z-10 w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
+                      selected
+                        ? 'bg-blue-600 border-blue-600 text-white opacity-100'
+                        : 'bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 text-transparent opacity-0 group-hover:opacity-100'
+                    }`}
+                    title={selected ? 'Deselect' : 'Select'}
+                    aria-label={selected ? 'Deselect inspection' : 'Select inspection'}
+                  >
+                    {selected && <CheckSquare size={14} />}
+                  </button>
                   {/* Header */}
-                  <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-start justify-between mb-3 ml-6">
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-gray-900 dark:text-white truncate">
                         {inspection.vehicleInfo || 'Unknown Vehicle'}
@@ -271,11 +323,20 @@ export default function InspectionSection() {
 
       {/* Delete Confirmation Modal */}
       {deleteTarget && (
-        <ConfirmDeleteModal
+        <ConfirmPasswordModal
           title="Delete Inspection"
-          message={`Delete inspection for "${deleteTarget.vehicleInfo}"?`}
+          message={<span>Delete inspection for <span className="font-semibold">{deleteTarget.vehicleInfo}</span>?</span>}
           onConfirm={handleDelete}
-          onCancel={() => setDeleteTarget(null)}
+          onClose={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {bulkDeleteOpen && (
+        <ConfirmPasswordModal
+          title="Delete Inspections"
+          message={<span>Delete <span className="font-semibold">{sel.selectedIds.size}</span> selected inspections?</span>}
+          onConfirm={handleBulkDelete}
+          onClose={() => setBulkDeleteOpen(false)}
         />
       )}
 

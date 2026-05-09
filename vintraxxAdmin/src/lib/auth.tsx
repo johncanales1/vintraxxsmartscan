@@ -20,7 +20,17 @@ interface AuthContextType {
   admin: AdminUser | null;
   token: string | null;
   isLoading: boolean;
+  /**
+   * Step 1 of two-step admin login. Verifies password and triggers an OTP
+   * email — does NOT establish a session. Throws on bad credentials.
+   * Caller must follow up with `verifyLoginOtp(email, code)` to complete.
+   */
   login: (email: string, password: string) => Promise<void>;
+  /**
+   * Step 2 of two-step admin login. Verifies the 6-digit code and stores
+   * the resulting JWT + admin profile.
+   */
+  verifyLoginOtp: (email: string, code: string) => Promise<void>;
   logout: () => void;
   setAdmin: (admin: AdminUser) => void;
   setToken: (token: string) => void;
@@ -55,7 +65,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string) => {
-    const res = await api.login(email, password);
+    // Step 1 — backend verifies password and emails an OTP. No token yet.
+    await api.login(email, password);
+  };
+
+  const verifyLoginOtp = async (email: string, code: string) => {
+    // Step 2 — backend verifies OTP and returns the session payload.
+    const res = await api.verifyLoginOtp(email, code);
     localStorage.setItem('admin_token', res.token);
     setTokenState(res.token);
     setAdmin(res.admin);
@@ -76,7 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ admin, token, isLoading, login, logout, setAdmin, setToken }}>
+    <AuthContext.Provider value={{ admin, token, isLoading, login, verifyLoginOtp, logout, setAdmin, setToken }}>
       {children}
     </AuthContext.Provider>
   );

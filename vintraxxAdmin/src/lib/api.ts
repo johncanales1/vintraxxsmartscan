@@ -93,10 +93,20 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 // Auth
 export const api = {
+  // Step 1 of admin login: verifies password and emails an OTP. Returns
+  // `{ otpRequired: true }` — does NOT contain a token. The frontend then
+  // collects the 6-digit code from the operator and calls verifyLoginOtp.
   login: (email: string, password: string) =>
-    request<{ success: boolean; admin: { id: string; email: string; superAdmin?: boolean }; token: string }>('/login', {
+    request<{ success: boolean; otpRequired: true; email: string }>('/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
+    }),
+
+  // Step 2 of admin login: verifies the OTP and returns the session.
+  verifyLoginOtp: (email: string, code: string) =>
+    request<{ success: boolean; admin: { id: string; email: string; superAdmin?: boolean }; token: string }>('/login/verify-otp', {
+      method: 'POST',
+      body: JSON.stringify({ email, code }),
     }),
 
   getProfile: () =>
@@ -245,6 +255,18 @@ export const api = {
     request<{ success: boolean; terminal: GpsTerminal }>(`/gps/terminals/${id}/owner`, {
       method: 'PATCH',
       body: JSON.stringify({ ownerUserId }),
+    }),
+
+  /**
+   * PATCH /admin/gps/terminals/:id — edit terminal metadata. Backend will
+   * treat `null` values as "clear this field" and missing keys as "leave
+   * unchanged". `deviceIdentifier` is NOT in the editable set server-side
+   * (it's the JT/T 808 lookup key) so we omit it from the body type.
+   */
+  updateGpsTerminal: (id: string, patch: UpdateTerminalBody) =>
+    request<{ success: boolean; terminal: GpsTerminal }>(`/gps/terminals/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
     }),
 
   unpairGpsTerminal: (id: string) =>
@@ -462,6 +484,15 @@ export const api = {
       total: number;
       totalPages: number;
     }>(`/audit-logs?${buildQuery({ page, limit, ...filters })}`),
+
+  /**
+   * DELETE /admin/audit-logs/:id — super-admin only. The delete is itself
+   * audited by the adminAuditMiddleware, so a wipe leaves a breadcrumb.
+   */
+  deleteAuditLog: (id: string) =>
+    request<{ success: boolean; message?: string }>(`/audit-logs/${id}`, {
+      method: 'DELETE',
+    }),
 };
 
 /**
@@ -788,6 +819,29 @@ export interface ProvisionTerminalBody {
   vehicleModel?: string;
   nickname?: string;
   plateNumber?: string;
+  ownerUserId?: string | null;
+}
+
+/**
+ * PATCH /admin/gps/terminals/:id body. Same shape as `ProvisionTerminalBody`
+ * minus `deviceIdentifier` (immutable — the JT/T 808 gateway keys every
+ * session off it), with every field nullable so `null` explicitly clears
+ * the stored value.
+ */
+export interface UpdateTerminalBody {
+  imei?: string | null;
+  phoneNumber?: string | null;
+  iccid?: string | null;
+  manufacturerId?: string | null;
+  terminalModel?: string | null;
+  hardwareVersion?: string | null;
+  firmwareVersion?: string | null;
+  vehicleVin?: string | null;
+  vehicleYear?: number | null;
+  vehicleMake?: string | null;
+  vehicleModel?: string | null;
+  nickname?: string | null;
+  plateNumber?: string | null;
   ownerUserId?: string | null;
 }
 

@@ -2,7 +2,8 @@
 
 /**
  * GpsTerminalsSection — admin terminals list. Filter, search, provision,
- * reassign, unpair, and drill into a per-terminal detail modal.
+ * edit, reassign, unpair, delete (single + bulk), drill into a per-terminal
+ * detail modal.
  *
  * Live updates: subscribes to `terminal.online`/`terminal.offline` events
  * from the admin firehose. Rather than mutate state in-place we re-fetch
@@ -11,6 +12,10 @@
  *
  * The optional `initialOwnerUserId` prop lets the Dashboard route into a
  * pre-filtered list (e.g. from a UserDetail "View GPS Terminals" link).
+ *
+ * Destructive actions (single + bulk delete) now route through
+ * `ConfirmPasswordModal` so the admin re-enters their password before any
+ * row is removed — same pattern used by the backup download flow.
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -25,11 +30,16 @@ import {
 } from '@/lib/gpsHelpers';
 import GpsTerminalDetailModal from '@/components/modals/GpsTerminalDetailModal';
 import ProvisionTerminalModal from '@/components/modals/ProvisionTerminalModal';
+import EditTerminalModal from '@/components/modals/EditTerminalModal';
 import ReassignTerminalModal from '@/components/modals/ReassignTerminalModal';
 import ConfirmDeleteModal from '@/components/modals/ConfirmDeleteModal';
+import ConfirmPasswordModal from '@/components/modals/ConfirmPasswordModal';
+import BulkActionBar from '@/components/shared/BulkActionBar';
+import { useMultiSelect } from '@/lib/useMultiSelect';
+import { runBulkDelete } from '@/lib/bulkDelete';
 import {
-  Search, Plus, RefreshCw, Radio, Eye, UserPlus, Unlink, Trash2,
-  ChevronLeft, ChevronRight, X as XIcon,
+  Search, Plus, RefreshCw, Radio, Eye, UserPlus, Unlink, Trash2, Pencil,
+  ChevronLeft, ChevronRight, X as XIcon, CheckSquare, Square,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -66,6 +76,8 @@ export default function GpsTerminalsSection({
   const [ownerUserId, setOwnerUserId] = useState<string | undefined>(initialOwnerUserId);
   const [ownerUserName, setOwnerUserName] = useState<string | null>(null);
 
+  const sel = useMultiSelect();
+
   // Mirror prop changes into state. Without this, re-navigating from e.g.
   // DealerA's card → Terminals → Dealers → DealerB's card → Terminals would
   // keep the section filtered on DealerA because `useState` seeds only once.
@@ -76,9 +88,11 @@ export default function GpsTerminalsSection({
   }, [initialOwnerUserId]);
 
   const [showProvision, setShowProvision] = useState(false);
+  const [editTarget, setEditTarget] = useState<GpsTerminal | null>(null);
   const [reassignTarget, setReassignTarget] = useState<GpsTerminal | null>(null);
   const [unpairTarget, setUnpairTarget] = useState<GpsTerminal | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<GpsTerminal | null>(null);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
 
   // Resolve owner display name when an initialOwnerUserId is provided so
@@ -124,6 +138,12 @@ export default function GpsTerminalsSection({
     load();
   }, [load]);
 
+  // Clear selection when the visible page changes out from under us.
+  useEffect(() => {
+    sel.clear();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, filter, debouncedSearch, ownerUserId]);
+
   // Refresh on relevant WS events. Throttle to avoid hammering the API
   // when the firehose is busy.
   useEffect(() => {
@@ -164,14 +184,21 @@ export default function GpsTerminalsSection({
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    try {
-      await api.deleteGpsTerminal(deleteTarget.id);
-      toast.success('Terminal deleted');
-      setDeleteTarget(null);
-      load();
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to delete terminal');
-    }
+    await api.deleteGpsTerminal(deleteTarget.id);
+    toast.success('Terminal deleted');
+    setDeleteTarget(null);
+    load();
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(sel.selectedIds);
+    await runBulkDelete({
+      ids,
+      itemLabel: 'terminal',
+      delete: (id) => api.deleteGpsTerminal(id),
+    });
+    sel.clear();
+    load();
   };
 
   const filters: { id: Filter; label: string }[] = [
@@ -182,6 +209,8 @@ export default function GpsTerminalsSection({
     { id: 'never_connected', label: 'Never Connected' },
     { id: 'revoked', label: 'Revoked' },
   ];
+
+  const visibleIds = terminals.map((t) => t.id);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -202,6 +231,15 @@ export default function GpsTerminalsSection({
         </div>
         <div className="flex items-center gap-2">
           <span className="text-sm text-gray-500 dark:text-gray-400">{total.toLocaleString()} total</span>
+          {canDelete && terminals.length > 0 && (
+            <button
+              onClick={() => sel.toggleAll(visibleIds)}
+              className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+              title={sel.allSelected(visibleIds) ? 'Clear selection' : `Select all ${visibleIds.length} visible`}
+            >
+              {sel.allSelected(visibleIds) ? <CheckSquare size={18} /> : <Square size={18} />}
+            </button>
+          )}
           <button onClick={load} className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
             <RefreshCw size={18} />
           </button>
@@ -246,6 +284,17 @@ export default function GpsTerminalsSection({
         )}
       </div>
 
+      {/* Bulk action bar */}
+      <BulkActionBar
+        count={sel.selectedIds.size}
+        total={visibleIds.length}
+        allSelected={sel.allSelected(visibleIds)}
+        onDelete={() => setBulkDeleteOpen(true)}
+        onCancel={sel.clear}
+        onToggleAll={() => sel.toggleAll(visibleIds)}
+        itemLabel="terminal"
+      />
+
       {/* Terminal grid */}
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -268,7 +317,11 @@ export default function GpsTerminalsSection({
             <TerminalCard
               key={t.id}
               terminal={t}
+              selectable={canDelete}
+              selected={sel.isSelected(t.id)}
+              onToggleSelect={() => sel.toggle(t.id)}
               onView={() => setDetailId(t.id)}
+              onEdit={() => setEditTarget(t)}
               onReassign={() => setReassignTarget(t)}
               onUnpair={() => setUnpairTarget(t)}
               onDelete={canDelete ? () => setDeleteTarget(t) : undefined}
@@ -310,6 +363,17 @@ export default function GpsTerminalsSection({
         />
       )}
 
+      {editTarget && (
+        <EditTerminalModal
+          terminal={editTarget}
+          onClose={() => setEditTarget(null)}
+          onUpdated={() => {
+            setEditTarget(null);
+            load();
+          }}
+        />
+      )}
+
       {reassignTarget && (
         <ReassignTerminalModal
           terminal={reassignTarget}
@@ -333,11 +397,30 @@ export default function GpsTerminalsSection({
       )}
 
       {deleteTarget && (
-        <ConfirmDeleteModal
+        <ConfirmPasswordModal
           title="Delete Terminal"
-          message={`Permanently delete terminal ${terminalLabel(deleteTarget)} and all its locations, alarms, DTC events, trips, and commands? This cannot be undone.`}
+          message={
+            <span>
+              Permanently delete terminal <span className="font-semibold">{terminalLabel(deleteTarget)}</span>{' '}
+              and all its locations, alarms, DTC events, trips, and commands?
+            </span>
+          }
           onConfirm={handleDelete}
-          onCancel={() => setDeleteTarget(null)}
+          onClose={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {bulkDeleteOpen && (
+        <ConfirmPasswordModal
+          title="Delete Terminals"
+          message={
+            <span>
+              Permanently delete <span className="font-semibold">{sel.selectedIds.size}</span>{' '}
+              selected terminals and all their telemetry?
+            </span>
+          }
+          onConfirm={handleBulkDelete}
+          onClose={() => setBulkDeleteOpen(false)}
         />
       )}
 
@@ -354,13 +437,21 @@ export default function GpsTerminalsSection({
 
 function TerminalCard({
   terminal,
+  selectable,
+  selected,
+  onToggleSelect,
   onView,
+  onEdit,
   onReassign,
   onUnpair,
   onDelete,
 }: {
   terminal: GpsTerminal;
+  selectable: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
   onView: () => void;
+  onEdit: () => void;
   onReassign: () => void;
   onUnpair: () => void;
   /** `undefined` when the current admin isn't a super-admin — hides the button. */
@@ -369,9 +460,30 @@ function TerminalCard({
   const ownerLabel = terminal.ownerUser?.fullName || terminal.ownerUser?.email || 'Unpaired';
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 hover:shadow-lg hover:shadow-gray-200/50 dark:hover:shadow-black/20 transition-all group">
+    <div
+      className={`relative bg-white dark:bg-gray-800 rounded-2xl border p-5 hover:shadow-lg hover:shadow-gray-200/50 dark:hover:shadow-black/20 transition-all group ${
+        selected
+          ? 'border-blue-500 ring-2 ring-blue-500/30'
+          : 'border-gray-200 dark:border-gray-700'
+      }`}
+    >
+      {selectable && (
+        <button
+          type="button"
+          onClick={onToggleSelect}
+          className={`absolute top-3 left-3 z-10 w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
+            selected
+              ? 'bg-blue-600 border-blue-600 text-white opacity-100'
+              : 'bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 text-transparent opacity-0 group-hover:opacity-100'
+          }`}
+          title={selected ? 'Deselect' : 'Select'}
+          aria-label={selected ? 'Deselect terminal' : 'Select terminal'}
+        >
+          {selected && <CheckSquare size={14} />}
+        </button>
+      )}
       <div className="flex items-start justify-between mb-3">
-        <div className="flex items-start gap-3 min-w-0">
+        <div className={`flex items-start gap-3 min-w-0 ${selectable ? 'ml-6' : ''}`}>
           <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-400 flex-shrink-0 relative">
             <Radio size={18} />
             <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full ${statusDotClasses(terminal.status)}`} />
@@ -395,6 +507,9 @@ function TerminalCard({
         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
           <button onClick={onView} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-blue-500 transition-all" title="View">
             <Eye size={16} />
+          </button>
+          <button onClick={onEdit} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-emerald-500 transition-all" title="Edit metadata">
+            <Pencil size={16} />
           </button>
           <button onClick={onReassign} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-violet-500 transition-all" title="Reassign owner">
             <UserPlus size={16} />

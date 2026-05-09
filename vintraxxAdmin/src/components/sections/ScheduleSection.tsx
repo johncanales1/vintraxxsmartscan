@@ -2,9 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { api, ServiceAppointment } from '@/lib/api';
-import ConfirmDeleteModal from '@/components/modals/ConfirmDeleteModal';
+import ConfirmPasswordModal from '@/components/modals/ConfirmPasswordModal';
+import BulkActionBar from '@/components/shared/BulkActionBar';
+import { useMultiSelect } from '@/lib/useMultiSelect';
+import { runBulkDelete } from '@/lib/bulkDelete';
 import {
-  Search, Trash2, RefreshCw, ChevronLeft, ChevronRight, CalendarDays, CheckCircle, Mail, Send, X
+  Search, Trash2, RefreshCw, ChevronLeft, ChevronRight, CalendarDays, CheckCircle, Mail, Send, X,
+  CheckSquare, Square,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -18,6 +22,8 @@ export default function ScheduleSection() {
   const [appointmentTotalPages, setAppointmentTotalPages] = useState(1);
   const [appointmentTotal, setAppointmentTotal] = useState(0);
   const [appointmentDeleteTarget, setAppointmentDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const sel = useMultiSelect();
 
   // Email Compose Modal state
   const [showEmailCompose, setShowEmailCompose] = useState(false);
@@ -45,6 +51,8 @@ export default function ScheduleSection() {
         a.status.toLowerCase().includes(q)
       )
     );
+    sel.clear();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appointmentSearch, appointments]);
 
   const loadAppointments = async () => {
@@ -60,12 +68,21 @@ export default function ScheduleSection() {
 
   const handleDeleteAppointment = async () => {
     if (!appointmentDeleteTarget) return;
-    try {
-      await api.deleteServiceAppointment(appointmentDeleteTarget.id);
-      toast.success('Appointment deleted');
-      setAppointmentDeleteTarget(null);
-      loadAppointments();
-    } catch { toast.error('Failed to delete appointment'); }
+    await api.deleteServiceAppointment(appointmentDeleteTarget.id);
+    toast.success('Appointment deleted');
+    setAppointmentDeleteTarget(null);
+    loadAppointments();
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(sel.selectedIds);
+    await runBulkDelete({
+      ids,
+      itemLabel: 'appointment',
+      delete: (id) => api.deleteServiceAppointment(id),
+    });
+    sel.clear();
+    loadAppointments();
   };
 
   // Email Compose handlers
@@ -136,11 +153,30 @@ export default function ScheduleSection() {
         </div>
         <div className="flex items-center gap-2">
           <span className="text-sm text-gray-500 dark:text-gray-400">{appointmentTotal.toLocaleString()} total</span>
+          {filteredAppointments.length > 0 && (
+            <button
+              onClick={() => sel.toggleAll(filteredAppointments.map((a) => a.id))}
+              className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+              title={sel.allSelected(filteredAppointments.map((a) => a.id)) ? 'Clear selection' : `Select all ${filteredAppointments.length} visible`}
+            >
+              {sel.allSelected(filteredAppointments.map((a) => a.id)) ? <CheckSquare size={18} /> : <Square size={18} />}
+            </button>
+          )}
           <button onClick={loadAppointments} className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
             <RefreshCw size={18} />
           </button>
         </div>
       </div>
+
+      <BulkActionBar
+        count={sel.selectedIds.size}
+        total={filteredAppointments.length}
+        allSelected={sel.allSelected(filteredAppointments.map((a) => a.id))}
+        onDelete={() => setBulkDeleteOpen(true)}
+        onCancel={sel.clear}
+        onToggleAll={() => sel.toggleAll(filteredAppointments.map((a) => a.id))}
+        itemLabel="appointment"
+      />
 
       {/* Appointments Table */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -160,6 +196,16 @@ export default function ScheduleSection() {
             <table className="w-full">
               <thead>
                 <tr className="text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
+                  <th className="px-3 py-3 w-10">
+                    <button
+                      type="button"
+                      onClick={() => sel.toggleAll(filteredAppointments.map((a) => a.id))}
+                      className="text-gray-400 hover:text-indigo-500"
+                      title={sel.allSelected(filteredAppointments.map((a) => a.id)) ? 'Clear selection' : 'Select all visible'}
+                    >
+                      {sel.allSelected(filteredAppointments.map((a) => a.id)) ? <CheckSquare size={14} /> : <Square size={14} />}
+                    </button>
+                  </th>
                   <th className="px-4 lg:px-6 py-3">Name</th>
                   <th className="px-4 lg:px-6 py-3">Email</th>
                   <th className="px-4 lg:px-6 py-3">Phone Number</th>
@@ -175,7 +221,21 @@ export default function ScheduleSection() {
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {filteredAppointments.map((apt) => (
-                  <tr key={apt.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                  <tr key={apt.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors ${sel.isSelected(apt.id) ? 'bg-indigo-50/60 dark:bg-indigo-500/10' : ''}`}>
+                    <td className="px-3 py-3.5 w-10">
+                      <button
+                        type="button"
+                        onClick={() => sel.toggle(apt.id)}
+                        className={`flex items-center justify-center w-4 h-4 rounded border transition-all ${
+                          sel.isSelected(apt.id)
+                            ? 'bg-indigo-600 border-indigo-600 text-white'
+                            : 'border-gray-300 dark:border-gray-600 text-transparent hover:border-indigo-500'
+                        }`}
+                        aria-label={sel.isSelected(apt.id) ? 'Deselect appointment' : 'Select appointment'}
+                      >
+                        {sel.isSelected(apt.id) && <CheckSquare size={12} />}
+                      </button>
+                    </td>
                     <td className="px-4 lg:px-6 py-3.5 text-sm text-gray-900 dark:text-white font-medium">{apt.name}</td>
                     <td className="px-4 lg:px-6 py-3.5 text-sm text-gray-600 dark:text-gray-300">
                       <button onClick={() => openEmailCompose(apt.email)} className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer text-left truncate max-w-[140px] block">{apt.email}</button>
@@ -245,11 +305,20 @@ export default function ScheduleSection() {
 
       {/* Delete Appointment Modal */}
       {appointmentDeleteTarget && (
-        <ConfirmDeleteModal
+        <ConfirmPasswordModal
           title="Delete Appointment"
-          message={`Delete service appointment for "${appointmentDeleteTarget.name}"?`}
+          message={<span>Delete service appointment for <span className="font-semibold">{appointmentDeleteTarget.name}</span>?</span>}
           onConfirm={handleDeleteAppointment}
-          onCancel={() => setAppointmentDeleteTarget(null)}
+          onClose={() => setAppointmentDeleteTarget(null)}
+        />
+      )}
+
+      {bulkDeleteOpen && (
+        <ConfirmPasswordModal
+          title="Delete Appointments"
+          message={<span>Delete <span className="font-semibold">{sel.selectedIds.size}</span> selected appointments?</span>}
+          onConfirm={handleBulkDelete}
+          onClose={() => setBulkDeleteOpen(false)}
         />
       )}
 

@@ -5,10 +5,14 @@ import { api, Scan, ScanDetail, Appraisal, AppraisalDetail, normalizePdfUrl } fr
 import { StatusBadge } from '@/components/Dashboard';
 import ScanDetailModal from '@/components/modals/ScanDetailModal';
 import AppraisalDetailModal from '@/components/modals/AppraisalDetailModal';
-import ConfirmDeleteModal from '@/components/modals/ConfirmDeleteModal';
+import ConfirmPasswordModal from '@/components/modals/ConfirmPasswordModal';
+import BulkActionBar from '@/components/shared/BulkActionBar';
+import { useMultiSelect } from '@/lib/useMultiSelect';
+import { runBulkDelete } from '@/lib/bulkDelete';
 import GpsDtcsSection from '@/components/sections/GpsDtcsSection';
 import {
   Search, Trash2, Eye, History, RefreshCw, ChevronLeft, ChevronRight, FileText, ClipboardList, Mail, Send, X, CheckCircle, AlertTriangle,
+  CheckSquare, Square,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -37,6 +41,8 @@ export default function HistorySection({ initialTab = 'scans' }: HistorySectionP
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; vin: string } | null>(null);
+  const [bulkScanDeleteOpen, setBulkScanDeleteOpen] = useState(false);
+  const scanSel = useMultiSelect();
 
   // Appraisals state
   const [appraisals, setAppraisals] = useState<Appraisal[]>([]);
@@ -47,6 +53,8 @@ export default function HistorySection({ initialTab = 'scans' }: HistorySectionP
   const [appraisalTotalPages, setAppraisalTotalPages] = useState(1);
   const [appraisalTotal, setAppraisalTotal] = useState(0);
   const [appraisalDeleteTarget, setAppraisalDeleteTarget] = useState<{ id: string; vin: string } | null>(null);
+  const [bulkAppraisalDeleteOpen, setBulkAppraisalDeleteOpen] = useState(false);
+  const appraisalSel = useMultiSelect();
 
 
   // Appraisal Detail Modal state
@@ -92,6 +100,8 @@ export default function HistorySection({ initialTab = 'scans' }: HistorySectionP
         s.status.toLowerCase().includes(q)
       )
     );
+    scanSel.clear();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, scans]);
 
   useEffect(() => {
@@ -107,6 +117,8 @@ export default function HistorySection({ initialTab = 'scans' }: HistorySectionP
         a.condition?.toLowerCase().includes(q)
       )
     );
+    appraisalSel.clear();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appraisalSearch, appraisals]);
 
 
@@ -144,22 +156,40 @@ export default function HistorySection({ initialTab = 'scans' }: HistorySectionP
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    try {
-      await api.deleteScan(deleteTarget.id);
-      toast.success('Scan deleted');
-      setDeleteTarget(null);
-      loadScans();
-    } catch { toast.error('Failed to delete scan'); }
+    await api.deleteScan(deleteTarget.id);
+    toast.success('Scan deleted');
+    setDeleteTarget(null);
+    loadScans();
+  };
+
+  const handleBulkDeleteScans = async () => {
+    const ids = Array.from(scanSel.selectedIds);
+    await runBulkDelete({
+      ids,
+      itemLabel: 'scan',
+      delete: (id) => api.deleteScan(id),
+    });
+    scanSel.clear();
+    loadScans();
   };
 
   const handleDeleteAppraisal = async () => {
     if (!appraisalDeleteTarget) return;
-    try {
-      await api.deleteAppraisal(appraisalDeleteTarget.id);
-      toast.success('Appraisal deleted');
-      setAppraisalDeleteTarget(null);
-      loadAppraisals();
-    } catch { toast.error('Failed to delete appraisal'); }
+    await api.deleteAppraisal(appraisalDeleteTarget.id);
+    toast.success('Appraisal deleted');
+    setAppraisalDeleteTarget(null);
+    loadAppraisals();
+  };
+
+  const handleBulkDeleteAppraisals = async () => {
+    const ids = Array.from(appraisalSel.selectedIds);
+    await runBulkDelete({
+      ids,
+      itemLabel: 'appraisal',
+      delete: (id) => api.deleteAppraisal(id),
+    });
+    appraisalSel.clear();
+    loadAppraisals();
   };
 
   // Email Compose handlers
@@ -264,11 +294,30 @@ export default function HistorySection({ initialTab = 'scans' }: HistorySectionP
             </div>
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-500 dark:text-gray-400">{total.toLocaleString()} total</span>
+              {filtered.length > 0 && (
+                <button
+                  onClick={() => scanSel.toggleAll(filtered.map((s) => s.id))}
+                  className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+                  title={scanSel.allSelected(filtered.map((s) => s.id)) ? 'Clear selection' : `Select all ${filtered.length} visible`}
+                >
+                  {scanSel.allSelected(filtered.map((s) => s.id)) ? <CheckSquare size={18} /> : <Square size={18} />}
+                </button>
+              )}
               <button onClick={loadScans} className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
                 <RefreshCw size={18} />
               </button>
             </div>
           </div>
+
+          <BulkActionBar
+            count={scanSel.selectedIds.size}
+            total={filtered.length}
+            allSelected={scanSel.allSelected(filtered.map((s) => s.id))}
+            onDelete={() => setBulkScanDeleteOpen(true)}
+            onCancel={scanSel.clear}
+            onToggleAll={() => scanSel.toggleAll(filtered.map((s) => s.id))}
+            itemLabel="scan"
+          />
 
           <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
             {loading ? (
@@ -287,6 +336,16 @@ export default function HistorySection({ initialTab = 'scans' }: HistorySectionP
                 <table className="w-full">
                   <thead>
                     <tr className="text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
+                      <th className="px-3 py-3 w-10">
+                        <button
+                          type="button"
+                          onClick={() => scanSel.toggleAll(filtered.map((s) => s.id))}
+                          className="text-gray-400 hover:text-blue-500"
+                          title={scanSel.allSelected(filtered.map((s) => s.id)) ? 'Clear selection' : 'Select all visible'}
+                        >
+                          {scanSel.allSelected(filtered.map((s) => s.id)) ? <CheckSquare size={14} /> : <Square size={14} />}
+                        </button>
+                      </th>
                       <th className="px-4 lg:px-6 py-3">Vehicle</th>
                       <th className="px-4 lg:px-6 py-3">VIN</th>
                       <th className="px-4 lg:px-6 py-3">User</th>
@@ -300,7 +359,21 @@ export default function HistorySection({ initialTab = 'scans' }: HistorySectionP
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                     {filtered.map((scan) => (
-                      <tr key={scan.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                      <tr key={scan.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors ${scanSel.isSelected(scan.id) ? 'bg-blue-50/60 dark:bg-blue-500/10' : ''}`}>
+                        <td className="px-3 py-3.5 w-10">
+                          <button
+                            type="button"
+                            onClick={() => scanSel.toggle(scan.id)}
+                            className={`flex items-center justify-center w-4 h-4 rounded border transition-all ${
+                              scanSel.isSelected(scan.id)
+                                ? 'bg-blue-600 border-blue-600 text-white'
+                                : 'border-gray-300 dark:border-gray-600 text-transparent hover:border-blue-500'
+                            }`}
+                            aria-label={scanSel.isSelected(scan.id) ? 'Deselect scan' : 'Select scan'}
+                          >
+                            {scanSel.isSelected(scan.id) && <CheckSquare size={12} />}
+                          </button>
+                        </td>
                         <td className="px-4 lg:px-6 py-3.5 text-sm text-gray-900 dark:text-white">
                           {scan.vehicleYear && scan.vehicleMake
                             ? `${scan.vehicleYear} ${scan.vehicleMake} ${scan.vehicleModel || ''}`
@@ -396,11 +469,30 @@ export default function HistorySection({ initialTab = 'scans' }: HistorySectionP
             </div>
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-500 dark:text-gray-400">{appraisalTotal.toLocaleString()} total</span>
+              {filteredAppraisals.length > 0 && (
+                <button
+                  onClick={() => appraisalSel.toggleAll(filteredAppraisals.map((a) => a.id))}
+                  className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+                  title={appraisalSel.allSelected(filteredAppraisals.map((a) => a.id)) ? 'Clear selection' : `Select all ${filteredAppraisals.length} visible`}
+                >
+                  {appraisalSel.allSelected(filteredAppraisals.map((a) => a.id)) ? <CheckSquare size={18} /> : <Square size={18} />}
+                </button>
+              )}
               <button onClick={loadAppraisals} className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
                 <RefreshCw size={18} />
               </button>
             </div>
           </div>
+
+          <BulkActionBar
+            count={appraisalSel.selectedIds.size}
+            total={filteredAppraisals.length}
+            allSelected={appraisalSel.allSelected(filteredAppraisals.map((a) => a.id))}
+            onDelete={() => setBulkAppraisalDeleteOpen(true)}
+            onCancel={appraisalSel.clear}
+            onToggleAll={() => appraisalSel.toggleAll(filteredAppraisals.map((a) => a.id))}
+            itemLabel="appraisal"
+          />
 
           <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
             {appraisalLoading ? (
@@ -419,6 +511,16 @@ export default function HistorySection({ initialTab = 'scans' }: HistorySectionP
                 <table className="w-full">
                   <thead>
                     <tr className="text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
+                      <th className="px-3 py-3 w-10">
+                        <button
+                          type="button"
+                          onClick={() => appraisalSel.toggleAll(filteredAppraisals.map((a) => a.id))}
+                          className="text-gray-400 hover:text-blue-500"
+                          title={appraisalSel.allSelected(filteredAppraisals.map((a) => a.id)) ? 'Clear selection' : 'Select all visible'}
+                        >
+                          {appraisalSel.allSelected(filteredAppraisals.map((a) => a.id)) ? <CheckSquare size={14} /> : <Square size={14} />}
+                        </button>
+                      </th>
                       <th className="px-4 lg:px-6 py-3">Vehicle</th>
                       <th className="px-4 lg:px-6 py-3">VIN</th>
                       <th className="px-4 lg:px-6 py-3">User</th>
@@ -432,7 +534,21 @@ export default function HistorySection({ initialTab = 'scans' }: HistorySectionP
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                     {filteredAppraisals.map((a) => (
-                      <tr key={a.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                      <tr key={a.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors ${appraisalSel.isSelected(a.id) ? 'bg-blue-50/60 dark:bg-blue-500/10' : ''}`}>
+                        <td className="px-3 py-3.5 w-10">
+                          <button
+                            type="button"
+                            onClick={() => appraisalSel.toggle(a.id)}
+                            className={`flex items-center justify-center w-4 h-4 rounded border transition-all ${
+                              appraisalSel.isSelected(a.id)
+                                ? 'bg-blue-600 border-blue-600 text-white'
+                                : 'border-gray-300 dark:border-gray-600 text-transparent hover:border-blue-500'
+                            }`}
+                            aria-label={appraisalSel.isSelected(a.id) ? 'Deselect appraisal' : 'Select appraisal'}
+                          >
+                            {appraisalSel.isSelected(a.id) && <CheckSquare size={12} />}
+                          </button>
+                        </td>
                         <td className="px-4 lg:px-6 py-3.5 text-sm text-gray-900 dark:text-white">
                           {a.vehicleYear && a.vehicleMake
                             ? `${a.vehicleYear} ${a.vehicleMake} ${a.vehicleModel || ''} ${a.vehicleTrim || ''}`
@@ -518,20 +634,38 @@ export default function HistorySection({ initialTab = 'scans' }: HistorySectionP
       )}
 
       {deleteTarget && (
-        <ConfirmDeleteModal
+        <ConfirmPasswordModal
           title="Delete Scan"
-          message={`Delete scan for VIN "${deleteTarget.vin}" and its report?`}
+          message={<span>Delete scan for VIN <span className="font-semibold">{deleteTarget.vin}</span> and its report?</span>}
           onConfirm={handleDelete}
-          onCancel={() => setDeleteTarget(null)}
+          onClose={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {bulkScanDeleteOpen && (
+        <ConfirmPasswordModal
+          title="Delete Scans"
+          message={<span>Delete <span className="font-semibold">{scanSel.selectedIds.size}</span> selected scans and their reports?</span>}
+          onConfirm={handleBulkDeleteScans}
+          onClose={() => setBulkScanDeleteOpen(false)}
         />
       )}
 
       {appraisalDeleteTarget && (
-        <ConfirmDeleteModal
+        <ConfirmPasswordModal
           title="Delete Appraisal"
-          message={`Delete appraisal for VIN "${appraisalDeleteTarget.vin}"?`}
+          message={<span>Delete appraisal for VIN <span className="font-semibold">{appraisalDeleteTarget.vin}</span>?</span>}
           onConfirm={handleDeleteAppraisal}
-          onCancel={() => setAppraisalDeleteTarget(null)}
+          onClose={() => setAppraisalDeleteTarget(null)}
+        />
+      )}
+
+      {bulkAppraisalDeleteOpen && (
+        <ConfirmPasswordModal
+          title="Delete Appraisals"
+          message={<span>Delete <span className="font-semibold">{appraisalSel.selectedIds.size}</span> selected appraisals?</span>}
+          onConfirm={handleBulkDeleteAppraisals}
+          onClose={() => setBulkAppraisalDeleteOpen(false)}
         />
       )}
 

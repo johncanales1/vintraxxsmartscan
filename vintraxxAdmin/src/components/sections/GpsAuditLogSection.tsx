@@ -14,10 +14,15 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { api, AdminAuditEntry } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { fmtRelative } from '@/lib/gpsHelpers';
+import ConfirmPasswordModal from '@/components/modals/ConfirmPasswordModal';
+import BulkActionBar from '@/components/shared/BulkActionBar';
+import { useMultiSelect } from '@/lib/useMultiSelect';
+import { runBulkDelete } from '@/lib/bulkDelete';
 import {
-  Search, RefreshCw, ChevronDown, ChevronRight, Filter, ShieldCheck,
-  ChevronLeft, ChevronRight as ChevronRightIcon,
+  Search, RefreshCw, ChevronDown, ChevronRight, Filter, ShieldCheck, Trash2,
+  ChevronLeft, ChevronRight as ChevronRightIcon, CheckSquare, Square,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -29,6 +34,10 @@ const STATUS_CLASSES: { value: 1 | 2 | 3 | 4 | 5; label: string }[] = [
 ];
 
 export default function GpsAuditLogSection() {
+  const { admin } = useAuth();
+  // DELETE /admin/audit-logs/:id is super-admin only. Hide the controls
+  // for non-super-admins rather than surfacing a 403 after a click.
+  const canDelete = !!admin?.superAdmin;
   const [entries, setEntries] = useState<AdminAuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -41,6 +50,9 @@ export default function GpsAuditLogSection() {
   const [statusClass, setStatusClass] = useState<1 | 2 | 3 | 4 | 5 | undefined>();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AdminAuditEntry | null>(null);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const sel = useMultiSelect();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -77,6 +89,33 @@ export default function GpsAuditLogSection() {
     load();
   }, [load]);
 
+  // Clear selection when underlying data set changes (new page / filter).
+  useEffect(() => {
+    sel.clear();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, action, targetType, statusClass]);
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    await api.deleteAuditLog(deleteTarget.id);
+    toast.success('Audit log entry deleted');
+    setDeleteTarget(null);
+    load();
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(sel.selectedIds);
+    await runBulkDelete({
+      ids,
+      itemLabel: 'audit entry',
+      delete: (id) => api.deleteAuditLog(id),
+    });
+    sel.clear();
+    load();
+  };
+
+  const visibleIds = filteredEntries.map((e) => e.id);
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Toolbar */}
@@ -100,6 +139,15 @@ export default function GpsAuditLogSection() {
               ? `${filteredEntries.length.toLocaleString()} of ${total.toLocaleString()}`
               : `${total.toLocaleString()} entries`}
           </span>
+          {canDelete && visibleIds.length > 0 && (
+            <button
+              onClick={() => sel.toggleAll(visibleIds)}
+              className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+              title={sel.allSelected(visibleIds) ? 'Clear selection' : `Select all ${visibleIds.length} visible`}
+            >
+              {sel.allSelected(visibleIds) ? <CheckSquare size={18} /> : <Square size={18} />}
+            </button>
+          )}
           <button
             onClick={() => setFiltersOpen((v) => !v)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all ${
@@ -116,6 +164,18 @@ export default function GpsAuditLogSection() {
           </button>
         </div>
       </div>
+
+      {canDelete && (
+        <BulkActionBar
+          count={sel.selectedIds.size}
+          total={visibleIds.length}
+          allSelected={sel.allSelected(visibleIds)}
+          onDelete={() => setBulkDeleteOpen(true)}
+          onCancel={sel.clear}
+          onToggleAll={() => sel.toggleAll(visibleIds)}
+          itemLabel="audit entry"
+        />
+      )}
 
       {/* Filters */}
       {filtersOpen && (
@@ -186,9 +246,50 @@ export default function GpsAuditLogSection() {
               entry={entry}
               expanded={expandedId === entry.id}
               onToggle={() => setExpandedId((cur) => (cur === entry.id ? null : entry.id))}
+              selectable={canDelete}
+              selected={sel.isSelected(entry.id)}
+              onToggleSelect={() => sel.toggle(entry.id)}
+              onDelete={canDelete ? () => setDeleteTarget(entry) : undefined}
             />
           ))}
         </div>
+      )}
+
+      {deleteTarget && (
+        <ConfirmPasswordModal
+          title="Delete Audit Log Entry"
+          message={
+            <span>
+              Permanently delete the audit entry{' '}
+              <span className="font-mono text-xs">{deleteTarget.method} {deleteTarget.path}</span>?
+              <br />
+              <br />
+              <span className="text-xs text-amber-700 dark:text-amber-300">
+                Heads up: the delete itself is still audited — a new DELETE entry referencing this id will be written.
+              </span>
+            </span>
+          }
+          onConfirm={handleDelete}
+          onClose={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {bulkDeleteOpen && (
+        <ConfirmPasswordModal
+          title="Delete Audit Log Entries"
+          message={
+            <span>
+              Permanently delete <span className="font-semibold">{sel.selectedIds.size}</span> audit log entries?
+              <br />
+              <br />
+              <span className="text-xs text-amber-700 dark:text-amber-300">
+                Heads up: each delete is itself audited — {sel.selectedIds.size} DELETE entries will be written referencing the removed ids.
+              </span>
+            </span>
+          }
+          onConfirm={handleBulkDelete}
+          onClose={() => setBulkDeleteOpen(false)}
+        />
       )}
 
       {/* Pagination */}
@@ -221,18 +322,48 @@ function AuditRow({
   entry,
   expanded,
   onToggle,
+  selectable,
+  selected,
+  onToggleSelect,
+  onDelete,
 }: {
   entry: AdminAuditEntry;
   expanded: boolean;
   onToggle: () => void;
+  selectable: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
+  onDelete?: () => void;
 }) {
   const statusBgClass = statusBucket(entry.statusCode);
 
   return (
-    <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
+    <div className={`group rounded-xl border bg-white dark:bg-gray-800 overflow-hidden ${
+      selected
+        ? 'border-blue-500 ring-1 ring-blue-500/30'
+        : 'border-gray-200 dark:border-gray-700'
+    }`}>
+      <div className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all">
+        {selectable && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSelect();
+            }}
+            className={`flex items-center justify-center w-4 h-4 rounded border flex-shrink-0 transition-all ${
+              selected
+                ? 'bg-blue-600 border-blue-600 text-white'
+                : 'border-gray-300 dark:border-gray-600 text-transparent hover:border-blue-500'
+            }`}
+            aria-label={selected ? 'Deselect audit entry' : 'Select audit entry'}
+          >
+            {selected && <CheckSquare size={12} />}
+          </button>
+        )}
       <button
         onClick={onToggle}
-        className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all text-left"
+        className="flex-1 flex items-center gap-3 text-left"
       >
         <span className="flex-shrink-0 text-gray-400">
           {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -254,6 +385,20 @@ function AuditRow({
           {fmtRelative(entry.createdAt)}
         </span>
       </button>
+        {onDelete && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 text-gray-400 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
+            title="Delete audit entry"
+          >
+            <Trash2 size={14} />
+          </button>
+        )}
+      </div>
 
       {expanded && (
         <div className="px-4 pb-4 pt-1 border-t border-gray-100 dark:border-gray-700 text-xs space-y-2 bg-gray-50/50 dark:bg-gray-900/30">

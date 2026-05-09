@@ -31,7 +31,9 @@ export default function AlertsPage() {
     since: sinceIso,
     severity: severity || undefined,
     acknowledged: showAcked ? undefined : false,
-    limit: 500,
+    // Backend `listAlarmsQuerySchema` caps `limit` at 200 (gps.schema.ts:122)
+    // — anything higher is rejected with HTTP 400.
+    limit: 200,
   });
 
   return (

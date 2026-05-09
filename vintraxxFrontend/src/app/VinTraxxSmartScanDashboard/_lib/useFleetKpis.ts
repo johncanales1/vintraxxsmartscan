@@ -48,9 +48,10 @@ export function useFleetKpis(terminals: GpsTerminal[]): FleetKpis {
         Date.now() - 7 * 24 * 60 * 60 * 1000,
       ).toISOString();
 
-      // Alarms: one round-trip.
+      // Alarms: one round-trip. Backend `listAlarmsQuerySchema` caps `limit`
+      // at 200 (gps.schema.ts:122) — sending more is rejected with HTTP 400.
       const alarmsRes = await gpsApi.listAlarms(
-        { since: since24h, limit: 500 },
+        { since: since24h, limit: 200 },
         controller.signal,
       );
       if (cancelled) return;

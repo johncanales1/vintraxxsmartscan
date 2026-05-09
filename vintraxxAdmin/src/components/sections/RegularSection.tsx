@@ -5,9 +5,13 @@ import { api, User, UserDetail } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import UserDetailModal from '@/components/modals/UserDetailModal';
 import CreateUserModal from '@/components/modals/CreateUserModal';
-import ConfirmDeleteModal from '@/components/modals/ConfirmDeleteModal';
+import ConfirmPasswordModal from '@/components/modals/ConfirmPasswordModal';
+import BulkActionBar from '@/components/shared/BulkActionBar';
+import { useMultiSelect } from '@/lib/useMultiSelect';
+import { runBulkDelete } from '@/lib/bulkDelete';
 import {
   Search, Plus, Trash2, Eye, Users, Smartphone, Car, Calendar, RefreshCw, Radio,
+  CheckSquare, Square,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -23,8 +27,6 @@ interface RegularSectionProps {
 
 export default function RegularSection({ onNavigate }: RegularSectionProps = {}) {
   const { admin } = useAuth();
-  // DELETE /admin/users/:id is gated by `requireSuperAdmin` on the backend —
-  // hide the trash icon for non-super admins so they don't eat a 403.
   const canDelete = !!admin?.superAdmin;
   const [users, setUsers] = useState<User[]>([]);
   const [filtered, setFiltered] = useState<User[]>([]);
@@ -35,12 +37,17 @@ export default function RegularSection({ onNavigate }: RegularSectionProps = {})
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; email: string } | null>(null);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+
+  const sel = useMultiSelect();
 
   useEffect(() => { loadUsers(); }, []);
 
   useEffect(() => {
     const q = search.toLowerCase();
     setFiltered(users.filter(u => u.email.toLowerCase().includes(q) || u.id.toLowerCase().includes(q) || (u.fullName && u.fullName.toLowerCase().includes(q))));
+    sel.clear();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, users]);
 
   const loadUsers = async () => {
@@ -64,13 +71,24 @@ export default function RegularSection({ onNavigate }: RegularSectionProps = {})
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    try {
-      await api.deleteUser(deleteTarget.id);
-      toast.success('User deleted');
-      setDeleteTarget(null);
-      loadUsers();
-    } catch { toast.error('Failed to delete user'); }
+    await api.deleteUser(deleteTarget.id);
+    toast.success('User deleted');
+    setDeleteTarget(null);
+    loadUsers();
   };
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(sel.selectedIds);
+    await runBulkDelete({
+      ids,
+      itemLabel: 'user',
+      delete: (id) => api.deleteUser(id),
+    });
+    sel.clear();
+    loadUsers();
+  };
+
+  const visibleIds = filtered.map((u) => u.id);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -86,6 +104,15 @@ export default function RegularSection({ onNavigate }: RegularSectionProps = {})
           />
         </div>
         <div className="flex gap-2">
+          {canDelete && filtered.length > 0 && (
+            <button
+              onClick={() => sel.toggleAll(visibleIds)}
+              className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+              title={sel.allSelected(visibleIds) ? 'Clear selection' : `Select all ${visibleIds.length} visible`}
+            >
+              {sel.allSelected(visibleIds) ? <CheckSquare size={18} /> : <Square size={18} />}
+            </button>
+          )}
           <button onClick={loadUsers} className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
             <RefreshCw size={18} />
           </button>
@@ -98,6 +125,16 @@ export default function RegularSection({ onNavigate }: RegularSectionProps = {})
           </button>
         </div>
       </div>
+
+      <BulkActionBar
+        count={sel.selectedIds.size}
+        total={visibleIds.length}
+        allSelected={sel.allSelected(visibleIds)}
+        onDelete={() => setBulkDeleteOpen(true)}
+        onCancel={sel.clear}
+        onToggleAll={() => sel.toggleAll(visibleIds)}
+        itemLabel="user"
+      />
 
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -112,72 +149,91 @@ export default function RegularSection({ onNavigate }: RegularSectionProps = {})
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filtered.map((user) => (
-            <div
-              key={user.id}
-              className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 hover:shadow-lg hover:shadow-gray-200/50 dark:hover:shadow-black/20 transition-all group"
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center text-violet-600 dark:text-violet-400 flex-shrink-0">
-                    <Users size={20} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{user.fullName || user.email}</p>
-                    {user.fullName && <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user.email}</p>}
-                    <span className="text-xs text-gray-400 dark:text-gray-500">{user.authProvider}</span>
-                  </div>
-                </div>
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => openDetail(user.id)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-blue-500 transition-all">
-                    <Eye size={16} />
-                  </button>
-                  {canDelete && (
-                    <button onClick={() => setDeleteTarget({ id: user.id, email: user.email })} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-red-500 transition-all">
-                      <Trash2 size={16} />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-                  <Car size={14} />
-                  <span>{user._count.scans} scans</span>
-                </div>
-                <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-                  <Smartphone size={14} />
-                  <span>{user._count.usedScannerDevices} devices &middot; {user._count.usedVins} VINs</span>
-                </div>
-                {/* GPS terminal chip — same pattern as DealerSection. */}
-                {(user._count.gpsTerminals ?? 0) > 0 && onNavigate && (
+          {filtered.map((user) => {
+            const selected = sel.isSelected(user.id);
+            return (
+              <div
+                key={user.id}
+                className={`relative bg-white dark:bg-gray-800 rounded-2xl border p-5 hover:shadow-lg hover:shadow-gray-200/50 dark:hover:shadow-black/20 transition-all group ${
+                  selected ? 'border-blue-500 ring-2 ring-blue-500/30' : 'border-gray-200 dark:border-gray-700'
+                }`}
+              >
+                {canDelete && (
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onNavigate('gps-terminals', { ownerUserId: user.id });
-                    }}
-                    className="flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+                    type="button"
+                    onClick={() => sel.toggle(user.id)}
+                    className={`absolute top-3 left-3 z-10 w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
+                      selected
+                        ? 'bg-blue-600 border-blue-600 text-white opacity-100'
+                        : 'bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 text-transparent opacity-0 group-hover:opacity-100'
+                    }`}
+                    title={selected ? 'Deselect' : 'Select'}
+                    aria-label={selected ? 'Deselect user' : 'Select user'}
                   >
-                    <Radio size={14} />
-                    <span className="underline-offset-2 hover:underline">
-                      {user._count.gpsTerminals} GPS terminal{user._count.gpsTerminals === 1 ? '' : 's'}
-                    </span>
+                    {selected && <CheckSquare size={14} />}
                   </button>
                 )}
-                <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-                  <Calendar size={14} />
-                  <span>Joined {new Date(user.createdAt).toLocaleDateString()}</span>
+                <div className="flex items-start justify-between mb-4">
+                  <div className={`flex items-center gap-3 min-w-0 ${canDelete ? 'ml-6' : ''}`}>
+                    <div className="w-10 h-10 rounded-xl bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center text-violet-600 dark:text-violet-400 flex-shrink-0">
+                      <Users size={20} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{user.fullName || user.email}</p>
+                      {user.fullName && <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user.email}</p>}
+                      <span className="text-xs text-gray-400 dark:text-gray-500">{user.authProvider}</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => openDetail(user.id)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-blue-500 transition-all">
+                      <Eye size={16} />
+                    </button>
+                    {canDelete && (
+                      <button onClick={() => setDeleteTarget({ id: user.id, email: user.email })} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-red-500 transition-all">
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              <button
-                onClick={() => openDetail(user.id)}
-                className="w-full mt-4 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
-              >
-                View Scan History
-              </button>
-            </div>
-          ))}
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+                    <Car size={14} />
+                    <span>{user._count.scans} scans</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+                    <Smartphone size={14} />
+                    <span>{user._count.usedScannerDevices} devices &middot; {user._count.usedVins} VINs</span>
+                  </div>
+                  {(user._count.gpsTerminals ?? 0) > 0 && onNavigate && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onNavigate('gps-terminals', { ownerUserId: user.id });
+                      }}
+                      className="flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+                    >
+                      <Radio size={14} />
+                      <span className="underline-offset-2 hover:underline">
+                        {user._count.gpsTerminals} GPS terminal{user._count.gpsTerminals === 1 ? '' : 's'}
+                      </span>
+                    </button>
+                  )}
+                  <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+                    <Calendar size={14} />
+                    <span>Joined {new Date(user.createdAt).toLocaleDateString()}</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => openDetail(user.id)}
+                  className="w-full mt-4 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+                >
+                  View Scan History
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -200,11 +256,28 @@ export default function RegularSection({ onNavigate }: RegularSectionProps = {})
       )}
 
       {deleteTarget && (
-        <ConfirmDeleteModal
+        <ConfirmPasswordModal
           title="Delete User"
-          message={`Delete user "${deleteTarget.email}" and all their data (scans, reports, devices)?`}
+          message={
+            <span>
+              Delete user <span className="font-semibold">{deleteTarget.email}</span> and all their data (scans, reports, devices)?
+            </span>
+          }
           onConfirm={handleDelete}
-          onCancel={() => setDeleteTarget(null)}
+          onClose={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {bulkDeleteOpen && (
+        <ConfirmPasswordModal
+          title="Delete Users"
+          message={
+            <span>
+              Delete <span className="font-semibold">{sel.selectedIds.size}</span> selected users and all their data (scans, reports, devices)?
+            </span>
+          }
+          onConfirm={handleBulkDelete}
+          onClose={() => setBulkDeleteOpen(false)}
         />
       )}
     </div>

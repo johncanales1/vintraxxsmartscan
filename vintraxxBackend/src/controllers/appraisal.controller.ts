@@ -11,6 +11,7 @@ import prisma from '../config/db';
 import fs from 'fs';
 import { randomUUID } from 'crypto';
 import { EmailServiceUnavailableError } from '../utils/errors';
+import { toPublicPdfUrl } from '../utils/pdf-url';
 
 // HIGH #15: in-memory `appraisalStore` removed — it was dead code that
 // confused ops on multi-process deploys (each PM2 worker had its own copy)
@@ -630,6 +631,11 @@ export async function listDashboardAppraisals(req: Request, res: Response, next:
         userEmail: a.userEmail ?? userEmail,
         userFullName: a.userFullName ?? undefined,
         vehicleOwnerName: a.vehicleOwnerName ?? undefined,
+        // PDF column on the dealer dashboard was previously always "—"
+        // because this mapper dropped pdfUrl. The DB stores an absolute
+        // filesystem path, so normalise to the public /reports URL (same
+        // transform dealer.controller.ts applies to FullReport pdfs).
+        pdfUrl: toPublicPdfUrl(a.pdfUrl),
       };
     });
 

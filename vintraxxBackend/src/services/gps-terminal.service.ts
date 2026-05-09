@@ -212,6 +212,80 @@ export async function reassignTerminalOwner(id: string, ownerUserId: string | nu
 }
 
 /**
+ * Editable fields for `PATCH /admin/gps/terminals/:id`. Each key is optional
+ * (absent ⇒ leave existing value) and nullable (explicit `null` ⇒ clear).
+ * `deviceIdentifier` is intentionally omitted — it's the immutable JT/T 808
+ * lookup key the gateway routes every packet by.
+ */
+export interface UpdateTerminalInput {
+  imei?: string | null;
+  phoneNumber?: string | null;
+  iccid?: string | null;
+  manufacturerId?: string | null;
+  terminalModel?: string | null;
+  hardwareVersion?: string | null;
+  firmwareVersion?: string | null;
+  vehicleVin?: string | null;
+  vehicleYear?: number | null;
+  vehicleMake?: string | null;
+  vehicleModel?: string | null;
+  nickname?: string | null;
+  plateNumber?: string | null;
+  ownerUserId?: string | null;
+}
+
+/**
+ * Patch terminal metadata. Returns the refreshed row.
+ *
+ *   - 404 if `id` doesn't exist.
+ *   - 404 if `ownerUserId` is set to a missing user id.
+ *   - 409 if `imei` / `phoneNumber` collides with a different terminal.
+ *
+ * We filter `undefined` values out of the Prisma `data` payload so absent
+ * keys keep their current DB value (Prisma otherwise would happily overwrite
+ * with `null` if we passed `foo: undefined` through some spread paths).
+ */
+export async function updateTerminalMetadata(id: string, patch: UpdateTerminalInput) {
+  const terminal = await prisma.gpsTerminal.findUnique({ where: { id } });
+  if (!terminal) throw new AppError('Terminal not found', 404);
+
+  if (patch.imei) {
+    const clash = await prisma.gpsTerminal.findFirst({
+      where: { imei: patch.imei, NOT: { id } },
+      select: { id: true },
+    });
+    if (clash) {
+      throw new AppError(`Another terminal already uses IMEI ${patch.imei}`, 409);
+    }
+  }
+
+  if (patch.phoneNumber) {
+    const clash = await prisma.gpsTerminal.findFirst({
+      where: { phoneNumber: patch.phoneNumber, NOT: { id } },
+      select: { id: true },
+    });
+    if (clash) {
+      throw new AppError(
+        `Another terminal already uses phone number ${patch.phoneNumber}`,
+        409,
+      );
+    }
+  }
+
+  if (patch.ownerUserId) {
+    const user = await prisma.user.findUnique({ where: { id: patch.ownerUserId } });
+    if (!user) throw new AppError('Owner user not found', 404);
+  }
+
+  const data: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(patch)) {
+    if (v !== undefined) data[k] = v;
+  }
+
+  return prisma.gpsTerminal.update({ where: { id }, data });
+}
+
+/**
  * Unpair = set ownerUserId to null AND mark REVOKED so the gateway rejects
  * any future auth attempts until the admin re-provisions / reassigns.
  *

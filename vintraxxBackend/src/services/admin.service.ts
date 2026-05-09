@@ -7,6 +7,7 @@ import { APP_CONSTANTS } from '../config/constants';
 import { AppError } from '../middleware/errorHandler';
 import { AdminJwtPayload } from '../middleware/adminAuth';
 import { generateOtpCode } from '../utils/helpers';
+import { deleteLocalFile, deleteLocalFiles } from '../utils/file-cleanup';
 import prisma from '../config/db';
 import logger from '../utils/logger';
 
@@ -33,8 +34,22 @@ function generateAdminToken(payload: AdminJwtPayload): string {
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
-export async function adminLogin(email: string, password: string) {
-  logger.info('Admin login attempt', { email, hasPassword: !!password });
+const ADMIN_LOGIN_OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * Step 1 of admin login: verify email + password, then generate & email a
+ * fresh 6-digit OTP. The JWT is NOT issued here — `verifyAdminLoginOtp`
+ * does that after the operator types the code in.
+ *
+ * Calling this twice in a row (e.g. operator clicks "resend") is safe: the
+ * prior unused code is wiped and replaced. Old verified codes remain in
+ * the table as audit trail (deleted lazily by the auth-cleanup cron).
+ *
+ * Per product decision (May 2026), 2FA is always-on for admins — no
+ * "remember device for N days" path.
+ */
+export async function adminLoginRequestOtp(email: string, password: string) {
+  logger.info('Admin login attempt (step 1: password)', { email, hasPassword: !!password });
   const admin = await prisma.admin.findUnique({ where: { email } });
   if (!admin) {
     logger.warn('Admin login failed: email not found', { email });
@@ -47,13 +62,57 @@ export async function adminLogin(email: string, password: string) {
     throw new AppError('Invalid email or password', 401);
   }
 
+  const code = generateOtpCode(6);
+  const expiresAt = new Date(Date.now() + ADMIN_LOGIN_OTP_TTL_MS);
+
+  // Wipe any prior unused codes for this email so a stale code can't be
+  // used after a re-request. We keep verified rows for audit.
+  await prisma.otp.deleteMany({ where: { email, verified: false } });
+  await prisma.otp.create({ data: { email, code, expiresAt } });
+
+  if (env.NODE_ENV !== 'test') {
+    const { sendOtpEmail } = await import('./email.service');
+    await sendOtpEmail(email, code);
+  }
+  if (env.NODE_ENV !== 'production') {
+    logger.info(`[DEV] Admin login OTP for ${email}: ${code}`);
+  }
+
+  logger.info(`Admin login: OTP issued`, { email });
+  return { otpRequired: true as const, email };
+}
+
+/**
+ * Step 2 of admin login: verify the 6-digit OTP, mark it consumed, and
+ * issue the JWT. `superAdmin` is read from the LIVE admin row so a
+ * promotion that happened between steps is honoured immediately.
+ */
+export async function verifyAdminLoginOtp(email: string, code: string) {
+  const record = await prisma.otp.findFirst({
+    where: { email, code, verified: false, expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (!record) {
+    logger.warn('Admin login OTP failed: invalid or expired', { email });
+    throw new AppError('Invalid or expired verification code', 400);
+  }
+
+  const admin = await prisma.admin.findUnique({ where: { email } });
+  if (!admin) {
+    // Shouldn't happen — step 1 verified the row exists — but defend.
+    logger.warn('Admin login OTP failed: admin row vanished', { email });
+    throw new AppError('Invalid or expired verification code', 400);
+  }
+
+  await prisma.otp.update({ where: { id: record.id }, data: { verified: true } });
+
   const token = generateAdminToken({
     adminId: admin.id,
     email: admin.email,
     role: 'admin',
     superAdmin: admin.superAdmin,
   });
-  logger.info(`Admin logged in: ${admin.email}`, { superAdmin: admin.superAdmin });
+  logger.info(`Admin logged in (OTP verified): ${admin.email}`, { superAdmin: admin.superAdmin });
   return {
     admin: { id: admin.id, email: admin.email, superAdmin: admin.superAdmin },
     token,
@@ -299,14 +358,70 @@ export async function deleteUser(userId: string) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new AppError('User not found', 404);
 
-  // Delete related records first
+  // ── 0. Snapshot every on-disk file we'll need to clean up ──────────────
+  // Collected BEFORE row deletes so the join paths still resolve. The
+  // unlink itself happens AFTER the DB succeeds (no point burning files
+  // for a delete that ends up rolling back).
+  const [scanReports, userAppraisals] = await Promise.all([
+    prisma.fullReport.findMany({ where: { scan: { userId } }, select: { pdfUrl: true } }),
+    prisma.appraisal.findMany({ where: { userId }, select: { pdfUrl: true } }),
+  ]);
+  const filesToUnlink: Array<string | null> = [
+    user.logoUrl,
+    user.originalLogoUrl,
+    user.qrCodeUrl,
+    ...scanReports.map((r) => r.pdfUrl),
+    ...userAppraisals.map((a) => a.pdfUrl),
+  ];
+
+  // ── 1. Unpair GPS terminals ─────────────────────────────────────────────
+  // Set ownerUserId to null and mark REVOKED so the gateway rejects future
+  // auth until the admin re-provisions/reassigns. The DB has ON DELETE SET
+  // NULL so this is technically redundant, but explicit unpair also flips
+  // the status (matching the admin "Unpair" button behaviour).
+  await prisma.gpsTerminal.updateMany({
+    where: { ownerUserId: userId },
+    data: { ownerUserId: null, status: 'REVOKED' },
+  });
+
+  // ── 2. Service appointments (RESTRICT FK → must delete before user) ────
+  // GpsAlarm.serviceAppointmentId is SET NULL, so alarms referencing these
+  // appointments auto-null their FK when the appointment row goes away.
+  await prisma.serviceAppointment.deleteMany({ where: { userId } });
+
+  // ── 3. Appraisals (no FK, indexed column — delete for data hygiene) ────
+  await prisma.appraisal.deleteMany({ where: { userId } });
+
+  // ── 4. Scan data (RESTRICT FK on both FullReport→Scan and Scan→User) ───
   await prisma.fullReport.deleteMany({ where: { scan: { userId } } });
   await prisma.scan.deleteMany({ where: { userId } });
+
+  // ── 5. Device / VIN tracking (RESTRICT FK) ─────────────────────────────
   await prisma.userScannerDevice.deleteMany({ where: { userId } });
   await prisma.userVinUsage.deleteMany({ where: { userId } });
+
+  // ── 6. Auth tokens (RESTRICT FK) ──────────────────────────────────────
   await prisma.passwordResetToken.deleteMany({ where: { userId } });
+
+  // ── 7. Inspections (no FK, delete for data hygiene) ────────────────────
   await prisma.inspection.deleteMany({ where: { userId } });
+
+  // ── 8. Delete user row ─────────────────────────────────────────────────
+  // Remaining optional FKs auto-cascade at DB level:
+  //   • MobilePushToken.userId → ON DELETE CASCADE
+  //   • GpsCommand.userId → ON DELETE SET NULL
+  //   • GpsAlarm.acknowledgedByUserId → ON DELETE SET NULL
+  //   • Appraisal.userId / Inspection.userId → ON DELETE CASCADE
+  //     (the explicit deleteMany calls above are kept for clarity; they're
+  //      now redundant under the new FK but harmless and self-documenting.)
   await prisma.user.delete({ where: { id: userId } });
+
+  // ── 9. Best-effort file cleanup ────────────────────────────────────────
+  // PDFs + dealer logo / QR images. Deletion failures are logged but never
+  // re-thrown — the row is already gone, an unlinkable file is recoverable
+  // via the orphan-sweep script.
+  await deleteLocalFiles(filesToUnlink);
+
   logger.info(`Admin deleted user: ${user.email}`);
 }
 
@@ -342,10 +457,15 @@ export async function getScanDetail(scanId: string) {
 }
 
 export async function deleteScan(scanId: string) {
-  const scan = await prisma.scan.findUnique({ where: { id: scanId } });
+  const scan = await prisma.scan.findUnique({
+    where: { id: scanId },
+    include: { fullReport: { select: { pdfUrl: true } } },
+  });
   if (!scan) throw new AppError('Scan not found', 404);
+  const pdfPath = scan.fullReport?.pdfUrl ?? null;
   await prisma.fullReport.deleteMany({ where: { scanId } });
   await prisma.scan.delete({ where: { id: scanId } });
+  await deleteLocalFile(pdfPath);
   logger.info(`Admin deleted scan: ${scanId}`);
 }
 
@@ -402,7 +522,9 @@ export async function getAppraisals(page = 1, limit = 50) {
 export async function deleteAppraisal(id: string) {
   const appraisal = await prisma.appraisal.findUnique({ where: { id } });
   if (!appraisal) throw new AppError('Appraisal not found', 404);
+  const pdfPath = appraisal.pdfUrl;
   await prisma.appraisal.delete({ where: { id } });
+  await deleteLocalFile(pdfPath);
   logger.info(`Admin deleted appraisal: ${id}`);
 }
 

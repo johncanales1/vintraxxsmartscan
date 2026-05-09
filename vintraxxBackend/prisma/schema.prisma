@@ -30,6 +30,8 @@ model User {
   usedVins              UserVinUsage[]
   passwordResetTokens   PasswordResetToken[]
   serviceAppointments   ServiceAppointment[]
+  appraisals            Appraisal[]
+  inspections           Inspection[]
   gpsTerminals          GpsTerminal[]
   acknowledgedGpsAlarms GpsAlarm[]           @relation("UserAlarmAck")
   // Mobile push devices (FCM/APNs) registered to this account. Multiple
@@ -245,6 +247,7 @@ model AdminAuditLog {
 model Appraisal {
   id               String   @id @default(uuid())
   userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   vin              String
   vehicleYear      Int?
   vehicleMake      String?
@@ -298,6 +301,7 @@ model ServiceAppointment {
 model Inspection {
   id          String   @id @default(uuid())
   userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   vehicleInfo String?
   vin         String?
   mileage     String?

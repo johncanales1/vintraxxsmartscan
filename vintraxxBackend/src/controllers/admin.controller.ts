@@ -4,18 +4,34 @@ import logger from '../utils/logger';
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
+/**
+ * Step 1 of admin login. Verifies email + password and triggers an OTP
+ * email. Returns `{ otpRequired: true, email }` — does NOT issue a JWT
+ * (see `verifyLoginOtp` below). Always-on 2FA per product decision.
+ */
 export async function login(req: Request, res: Response, next: NextFunction) {
   try {
-    // Debug logging for CORS troubleshooting
     logger.info('Admin login attempt', {
       origin: req.headers.origin,
       userAgent: req.headers['user-agent'],
       method: req.method,
-      ip: req.ip
+      ip: req.ip,
     });
-    
+
     const { email, password } = req.body;
-    const result = await adminService.adminLogin(email, password);
+    const result = await adminService.adminLoginRequestOtp(email, password);
+    res.json({ success: true, ...result });
+  } catch (err) { next(err); }
+}
+
+/**
+ * Step 2 of admin login. Verifies the 6-digit OTP and, on success, returns
+ * the admin session (token + admin profile).
+ */
+export async function verifyLoginOtp(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { email, code } = req.body;
+    const result = await adminService.verifyAdminLoginOtp(email, code);
     res.json({ success: true, ...result });
   } catch (err) { next(err); }
 }

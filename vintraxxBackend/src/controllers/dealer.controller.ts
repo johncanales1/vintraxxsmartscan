@@ -11,14 +11,7 @@ import { escapeHtml as e } from '../utils/escape-html';
 // (scheduleAppointment + sendDealerEmail) which leaked socket descriptors
 // over time and dodged the verify-cache.
 import { transporter } from '../services/mailer';
-
-const API_BASE_URL = 'https://api.vintraxx.com';
-
-function toPublicPdfUrl(filePath: string | null | undefined): string | null {
-  if (!filePath) return null;
-  const filename = path.basename(filePath);
-  return `${API_BASE_URL}/reports/${filename}`;
-}
+import { toPublicPdfUrl } from '../utils/pdf-url';
 
 const LOGO_DIR = path.join(process.cwd(), 'src', 'assets', 'dealer-logos');
 const QR_CODE_DIR = path.join(process.cwd(), 'src', 'assets', 'dealer-qrcodes');

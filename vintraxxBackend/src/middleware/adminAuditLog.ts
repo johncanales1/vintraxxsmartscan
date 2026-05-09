@@ -84,12 +84,26 @@ function inferTarget(path: string, body: unknown): { type?: string; id?: string 
   return {};
 }
 
+/**
+ * Self-delete loophole: every DELETE on this very table writes a fresh row
+ * via this middleware, so the list never shrinks from the operator's POV
+ * ("delete works but the entry comes right back as a new DELETE record").
+ * Per product decision (super-admin must be able to actually clear noisy
+ * entries), skip recording for DELETE /audit-logs/:id. The DELETE itself is
+ * still gated by `requireSuperAdmin` upstream so non-admins can't abuse this.
+ */
+const AUDIT_LOG_PATH_RE = /\/audit-logs\//;
+
 export function adminAuditMiddleware(
   req: Request,
   res: Response,
   next: NextFunction,
 ): void {
   if (!RECORDED_METHODS.has(req.method)) {
+    return next();
+  }
+
+  if (req.method === 'DELETE' && AUDIT_LOG_PATH_RE.test(req.originalUrl ?? req.url)) {
     return next();
   }
 

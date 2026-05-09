@@ -8,6 +8,7 @@ import {
   provisionTerminalSchema,
   reassignTerminalSchema,
   terminalIdParamsSchema,
+  updateTerminalSchema,
   listTerminalsQuerySchema,
   listAlarmsQuerySchema,
   alarmIdParamsSchema,
@@ -27,16 +28,27 @@ import {
   adminAnalyzeDtcEventSchema,
   adminBulkAckAlarmsSchema,
   adminListAuditLogsQuerySchema,
+  auditLogIdParamsSchema,
 } from '../schemas/gps-admin.schema';
 import {
   createUserBodySchema,
   updateUserBodySchema,
 } from '../schemas/admin-user.schema';
+import {
+  adminLoginBodySchema,
+  adminLoginVerifyOtpBodySchema,
+} from '../schemas/admin-auth.schema';
 
 const router = Router();
 
-// Public
-router.post('/login', adminCtrl.login);
+// Public — two-step login. Step 1 verifies password and emails an OTP;
+// step 2 verifies the OTP and issues the JWT. Always-on 2FA.
+router.post('/login', validateRequest(adminLoginBodySchema), adminCtrl.login);
+router.post(
+  '/login/verify-otp',
+  validateRequest(adminLoginVerifyOtpBodySchema),
+  adminCtrl.verifyLoginOtp,
+);
 
 // Protected
 router.use(adminAuthMiddleware);
@@ -98,6 +110,13 @@ router.patch(
   '/gps/terminals/:id/owner',
   validateRequest(reassignTerminalSchema),
   gpsCtrl.adminReassignTerminal,
+);
+// Edit terminal metadata (everything except the immutable deviceIdentifier).
+// Non-destructive — no super-admin gate.
+router.patch(
+  '/gps/terminals/:id',
+  validateRequest(updateTerminalSchema),
+  gpsCtrl.adminUpdateTerminal,
 );
 router.post(
   '/gps/terminals/:id/unpair',
@@ -203,6 +222,16 @@ router.get(
   '/audit-logs',
   validateRequest(adminListAuditLogsQuerySchema),
   gpsCtrl.adminListAuditLogs,
+);
+// Super-admin only. The audit middleware DELIBERATELY does NOT record this
+// delete (would make every clear self-perpetuate as a new DELETE row, and
+// from the operator's POV the list would never shrink). `requireSuperAdmin`
+// upstream is the only gate.
+router.delete(
+  '/audit-logs/:id',
+  requireSuperAdmin,
+  validateRequest(auditLogIdParamsSchema),
+  gpsCtrl.adminDeleteAuditLog,
 );
 
 export default router;

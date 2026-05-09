@@ -78,6 +78,44 @@ export const terminalIdParamsSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
 });
 
+/**
+ * PATCH /admin/gps/terminals/:id — edit terminal metadata.
+ *
+ * Mirrors `provisionTerminalSchema.body` minus `deviceIdentifier` (the JT/T
+ * 808 lookup key is immutable — the gateway keys every session off it, so
+ * editing it would orphan live sessions). Every field is nullable so the
+ * admin can clear a value by sending `null`; passing `undefined` / omitting
+ * the key leaves the stored value untouched.
+ *
+ * `.strict()` on the body prevents silent drops when the frontend ships a
+ * typo; Zod will surface `Unrecognized key(s)` instead.
+ */
+export const updateTerminalSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+  body: z
+    .object({
+      imei: z
+        .string()
+        .regex(/^\d{15}$/, 'IMEI must be exactly 15 digits when provided')
+        .nullable()
+        .optional(),
+      phoneNumber: z.string().regex(/^\d{1,15}$/).nullable().optional(),
+      iccid: z.string().min(1).max(32).nullable().optional(),
+      manufacturerId: z.string().max(8).nullable().optional(),
+      terminalModel: z.string().max(32).nullable().optional(),
+      hardwareVersion: z.string().max(32).nullable().optional(),
+      firmwareVersion: z.string().max(32).nullable().optional(),
+      vehicleVin: z.string().regex(/^[A-HJ-NPR-Z0-9]{17}$/i).nullable().optional(),
+      vehicleYear: z.number().int().min(1980).max(2100).nullable().optional(),
+      vehicleMake: z.string().max(32).nullable().optional(),
+      vehicleModel: z.string().max(64).nullable().optional(),
+      nickname: z.string().max(64).nullable().optional(),
+      plateNumber: z.string().max(16).nullable().optional(),
+      ownerUserId: z.string().uuid().nullable().optional(),
+    })
+    .strict(),
+});
+
 export const listTerminalsQuerySchema = z.object({
   query: z.object({
     page: z.coerce.number().int().min(1).default(1).optional(),

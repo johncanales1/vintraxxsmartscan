@@ -83,6 +83,23 @@ export async function adminReassignTerminal(req: Request, res: Response, next: N
   }
 }
 
+/**
+ * PATCH /admin/gps/terminals/:id — edit terminal metadata.
+ * Request body is validated by `updateTerminalSchema`, so anything that
+ * reaches here is already type-shaped for the service layer.
+ */
+export async function adminUpdateTerminal(req: Request, res: Response, next: NextFunction) {
+  try {
+    const terminal = await terminalService.updateTerminalMetadata(
+      req.params.id as string,
+      req.body,
+    );
+    res.json({ success: true, terminal });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function adminUnpairTerminal(req: Request, res: Response, next: NextFunction) {
   try {
     const terminal = await terminalService.unpairTerminal(req.params.id as string);
@@ -862,6 +879,31 @@ export async function adminListAuditLogs(
         typeof req.query.until === 'string' ? new Date(req.query.until) : undefined,
     });
     res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * DELETE /admin/audit-logs/:id — wipe a single audit entry.
+ *
+ * Intentionally destructive. The adminAuditMiddleware records THIS delete
+ * too (see its `res.on('finish')` hook), so a super-admin can't silently
+ * erase history — the wipe itself gets logged with its target id in the
+ * path. Still footgun-y enough that we gate it behind `requireSuperAdmin`
+ * at the route layer.
+ */
+export async function adminDeleteAuditLog(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const id = req.params.id as string;
+    const existing = await prisma.adminAuditLog.findUnique({ where: { id } });
+    if (!existing) throw new AppError('Audit log entry not found', 404);
+    await prisma.adminAuditLog.delete({ where: { id } });
+    res.json({ success: true, message: 'Audit log entry deleted' });
   } catch (err) {
     next(err);
   }

@@ -67,3 +67,12 @@ export const adminListAuditLogsQuerySchema = z.object({
     until: isoDate.optional(),
   }),
 });
+
+/**
+ * DELETE /admin/audit-logs/:id — remove a single audit entry. Super-admin
+ * only; the adminAuditMiddleware still records the DELETE itself so the
+ * removal leaves a breadcrumb.
+ */
+export const auditLogIdParamsSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+});

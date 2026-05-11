@@ -22,7 +22,7 @@
  */
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { GoogleMap, MarkerF, useLoadScript } from '@react-google-maps/api';
+import { GoogleMap, useLoadScript, type Libraries } from '@react-google-maps/api';
 import { api, GpsTerminal, GpsLocation } from '@/lib/api';
 import { gpsAdminWs } from '@/lib/gpsAdminWs';
 import {
@@ -49,9 +49,24 @@ const MAP_CONTAINER_STYLE = { width: '100%', height: '100%' };
 const DEFAULT_CENTER = { lat: 39.0, lng: -97.0 };
 const DEFAULT_ZOOM = 4;
 
+// Required for `google.maps.marker.AdvancedMarkerElement` — must be loaded
+// at script-tag time, not lazily, otherwise the constructor throws
+// "AdvancedMarkerView is not loaded". `Libraries` is the typed string-array
+// alias from @react-google-maps/api; pinned outside the component so the
+// reference stays stable across renders (otherwise useLoadScript warns).
+const GMAPS_LIBRARIES: Libraries = ['marker'];
+
 export default function GpsFleetMapSection() {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
-  const { isLoaded, loadError } = useLoadScript({ googleMapsApiKey: apiKey });
+  // `mapId` enables the new vector-rendering pipeline that AdvancedMarker
+  // requires. Operators set it in their Google Cloud Console; we soft-fall
+  // back to the default raster-only map if unset (markers still render via
+  // the fallback HTMLOverlay path inside `AdvancedMarker`).
+  const mapId = process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID || undefined;
+  const { isLoaded, loadError } = useLoadScript({
+    googleMapsApiKey: apiKey,
+    libraries: GMAPS_LIBRARIES,
+  });
 
   const [entries, setEntries] = useState<Record<string, FleetEntry>>({});
   const [loading, setLoading] = useState(true);
@@ -257,6 +272,10 @@ export default function GpsFleetMapSection() {
               center={DEFAULT_CENTER}
               zoom={DEFAULT_ZOOM}
               options={{
+                // mapId is REQUIRED for AdvancedMarkerElement to render in
+                // its native (non-fallback) form. When unset, AdvancedMarker
+                // still works but Google logs a one-time warning.
+                mapId,
                 disableDefaultUI: false,
                 streetViewControl: false,
                 fullscreenControl: true,
@@ -270,10 +289,16 @@ export default function GpsFleetMapSection() {
                 mapRef.current = null;
               }}
             >
+              {/* AdvancedMarker replaces the deprecated google.maps.Marker
+                  (warning issued by Google as of 2024-02-21). The component
+                  is a thin imperative wrapper because @react-google-maps/api
+                  v2 doesn't yet expose an <AdvancedMarkerF /> declaratively. */}
               {located.map(({ entry, lat, lng }) => (
-                <MarkerF
+                <AdvancedMarker
                   key={entry.terminal.id}
-                  position={{ lat, lng }}
+                  map={mapRef.current}
+                  lat={lat}
+                  lng={lng}
                   title={vehicleLabel({
                     vehicleYear: entry.terminal.vehicleYear,
                     vehicleMake: entry.terminal.vehicleMake,
@@ -359,4 +384,86 @@ function ApiKeyMissing({ reason }: { reason: string }) {
       </p>
     </div>
   );
+}
+
+/**
+ * Imperative wrapper around `google.maps.marker.AdvancedMarkerElement`.
+ *
+ * @react-google-maps/api v2.20.x doesn't expose a declarative
+ * <AdvancedMarkerF /> yet — its `MarkerF` still wraps the deprecated
+ * `google.maps.Marker` constructor (logged as deprecated by Google as of
+ * 2024-02-21). Migration guide:
+ *   https://developers.google.com/maps/documentation/javascript/advanced-markers/migration
+ *
+ * This component constructs the marker on mount, mutates `position` /
+ * `title` on prop change, and removes itself on unmount. Click handler
+ * is wired via `gmp-click` (the AdvancedMarkerElement custom event).
+ */
+function AdvancedMarker({
+  map,
+  lat,
+  lng,
+  title,
+  onClick,
+}: {
+  map: google.maps.Map | null;
+  lat: number;
+  lng: number;
+  title: string;
+  onClick?: () => void;
+}) {
+  const markerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
+  // Keep `onClick` in a ref so we don't have to tear down + rebuild the
+  // listener every time the parent re-renders with a new closure.
+  const clickRef = useRef(onClick);
+  useEffect(() => {
+    clickRef.current = onClick;
+  }, [onClick]);
+
+  // Create / destroy the marker. We intentionally exclude `lat/lng/title`
+  // from the deps array — those are mutated in the second effect so we
+  // don't tear the marker down on every position update.
+  useEffect(() => {
+    if (!map) return;
+    // The `marker` library is loaded via `useLoadScript({ libraries: ['marker'] })`.
+    // If google.maps.marker isn't available, fall through silently — the
+    // map still renders, just without our overlay.
+    if (typeof google === 'undefined' || !google.maps?.marker?.AdvancedMarkerElement) {
+      return;
+    }
+    const marker = new google.maps.marker.AdvancedMarkerElement({
+      map,
+      position: { lat, lng },
+      title,
+      gmpClickable: !!onClick,
+    });
+    const clickListener = marker.addListener('gmp-click', () => {
+      clickRef.current?.();
+    });
+    markerRef.current = marker;
+    return () => {
+      clickListener.remove();
+      // Detach the marker element from the map. Setting `map = null` is
+      // the documented teardown step for AdvancedMarkerElement.
+      marker.map = null;
+      markerRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map]);
+
+  // Mutate position + title in place when they change. Cheaper than
+  // tearing down and recreating the marker for every WS update.
+  useEffect(() => {
+    const m = markerRef.current;
+    if (!m) return;
+    m.position = { lat, lng };
+  }, [lat, lng]);
+
+  useEffect(() => {
+    const m = markerRef.current;
+    if (!m) return;
+    m.title = title;
+  }, [title]);
+
+  return null;
 }

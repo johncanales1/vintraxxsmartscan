@@ -2,13 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import { api, UserDetail, GpsTerminal, normalizePdfUrl } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { StatusBadge } from '@/components/Dashboard';
 import ConfirmDeleteModal from '@/components/modals/ConfirmDeleteModal';
+import ResetUserPasswordModal from '@/components/modals/ResetUserPasswordModal';
 import ScanActivityChart from '@/components/charts/ScanActivityChart';
 import { vehicleLabel, terminalLabel, statusDotClasses, fmtRelative } from '@/lib/gpsHelpers';
 import {
   X, Mail, Calendar, Smartphone, Car, DollarSign, Globe, Edit2, Save, Trash2,
-  FileText, Hash, AlertCircle, CheckCircle, Radio, Bell, ChevronRight,
+  FileText, Hash, AlertCircle, CheckCircle, Radio, Bell, ChevronRight, KeyRound,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -41,6 +43,11 @@ export default function UserDetailModal({ user: userProp, loading, onClose, onRe
     setLocalUser(null);
   }, [userProp?.id]);
 
+  const { admin } = useAuth();
+  // Mirrors backend `requireSuperAdmin` on POST /users/:id/reset-password.
+  // Hiding the button for regular admins avoids surprise 403s.
+  const canResetPassword = admin?.superAdmin === true;
+
   const [editing, setEditing] = useState(false);
   const [editData, setEditData] = useState({
     email: '',
@@ -51,6 +58,7 @@ export default function UserDetailModal({ user: userProp, loading, onClose, onRe
   });
   const [saving, setSaving] = useState(false);
   const [scanDeleteTarget, setScanDeleteTarget] = useState<{ id: string; vin: string } | null>(null);
+  const [resettingPassword, setResettingPassword] = useState(false);
 
   // Lazy-load up to 5 of this user's GPS terminals so we can preview them
   // inline. We only render the section when the user actually owns at
@@ -164,6 +172,15 @@ export default function UserDetailModal({ user: userProp, loading, onClose, onRe
             {user && <p className="text-sm text-gray-500 dark:text-gray-400">{user.email}</p>}
           </div>
           <div className="flex items-center gap-2">
+            {user && !editing && canResetPassword && (
+              <button
+                onClick={() => setResettingPassword(true)}
+                title="Reset password"
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-amber-500 transition-all"
+              >
+                <KeyRound size={18} />
+              </button>
+            )}
             {user && !editing && (
               <button onClick={startEdit} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-blue-500 transition-all">
                 <Edit2 size={18} />
@@ -479,6 +496,14 @@ export default function UserDetailModal({ user: userProp, loading, onClose, onRe
           message={`Delete scan for VIN "${scanDeleteTarget.vin}" and its report?`}
           onConfirm={handleDeleteScan}
           onCancel={() => setScanDeleteTarget(null)}
+        />
+      )}
+
+      {resettingPassword && user && canResetPassword && (
+        <ResetUserPasswordModal
+          userId={user.id}
+          userEmail={user.email}
+          onClose={() => setResettingPassword(false)}
         />
       )}
     </div>

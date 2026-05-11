@@ -30,6 +30,12 @@ const envSchema = z.object({
   BLACKBOOK_PASSWORD: optionalNonEmptyString,
   REPORT_VERSION: z.string().default('5.1'),
   APP_URL: z.string().url().default('https://app.vintraxx.com'),
+  /**
+   * The public URL of the dealer-facing frontend. Used to build
+   * password-reset links that the user clicks in their email, so this
+   * must resolve to the Next.js frontend, NOT the API.
+   */
+  FRONTEND_URL: z.string().url().default('https://dev.vintraxx.com'),
   GOOGLE_CLIENT_ID: optionalNonEmptyString,
   /**
    * LOW #1: Google OAuth client IDs for the mobile + web flows. These are

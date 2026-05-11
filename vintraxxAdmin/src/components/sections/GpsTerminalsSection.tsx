@@ -36,7 +36,6 @@ import ConfirmDeleteModal from '@/components/modals/ConfirmDeleteModal';
 import ConfirmPasswordModal from '@/components/modals/ConfirmPasswordModal';
 import BulkActionBar from '@/components/shared/BulkActionBar';
 import { useMultiSelect } from '@/lib/useMultiSelect';
-import { runBulkDelete } from '@/lib/bulkDelete';
 import {
   Search, Plus, RefreshCw, Radio, Eye, UserPlus, Unlink, Trash2, Pencil,
   ChevronLeft, ChevronRight, X as XIcon, CheckSquare, Square,
@@ -192,11 +191,18 @@ export default function GpsTerminalsSection({
 
   const handleBulkDelete = async () => {
     const ids = Array.from(sel.selectedIds);
-    await runBulkDelete({
-      ids,
-      itemLabel: 'terminal',
-      delete: (id) => api.deleteGpsTerminal(id),
-    });
+    try {
+      // Single round-trip via the dedicated bulk endpoint — replaces the
+      // earlier `runBulkDelete` fan-out which fired N parallel DELETEs.
+      // Cascades through GpsLocation/GpsObdSnapshot/GpsAlarm/GpsDtcEvent/
+      // GpsTrip/GpsCommand/GpsTerminalDailyStats via the schema's
+      // `onDelete: Cascade`, so a single terminal removal still wipes all
+      // its telemetry server-side.
+      const res = await api.bulkDeleteGpsTerminals(ids);
+      toast.success(`Deleted ${res.deleted} of ${ids.length} terminal${ids.length === 1 ? '' : 's'}`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete terminals');
+    }
     sel.clear();
     load();
   };

@@ -39,6 +39,7 @@ import {
   CheckCircle, ExternalLink, Zap,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import BulkBar from '../shared/BulkBar';
 
 interface Props {
   terminalId: string;
@@ -51,6 +52,12 @@ type Tab = 'overview' | 'track' | 'obd' | 'alarms' | 'dtcs' | 'trips' | 'command
 export default function GpsTerminalDetailModal({ terminalId, onClose, onMutated }: Props) {
   const [terminal, setTerminal] = useState<GpsTerminalDetail | null>(null);
   const [latest, setLatest] = useState<GpsLocation | null>(null);
+  // Most-recent OBD snapshot — separate from the GpsLocation `latest` so the
+  // Overview pane can show OBD-derived speed + battery alongside the GPS-
+  // derived ones (relevant for bench testing where GPS speed = 0 but the
+  // OBD bus shows non-zero vehicle speed). Populated by the same `latest`
+  // endpoint, refreshed on tab open.
+  const [latestObd, setLatestObd] = useState<GpsObdSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('overview');
 
@@ -73,7 +80,10 @@ export default function GpsTerminalDetailModal({ terminalId, onClose, onMutated 
       ]);
       if (tRes.status === 'fulfilled') setTerminal(tRes.value.terminal);
       else toast.error('Failed to load terminal');
-      if (lRes.status === 'fulfilled') setLatest(lRes.value.location);
+      if (lRes.status === 'fulfilled') {
+        setLatest(lRes.value.location);
+        setLatestObd(lRes.value.obd);
+      }
     } finally {
       setLoading(false);
     }
@@ -318,19 +328,24 @@ export default function GpsTerminalDetailModal({ terminalId, onClose, onMutated 
               <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
             </div>
           ) : tab === 'overview' ? (
-            <OverviewPane terminal={terminal} latest={latest} />
+            <OverviewPane terminal={terminal} latest={latest} latestObd={latestObd} />
           ) : tab === 'track' ? (
-            <TrackPane locations={locations} onReload={reloadLocations} />
+            <TrackPane locations={locations} onReload={reloadLocations} onMutated={onMutated} />
           ) : tab === 'obd' ? (
-            <ObdPane snapshots={obd} onReload={reloadObd} />
+            <ObdPane snapshots={obd} onReload={reloadObd} onMutated={onMutated} />
           ) : tab === 'alarms' ? (
-            <AlarmsPane alarms={alarms} onAck={handleAck} onReload={reloadAlarms} />
+            <AlarmsPane
+              alarms={alarms}
+              onAck={handleAck}
+              onReload={reloadAlarms}
+              onMutated={onMutated}
+            />
           ) : tab === 'dtcs' ? (
             <DtcsPane events={dtcs} onReload={reloadDtcs} onMutated={onMutated} />
           ) : tab === 'trips' ? (
-            <TripsPane trips={trips} onReload={reloadTrips} />
+            <TripsPane trips={trips} onReload={reloadTrips} onMutated={onMutated} />
           ) : tab === 'commands' ? (
-            <CommandsPane commands={commands} onReload={reloadCommands} />
+            <CommandsPane commands={commands} onReload={reloadCommands} onMutated={onMutated} />
           ) : null}
         </div>
       </div>
@@ -340,15 +355,32 @@ export default function GpsTerminalDetailModal({ terminalId, onClose, onMutated 
 
 // ─── Panes ──────────────────────────────────────────────────────────────────
 
-function OverviewPane({ terminal, latest }: { terminal: GpsTerminalDetail; latest: GpsLocation | null }) {
+function OverviewPane({
+  terminal,
+  latest,
+  latestObd,
+}: {
+  terminal: GpsTerminalDetail;
+  latest: GpsLocation | null;
+  latestObd: GpsObdSnapshot | null;
+}) {
+  // Battery comes from the OBD snapshot in practice — the gateway never
+  // populates GpsLocation.batteryVoltageMv (no JT/T 808 TLV maps to it).
+  // Prefer OBD; fall back to whatever GpsLocation has just in case.
+  const batteryMv =
+    latest?.batteryVoltageMv ?? latestObd?.batteryVoltageMv ?? null;
   return (
     <div className="space-y-6">
-      {/* Quick stats */}
+      {/* Quick stats — speed shown twice on purpose: GPS-derived (from
+          the location report) vs OBD-bus-derived (from the live OBD
+          pass-through). Bench-test kits drive the OBD speed but the
+          device itself isn't moving, so the two diverge legitimately. */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Stat icon={<Activity size={14} />} label="Status" value={terminal.status.replace(/_/g, ' ')} />
         <Stat icon={<Calendar size={14} />} label="Last heartbeat" value={fmtRelative(terminal.lastHeartbeatAt)} />
         <Stat icon={<MapPin size={14} />} label="Last fix" value={latest ? fmtRelative(latest.reportedAt) : '—'} />
-        <Stat icon={<Zap size={14} />} label="Speed" value={latest ? fmtKmh(latest.speedKmh) : '—'} />
+        <Stat icon={<Zap size={14} />} label="GPS speed" value={latest ? fmtKmh(latest.speedKmh) : '—'} />
+        <Stat icon={<Zap size={14} />} label="OBD speed" value={latestObd ? fmtKmh(latestObd.vehicleSpeedKmh) : '—'} />
       </div>
 
       {/* Latest location */}
@@ -362,7 +394,7 @@ function OverviewPane({ terminal, latest }: { terminal: GpsTerminalDetail; lates
             <Stat label="Satellites" value={latest.satelliteCount != null ? String(latest.satelliteCount) : '—'} />
             <Stat label="GPS fix" value={latest.gpsFix ? 'Yes' : 'No'} />
             <Stat label="Ignition" value={latest.accOn ? 'On' : 'Off'} />
-            <Stat label="Battery" value={fmtVolts(latest.batteryVoltageMv)} />
+            <Stat label="Battery" value={fmtVolts(batteryMv)} />
           </div>
           {(toNumber(latest.latitude) !== null && toNumber(latest.longitude) !== null) && (
             <a
@@ -447,22 +479,62 @@ function OverviewPane({ terminal, latest }: { terminal: GpsTerminalDetail; lates
   );
 }
 
-function TrackPane({ locations, onReload }: { locations: GpsLocation[] | null; onReload: () => void }) {
+function TrackPane({
+  locations,
+  onReload,
+  onMutated,
+}: {
+  locations: GpsLocation[] | null;
+  onReload: () => void;
+  onMutated?: () => void;
+}) {
+  const { selectedIds, toggle, setAll, clear } = useBulkSelect();
+  // Live-WS rows have ids prefixed with `live:` and aren't in the DB yet —
+  // exclude them from selection so a bulk-delete can't try to remove a
+  // synthetic id (the backend would silently drop it but the count would
+  // mislead the user). Real DB rows have UUIDs.
+  const isPersistedId = (id: string) => !id.startsWith('live:');
+
   if (locations === null) return <Loading />;
   if (locations.length === 0) return <Empty icon={<MapPin />} text="No location reports" onReload={onReload} />;
 
+  const selectableIds = locations.map((l) => l.id).filter(isPersistedId);
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id));
+
+  const handleToggleAll = () => {
+    if (allSelected) clear();
+    else setAll(selectableIds);
+  };
+
+  const handleConfirmDelete = async () => {
+    const ids = Array.from(selectedIds).filter(isPersistedId);
+    try {
+      const res = await api.bulkDeleteGpsLocations(ids);
+      toast.success(`Deleted ${res.deleted} location${res.deleted === 1 ? '' : 's'}`);
+      clear();
+      onReload();
+      onMutated?.();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete locations');
+    }
+  };
+
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500 dark:text-gray-400">{locations.length} most recent fixes</p>
-        <button onClick={onReload} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 transition-all">
-          <RefreshCw size={14} />
-        </button>
-      </div>
+      <BulkBar
+        total={locations.length}
+        selected={selectedIds.size}
+        allSelected={allSelected}
+        resourceLabel="locations"
+        onToggleAll={handleToggleAll}
+        onReload={onReload}
+        onConfirmDelete={handleConfirmDelete}
+      />
       <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs uppercase text-gray-500 dark:text-gray-400 tracking-wider">
             <tr>
+              <th className="px-3 py-2 w-8" />
               <th className="px-4 py-2 text-left">Time</th>
               <th className="px-4 py-2 text-left">Lat / Lng</th>
               <th className="px-4 py-2 text-left">Speed</th>
@@ -472,25 +544,37 @@ function TrackPane({ locations, onReload }: { locations: GpsLocation[] | null; o
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-            {locations.map((l) => (
-              <tr key={l.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                <td className="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">{fmtRelative(l.reportedAt)}</td>
-                <td className="px-4 py-2 font-mono text-xs text-gray-900 dark:text-gray-100">
-                  <a
-                    href={`https://www.google.com/maps?q=${l.latitude},${l.longitude}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="hover:text-blue-500 hover:underline"
-                  >
-                    {Number(l.latitude).toFixed(5)}, {Number(l.longitude).toFixed(5)}
-                  </a>
-                </td>
-                <td className="px-4 py-2 text-gray-700 dark:text-gray-200">{fmtKmh(l.speedKmh)}</td>
-                <td className="px-4 py-2 text-gray-700 dark:text-gray-200">{l.heading != null ? `${l.heading}°` : '—'}</td>
-                <td className="px-4 py-2">{l.accOn ? 'On' : 'Off'}</td>
-                <td className="px-4 py-2 text-gray-700 dark:text-gray-200">{l.satelliteCount ?? '—'}</td>
-              </tr>
-            ))}
+            {locations.map((l) => {
+              const persisted = isPersistedId(l.id);
+              return (
+                <tr key={l.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                  <td className="px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(l.id)}
+                      disabled={!persisted}
+                      onChange={() => toggle(l.id)}
+                      className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 disabled:opacity-30"
+                    />
+                  </td>
+                  <td className="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">{fmtRelative(l.reportedAt)}</td>
+                  <td className="px-4 py-2 font-mono text-xs text-gray-900 dark:text-gray-100">
+                    <a
+                      href={`https://www.google.com/maps?q=${l.latitude},${l.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:text-blue-500 hover:underline"
+                    >
+                      {Number(l.latitude).toFixed(5)}, {Number(l.longitude).toFixed(5)}
+                    </a>
+                  </td>
+                  <td className="px-4 py-2 text-gray-700 dark:text-gray-200">{fmtKmh(l.speedKmh)}</td>
+                  <td className="px-4 py-2 text-gray-700 dark:text-gray-200">{l.heading != null ? `${l.heading}°` : '—'}</td>
+                  <td className="px-4 py-2">{l.accOn ? 'On' : 'Off'}</td>
+                  <td className="px-4 py-2 text-gray-700 dark:text-gray-200">{l.satelliteCount ?? '—'}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -498,61 +582,110 @@ function TrackPane({ locations, onReload }: { locations: GpsLocation[] | null; o
   );
 }
 
-function ObdPane({ snapshots, onReload }: { snapshots: GpsObdSnapshot[] | null; onReload: () => void }) {
+function ObdPane({
+  snapshots,
+  onReload,
+  onMutated,
+}: {
+  snapshots: GpsObdSnapshot[] | null;
+  onReload: () => void;
+  onMutated?: () => void;
+}) {
+  const { selectedIds, toggle, setAll, clear } = useBulkSelect();
+
   if (snapshots === null) return <Loading />;
   if (snapshots.length === 0) return <Empty icon={<Cpu />} text="No OBD snapshots" onReload={onReload} />;
 
+  const allIds = snapshots.map((s) => s.id);
+  const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds.has(id));
+
+  const handleToggleAll = () => {
+    if (allSelected) clear();
+    else setAll(allIds);
+  };
+
+  const handleConfirmDelete = async () => {
+    try {
+      const res = await api.bulkDeleteGpsObd(Array.from(selectedIds));
+      toast.success(`Deleted ${res.deleted} OBD snapshot${res.deleted === 1 ? '' : 's'}`);
+      clear();
+      onReload();
+      onMutated?.();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete OBD snapshots');
+    }
+  };
+
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500 dark:text-gray-400">{snapshots.length} most recent snapshots</p>
-        <button onClick={onReload} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 transition-all">
-          <RefreshCw size={14} />
-        </button>
-      </div>
+      <BulkBar
+        total={snapshots.length}
+        selected={selectedIds.size}
+        allSelected={allSelected}
+        resourceLabel="OBD snapshots"
+        onToggleAll={handleToggleAll}
+        onReload={onReload}
+        onConfirmDelete={handleConfirmDelete}
+      />
       <div className="space-y-2">
         {snapshots.map((s) => (
-          <div key={s.id} className="px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs text-gray-500 dark:text-gray-400">{fmtRelative(s.reportedAt)}</p>
-              <div className="flex items-center gap-2">
-                {s.milOn && (
-                  <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300">
-                    MIL ON
-                  </span>
-                )}
-                <span className="text-xs text-gray-500 dark:text-gray-400">DTCs: {s.dtcCount}</span>
+          <div
+            key={s.id}
+            className={`flex gap-3 px-4 py-3 rounded-xl border transition-all ${
+              selectedIds.has(s.id)
+                ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-300 dark:border-blue-500/40'
+                : 'bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600'
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={selectedIds.has(s.id)}
+              onChange={() => toggle(s.id)}
+              className="mt-0.5 w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 flex-shrink-0"
+            />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+                <p className="text-xs text-gray-500 dark:text-gray-400">{fmtRelative(s.reportedAt)}</p>
+                <div className="flex items-center gap-2">
+                  {s.milOn === true && (
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300">
+                      MIL ON
+                    </span>
+                  )}
+                  {s.vin && (
+                    <span className="px-2 py-0.5 text-[10px] font-mono rounded-md bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300">
+                      {s.vin}
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-              <ObdField label="VIN" value={s.vin || '—'} mono />
-              <ObdField label="RPM" value={s.rpm != null ? s.rpm.toLocaleString() : '—'} />
-              <ObdField label="Speed" value={fmtKmh(s.speedKmh)} />
-              <ObdField label="Coolant" value={s.coolantTempC != null ? `${s.coolantTempC}°C` : '—'} />
-              <ObdField label="Engine load" value={fmtPct(s.engineLoadPct)} />
-              <ObdField label="Throttle" value={fmtPct(s.throttlePct)} />
-              <ObdField label="Fuel" value={fmtPct(s.fuelLevelPct)} />
-              <ObdField label="Battery" value={fmtVolts(s.batteryVoltageMv)} />
-            </div>
-            {(s.storedDtcCodes.length > 0 || s.pendingDtcCodes.length > 0 || s.permanentDtcCodes.length > 0) && (
-              <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
-                {s.storedDtcCodes.map((c) => (
-                  <span key={`s-${c}`} className="px-2 py-0.5 rounded-md bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 font-mono">
-                    {c}
-                  </span>
-                ))}
-                {s.pendingDtcCodes.map((c) => (
-                  <span key={`p-${c}`} className="px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 font-mono">
-                    {c}P
-                  </span>
-                ))}
-                {s.permanentDtcCodes.map((c) => (
-                  <span key={`pe-${c}`} className="px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 font-mono">
-                    {c}!
-                  </span>
-                ))}
+              {/* Real Prisma columns only — DTC info lives on GpsDtcEvent (DTC tab). */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <ObdField label="RPM" value={s.rpm != null ? s.rpm.toLocaleString() : '—'} />
+                <ObdField label="Vehicle speed" value={fmtKmh(s.vehicleSpeedKmh)} />
+                <ObdField label="Coolant" value={s.coolantTempC != null ? `${s.coolantTempC}°C` : '—'} />
+                <ObdField label="Intake air" value={s.intakeAirTempC != null ? `${s.intakeAirTempC}°C` : '—'} />
+                <ObdField label="Throttle" value={fmtPct(s.throttlePct)} />
+                <ObdField label="Engine load" value={fmtPct(s.engineLoadPct)} />
+                <ObdField label="Engine power" value={s.enginePowerKw != null ? `${Number(s.enginePowerKw).toFixed(1)} kW` : '—'} />
+                <ObdField label="Battery" value={fmtVolts(s.batteryVoltageMv)} />
+                <ObdField label="Fuel rate" value={s.fuelRateLph != null ? `${Number(s.fuelRateLph).toFixed(2)} L/h` : '—'} />
+                <ObdField label="Fuel pressure" value={s.fuelPressureKpa != null ? `${s.fuelPressureKpa} kPa` : '—'} />
+                <ObdField label="MAF" value={s.mafGps != null ? `${Number(s.mafGps).toFixed(2)} g/s` : '—'} />
+                <ObdField label="O₂ sensor" value={s.o2Voltage != null ? `${Number(s.o2Voltage).toFixed(3)} V` : '—'} />
+                <ObdField label="Odometer" value={s.odometerKm != null ? `${Number(s.odometerKm).toFixed(1)} km` : '—'} />
+                <ObdField label="MIL distance" value={s.milDistanceKm != null ? `${Number(s.milDistanceKm).toFixed(1)} km` : '—'} />
               </div>
-            )}
+              {s.extraPidsJson && Object.keys(s.extraPidsJson).length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+                  {Object.keys(s.extraPidsJson).map((k) => (
+                    <span key={k} className="px-2 py-0.5 rounded-md bg-gray-100 dark:bg-gray-600/50 text-gray-600 dark:text-gray-300 font-mono">
+                      {k}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -564,27 +697,68 @@ function AlarmsPane({
   alarms,
   onAck,
   onReload,
+  onMutated,
 }: {
   alarms: GpsAlarm[] | null;
   onAck: (id: string) => void;
   onReload: () => void;
+  onMutated?: () => void;
 }) {
+  const { selectedIds, toggle, setAll, clear } = useBulkSelect();
+
   if (alarms === null) return <Loading />;
   if (alarms.length === 0) return <Empty icon={<Bell />} text="No alarms" onReload={onReload} />;
+
+  const allIds = alarms.map((a) => a.id);
+  const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds.has(id));
+
+  const handleToggleAll = () => {
+    if (allSelected) clear();
+    else setAll(allIds);
+  };
+
+  const handleConfirmDelete = async () => {
+    try {
+      const res = await api.bulkDeleteGpsAlarms(Array.from(selectedIds));
+      toast.success(`Deleted ${res.deleted} alarm${res.deleted === 1 ? '' : 's'}`);
+      clear();
+      onReload();
+      onMutated?.();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete alarms');
+    }
+  };
+
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500 dark:text-gray-400">{alarms.length} alarms</p>
-        <button onClick={onReload} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 transition-all">
-          <RefreshCw size={14} />
-        </button>
-      </div>
+      <BulkBar
+        total={alarms.length}
+        selected={selectedIds.size}
+        allSelected={allSelected}
+        resourceLabel="alarms"
+        onToggleAll={handleToggleAll}
+        onReload={onReload}
+        onConfirmDelete={handleConfirmDelete}
+      />
       <div className="space-y-2">
         {alarms.map((a) => {
           const sev = severityColor(a.severity);
           return (
-            <div key={a.id} className="px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600">
-              <div className="flex items-start justify-between gap-3">
+            <div
+              key={a.id}
+              className={`flex gap-3 px-4 py-3 rounded-xl border transition-all ${
+                selectedIds.has(a.id)
+                  ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-300 dark:border-blue-500/40'
+                  : 'bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={selectedIds.has(a.id)}
+                onChange={() => toggle(a.id)}
+                className="mt-0.5 w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 flex-shrink-0"
+              />
+              <div className="flex-1 min-w-0 flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${sev.bg} ${sev.text}`}>{a.severity}</span>
@@ -626,9 +800,30 @@ function DtcsPane({
   onMutated?: () => void;
 }) {
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
+  const { selectedIds, toggle, setAll, clear } = useBulkSelect();
 
   if (events === null) return <Loading />;
   if (events.length === 0) return <Empty icon={<AlertTriangle />} text="No DTC events" onReload={onReload} />;
+
+  const allIds = events.map((e) => e.id);
+  const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds.has(id));
+
+  const handleToggleAll = () => {
+    if (allSelected) clear();
+    else setAll(allIds);
+  };
+
+  const handleConfirmDelete = async () => {
+    try {
+      const res = await api.bulkDeleteGpsDtcEvents(Array.from(selectedIds));
+      toast.success(`Deleted ${res.deleted} DTC event${res.deleted === 1 ? '' : 's'}`);
+      clear();
+      onReload();
+      onMutated?.();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete DTC events');
+    }
+  };
 
   const handleAnalyze = async (id: string) => {
     setAnalyzingId(id);
@@ -646,16 +841,32 @@ function DtcsPane({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500 dark:text-gray-400">{events.length} DTC events</p>
-        <button onClick={onReload} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 transition-all">
-          <RefreshCw size={14} />
-        </button>
-      </div>
+      <BulkBar
+        total={events.length}
+        selected={selectedIds.size}
+        allSelected={allSelected}
+        resourceLabel="DTC events"
+        onToggleAll={handleToggleAll}
+        onReload={onReload}
+        onConfirmDelete={handleConfirmDelete}
+      />
       <div className="space-y-2">
         {events.map((e) => (
-          <div key={e.id} className="px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600">
-            <div className="flex items-start justify-between gap-3">
+          <div
+            key={e.id}
+            className={`flex gap-3 px-4 py-3 rounded-xl border transition-all ${
+              selectedIds.has(e.id)
+                ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-300 dark:border-blue-500/40'
+                : 'bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600'
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={selectedIds.has(e.id)}
+              onChange={() => toggle(e.id)}
+              className="mt-0.5 w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 flex-shrink-0"
+            />
+            <div className="flex-1 min-w-0 flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-sm font-mono text-gray-900 dark:text-white">{e.vin}</p>
@@ -702,52 +913,109 @@ function DtcsPane({
   );
 }
 
-function TripsPane({ trips, onReload }: { trips: GpsTrip[] | null; onReload: () => void }) {
+function TripsPane({
+  trips,
+  onReload,
+  onMutated,
+}: {
+  trips: GpsTrip[] | null;
+  onReload: () => void;
+  onMutated?: () => void;
+}) {
+  const { selectedIds, toggle, setAll, clear } = useBulkSelect();
+
   if (trips === null) return <Loading />;
   if (trips.length === 0) return <Empty icon={<Route />} text="No trips" onReload={onReload} />;
+
+  const allIds = trips.map((t) => t.id);
+  const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds.has(id));
+
+  const handleToggleAll = () => {
+    if (allSelected) clear();
+    else setAll(allIds);
+  };
+
+  const handleConfirmDelete = async () => {
+    try {
+      const res = await api.bulkDeleteGpsTrips(Array.from(selectedIds));
+      toast.success(`Deleted ${res.deleted} trip${res.deleted === 1 ? '' : 's'}`);
+      clear();
+      onReload();
+      onMutated?.();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete trips');
+    }
+  };
+
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500 dark:text-gray-400">{trips.length} trips</p>
-        <button onClick={onReload} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 transition-all">
-          <RefreshCw size={14} />
-        </button>
-      </div>
+      <BulkBar
+        total={trips.length}
+        selected={selectedIds.size}
+        allSelected={allSelected}
+        resourceLabel="trips"
+        onToggleAll={handleToggleAll}
+        onReload={onReload}
+        onConfirmDelete={handleConfirmDelete}
+      />
       <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs uppercase text-gray-500 dark:text-gray-400 tracking-wider">
             <tr>
+              <th className="px-3 py-2 w-8" />
               <th className="px-4 py-2 text-left">Status</th>
               <th className="px-4 py-2 text-left">Start</th>
               <th className="px-4 py-2 text-left">End</th>
               <th className="px-4 py-2 text-left">Distance</th>
               <th className="px-4 py-2 text-left">Drive / Idle</th>
               <th className="px-4 py-2 text-left">Avg / Max</th>
+              <th className="px-4 py-2 text-left">Harsh</th>
               <th className="px-4 py-2 text-left">Score</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-            {trips.map((t) => (
-              <tr key={t.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                <td className="px-4 py-2">
-                  <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${
-                    t.status === 'OPEN'
-                      ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
-                      : 'bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-300'
-                  }`}>{t.status}</span>
-                </td>
-                <td className="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">{fmtRelative(t.startAt)}</td>
-                <td className="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">{t.endAt ? fmtRelative(t.endAt) : '—'}</td>
-                <td className="px-4 py-2 text-gray-700 dark:text-gray-200">{fmtMiles(t.distanceKm, 1)}</td>
-                <td className="px-4 py-2 text-gray-700 dark:text-gray-200 text-xs">
-                  {Math.round(t.drivingSec / 60)}m / {Math.round(t.idleSec / 60)}m
-                </td>
-                <td className="px-4 py-2 text-gray-700 dark:text-gray-200 text-xs">
-                  {fmtKmh(t.avgSpeedKmh)} / {fmtKmh(t.maxSpeedKmh)}
-                </td>
-                <td className="px-4 py-2 text-gray-700 dark:text-gray-200">{t.driverScore ?? '—'}</td>
-              </tr>
-            ))}
+            {trips.map((t) => {
+              // GpsTrip stores `durationSec` (total) and `idleDurationSec`.
+              // Drive time = total − idle, clamped at 0 in case of bad data.
+              const totalSec = Number(t.durationSec ?? 0);
+              const idleSec = Number(t.idleDurationSec ?? 0);
+              const driveSec = Math.max(0, totalSec - idleSec);
+              const harshTotal =
+                (t.harshAccelCount ?? 0) +
+                (t.harshBrakeCount ?? 0) +
+                (t.harshTurnCount ?? 0) +
+                (t.overspeedCount ?? 0);
+              return (
+                <tr key={t.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                  <td className="px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(t.id)}
+                      onChange={() => toggle(t.id)}
+                      className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+                    />
+                  </td>
+                  <td className="px-4 py-2">
+                    <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${
+                      t.status === 'OPEN'
+                        ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+                        : 'bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-300'
+                    }`}>{t.status}</span>
+                  </td>
+                  <td className="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">{fmtRelative(t.startAt)}</td>
+                  <td className="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">{t.endAt ? fmtRelative(t.endAt) : '—'}</td>
+                  <td className="px-4 py-2 text-gray-700 dark:text-gray-200">{t.distanceKm != null ? fmtMiles(t.distanceKm, 1) : '—'}</td>
+                  <td className="px-4 py-2 text-gray-700 dark:text-gray-200 text-xs whitespace-nowrap">
+                    {Math.round(driveSec / 60)}m / {Math.round(idleSec / 60)}m
+                  </td>
+                  <td className="px-4 py-2 text-gray-700 dark:text-gray-200 text-xs whitespace-nowrap">
+                    {fmtKmh(t.avgSpeedKmh)} / {fmtKmh(t.maxSpeedKmh)}
+                  </td>
+                  <td className="px-4 py-2 text-gray-700 dark:text-gray-200">{harshTotal}</td>
+                  <td className="px-4 py-2 text-gray-700 dark:text-gray-200">{t.score ?? '—'}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -755,31 +1023,80 @@ function TripsPane({ trips, onReload }: { trips: GpsTrip[] | null; onReload: () 
   );
 }
 
-function CommandsPane({ commands, onReload }: { commands: GpsCommand[] | null; onReload: () => void }) {
+function CommandsPane({
+  commands,
+  onReload,
+  onMutated,
+}: {
+  commands: GpsCommand[] | null;
+  onReload: () => void;
+  onMutated?: () => void;
+}) {
+  const { selectedIds, toggle, setAll, clear } = useBulkSelect();
+
   if (commands === null) return <Loading />;
   if (commands.length === 0) return <Empty icon={<Send />} text="No commands sent" onReload={onReload} />;
+
+  const allIds = commands.map((c) => c.id);
+  const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds.has(id));
+
+  const handleToggleAll = () => {
+    if (allSelected) clear();
+    else setAll(allIds);
+  };
+
+  const handleConfirmDelete = async () => {
+    try {
+      const res = await api.bulkDeleteGpsCommands(Array.from(selectedIds));
+      toast.success(`Deleted ${res.deleted} command${res.deleted === 1 ? '' : 's'}`);
+      clear();
+      onReload();
+      onMutated?.();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete commands');
+    }
+  };
+
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500 dark:text-gray-400">{commands.length} commands</p>
-        <button onClick={onReload} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 transition-all">
-          <RefreshCw size={14} />
-        </button>
-      </div>
+      <BulkBar
+        total={commands.length}
+        selected={selectedIds.size}
+        allSelected={allSelected}
+        resourceLabel="commands"
+        onToggleAll={handleToggleAll}
+        onReload={onReload}
+        onConfirmDelete={handleConfirmDelete}
+      />
       <div className="space-y-2">
         {commands.map((c) => (
-          <div key={c.id} className="px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600">
-            <div className="flex items-center justify-between gap-3 mb-1">
-              <div className="flex items-center gap-2 min-w-0">
-                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{c.kind}</p>
-                <CommandStatusPill status={c.status} />
+          <div
+            key={c.id}
+            className={`flex gap-3 px-4 py-3 rounded-xl border transition-all ${
+              selectedIds.has(c.id)
+                ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-300 dark:border-blue-500/40'
+                : 'bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600'
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={selectedIds.has(c.id)}
+              onChange={() => toggle(c.id)}
+              className="mt-0.5 w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 flex-shrink-0"
+            />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-3 mb-1">
+                <div className="flex items-center gap-2 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{c.kind}</p>
+                  <CommandStatusPill status={c.status} />
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{fmtRelative(c.createdAt)}</p>
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{fmtRelative(c.createdAt)}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">By {c.admin?.email || 'system'}</p>
+              {c.errorText && (
+                <p className="text-xs text-red-500 mt-1">{c.errorText}</p>
+              )}
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400">By {c.admin?.email || 'system'}</p>
-            {c.errorText && (
-              <p className="text-xs text-red-500 mt-1">{c.errorText}</p>
-            )}
           </div>
         ))}
       </div>
@@ -876,3 +1193,33 @@ function Empty({ icon, text, onReload }: { icon: React.ReactNode; text: string; 
     </div>
   );
 }
+
+// ─── Bulk-select primitives (shared by every pane) ───────────────────────────
+
+/**
+ * Lightweight selection state. Each pane owns its own instance — selection
+ * does NOT persist across tab switches (we wipe the cache on reload anyway).
+ */
+function useBulkSelect() {
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggle = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const setAll = useCallback((ids: string[]) => {
+    setSelectedIds(new Set(ids));
+  }, []);
+
+  const clear = useCallback(() => setSelectedIds(new Set()), []);
+
+  return { selectedIds, toggle, setAll, clear };
+}
+
+// `BulkBar` is imported from `../shared/BulkBar` — same widget powers
+// every list pane in this modal AND every GPS Telemetry section.

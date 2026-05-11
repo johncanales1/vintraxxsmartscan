@@ -15,7 +15,11 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { api, GpsCommand, GpsCommandStatus } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { fmtRelative, terminalLabel } from '@/lib/gpsHelpers';
+import ConfirmPasswordModal from '@/components/modals/ConfirmPasswordModal';
+import BulkActionBar from '@/components/shared/BulkActionBar';
+import { useMultiSelect } from '@/lib/useMultiSelect';
 import {
   Search, RefreshCw, Send, ChevronLeft, ChevronRight, Filter,
   X as XIcon,
@@ -36,6 +40,8 @@ export default function GpsCommandsSection({
   initialTerminalId,
   onClearInitialTerminal,
 }: Props) {
+  const { admin } = useAuth();
+  const canDelete = !!admin?.superAdmin;
   const [commands, setCommands] = useState<GpsCommand[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -45,6 +51,9 @@ export default function GpsCommandsSection({
   const [status, setStatus] = useState<GpsCommandStatus | undefined>();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [search, setSearch] = useState('');
+
+  const sel = useMultiSelect();
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -81,6 +90,22 @@ export default function GpsCommandsSection({
   useEffect(() => {
     load();
   }, [load]);
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(sel.selectedIds);
+    try {
+      const res = await api.bulkDeleteGpsCommands(ids);
+      toast.success(`Deleted ${res.deleted} command${res.deleted === 1 ? '' : 's'}`);
+      sel.clear();
+      setBulkDeleteOpen(false);
+      load();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete commands');
+      setBulkDeleteOpen(false);
+    }
+  };
+
+  const visibleIds = filteredCommands.map((c) => c.id);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -135,6 +160,19 @@ export default function GpsCommandsSection({
         </div>
       )}
 
+      {/* Bulk-action bar (super-admin only). */}
+      {canDelete && (
+        <BulkActionBar
+          count={sel.selectedIds.size}
+          total={visibleIds.length}
+          allSelected={sel.allSelected(visibleIds)}
+          onDelete={() => setBulkDeleteOpen(true)}
+          onCancel={sel.clear}
+          onToggleAll={() => sel.toggleAll(visibleIds)}
+          itemLabel="command"
+        />
+      )}
+
       {/* Filters */}
       {filtersOpen && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-2xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
@@ -176,6 +214,7 @@ export default function GpsCommandsSection({
           <table className="w-full text-sm">
             <thead className="bg-gray-50 dark:bg-gray-800 text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
               <tr>
+                {canDelete && <th className="px-3 py-3 w-8" />}
                 <th className="px-4 py-3 text-left">Status</th>
                 <th className="px-4 py-3 text-left">Kind</th>
                 <th className="px-4 py-3 text-left">Terminal</th>
@@ -186,7 +225,19 @@ export default function GpsCommandsSection({
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700 bg-white dark:bg-gray-800">
               {filteredCommands.map((c) => (
-                <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                <tr key={c.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700/30 ${
+                  sel.isSelected(c.id) ? 'bg-blue-50 dark:bg-blue-500/10' : ''
+                }`}>
+                  {canDelete && (
+                    <td className="px-3 py-3">
+                      <input
+                        type="checkbox"
+                        checked={sel.isSelected(c.id)}
+                        onChange={() => sel.toggle(c.id)}
+                        className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+                      />
+                    </td>
+                  )}
                   <td className="px-4 py-3"><CommandStatusPill status={c.status} /></td>
                   <td className="px-4 py-3">
                     <p className="text-gray-900 dark:text-white font-medium">{c.kind || '—'}</p>
@@ -214,6 +265,21 @@ export default function GpsCommandsSection({
             </tbody>
           </table>
         </div>
+      )}
+
+      {bulkDeleteOpen && (
+        <ConfirmPasswordModal
+          title="Delete Commands"
+          message={
+            <span>
+              Permanently delete <span className="font-semibold">{sel.selectedIds.size}</span>{' '}
+              selected command{sel.selectedIds.size === 1 ? '' : 's'}? Audit trail of
+              the bulk-delete itself stays in the audit log.
+            </span>
+          }
+          onConfirm={handleBulkDelete}
+          onClose={() => setBulkDeleteOpen(false)}
+        />
       )}
 
       {/* Pagination */}

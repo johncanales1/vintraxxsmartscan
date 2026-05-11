@@ -25,7 +25,8 @@ export interface CommandQueuedEvent {
 export async function emitCommandQueued(event: CommandQueuedEvent): Promise<void> {
   try {
     const payload = JSON.stringify(event);
-    await prisma.$queryRaw`SELECT pg_notify('gps_command', ${payload}::text)`;
+    // $executeRaw — pg_notify returns void, $queryRaw fails to deserialize.
+    await prisma.$executeRaw`SELECT pg_notify('gps_command', ${payload}::text)`;
   } catch (err) {
     logger.warn('pg_notify gps_command failed (non-fatal)', {
       err: (err as Error).message,

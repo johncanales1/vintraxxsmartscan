@@ -15,6 +15,7 @@ import * as tripService from '../services/gps-trip-query.service';
 import * as commandService from '../services/gps-command.service';
 import * as pushService from '../services/push.service';
 import * as gpsAdminService from '../services/gps-admin.service';
+import * as bulkDeleteService from '../services/gps-bulk-delete.service';
 import { promoteDtcEventToScan } from '../services/gps-dtc-promote.service';
 import { AppError } from '../middleware/errorHandler';
 import prisma from '../config/db';
@@ -131,10 +132,13 @@ export async function adminGetTerminalLatest(
   next: NextFunction,
 ) {
   try {
-    const location = await gpsAdminService.adminGetLatestLocation(
+    // Service now returns `{ location, obd }`. The legacy admin clients only
+    // read `.location`; the new Overview pane reads both. Spreading keeps
+    // the response shape forward-compatible with future fields.
+    const result = await gpsAdminService.adminGetLatestLocation(
       req.params.id as string,
     );
-    res.json({ success: true, location });
+    res.json({ success: true, ...result });
   } catch (err) {
     next(err);
   }
@@ -904,6 +908,113 @@ export async function adminDeleteAuditLog(
     if (!existing) throw new AppError('Audit log entry not found', 404);
     await prisma.adminAuditLog.delete({ where: { id } });
     res.json({ success: true, message: 'Audit log entry deleted' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ── Admin: bulk-delete handlers (super-admin only) ──────────────────────────
+
+/**
+ * Shared body-shape for every bulk-delete handler:
+ *   request:  POST  /admin/gps/<resource>/bulk-delete  { ids: string[] }
+ *   response: { success: true, deleted: number }
+ *
+ * The Zod validator (`adminBulkDeleteSchema`) caps `ids.length ≤ 1000` and
+ * enforces UUID shape, so the controllers can read straight off `req.body`
+ * without re-validating.
+ */
+function pickIds(req: Request): string[] {
+  const body = (req.body as { ids?: unknown }) ?? {};
+  return Array.isArray(body.ids) ? (body.ids as string[]) : [];
+}
+
+export async function adminBulkDeleteLocations(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const result = await bulkDeleteService.bulkDeleteLocations(pickIds(req));
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function adminBulkDeleteObd(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const result = await bulkDeleteService.bulkDeleteObd(pickIds(req));
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function adminBulkDeleteAlarms(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const result = await bulkDeleteService.bulkDeleteAlarms(pickIds(req));
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function adminBulkDeleteDtcEvents(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const result = await bulkDeleteService.bulkDeleteDtcEvents(pickIds(req));
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function adminBulkDeleteTrips(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const result = await bulkDeleteService.bulkDeleteTrips(pickIds(req));
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function adminBulkDeleteCommands(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const result = await bulkDeleteService.bulkDeleteCommands(pickIds(req));
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function adminBulkDeleteTerminals(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const result = await bulkDeleteService.bulkDeleteTerminals(pickIds(req));
+    res.json({ success: true, ...result });
   } catch (err) {
     next(err);
   }

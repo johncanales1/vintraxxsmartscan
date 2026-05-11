@@ -76,3 +76,14 @@ export const adminListAuditLogsQuerySchema = z.object({
 export const auditLogIdParamsSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
 });
+
+/**
+ * Body shape shared by every `POST /admin/gps/<resource>/bulk-delete`
+ * endpoint. Caps at 1000 ids per call to keep the round-trip bounded — the
+ * UI deletes one page at a time anyway.
+ */
+export const adminBulkDeleteSchema = z.object({
+  body: z.object({
+    ids: z.array(z.string().uuid()).min(1).max(1000),
+  }),
+});

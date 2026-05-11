@@ -210,7 +210,7 @@ export async function login(email: string, password: string): Promise<{ user: { 
 
   if (!user.passwordHash) {
     logger.warn('User login failed: no password hash (OAuth account)', { email });
-    throw new AppError('This account uses social login. Please sign in with Google or Microsoft.', 401);
+    throw new AppError('This account was created with Google. Use "Forgot password?" to set a password, or sign in with Google.', 401);
   }
 
   const passwordValid = await bcrypt.compare(password, user.passwordHash);
@@ -242,11 +242,11 @@ export async function forgotPassword(email: string): Promise<void> {
     return;
   }
 
-  if (!user.passwordHash) {
-    // User registered via OAuth, no password to reset
-    logger.info(`Password reset requested for OAuth user: ${email}`);
-    return;
-  }
+  // NOTE: we intentionally allow OAuth-only users (passwordHash === null)
+  // to go through the reset flow. `resetPassword()` will set a new hash,
+  // enabling them to also log in with email/password. Previously this
+  // silently returned success without sending an email, which left OAuth
+  // dealers locked out of the dealer portal's email/password login.
 
   // Invalidate previous reset tokens
   await prisma.passwordResetToken.updateMany({
@@ -261,7 +261,7 @@ export async function forgotPassword(email: string): Promise<void> {
     data: { userId: user.id, token: resetToken, expiresAt },
   });
 
-  const resetLink = `${env.APP_URL}/reset-password?token=${resetToken}`;
+  const resetLink = `${env.FRONTEND_URL}/login?token=${resetToken}`;
 
   try {
     if (env.NODE_ENV !== 'test') {

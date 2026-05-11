@@ -15,8 +15,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { api, GpsDtcEvent } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { gpsAdminWs } from '@/lib/gpsAdminWs';
 import { fmtRelative, vehicleLabel } from '@/lib/gpsHelpers';
+import ConfirmPasswordModal from '@/components/modals/ConfirmPasswordModal';
+import BulkActionBar from '@/components/shared/BulkActionBar';
+import { useMultiSelect } from '@/lib/useMultiSelect';
 import {
   Search, RefreshCw, AlertTriangle, Zap, ChevronLeft, ChevronRight,
   ExternalLink, X as XIcon,
@@ -36,6 +40,9 @@ export default function GpsDtcsSection({
   initialTerminalId,
   onClearInitialTerminal,
 }: Props) {
+  const { admin } = useAuth();
+  // Bulk delete is gated by `requireSuperAdmin` on the backend.
+  const canDelete = !!admin?.superAdmin;
   const [events, setEvents] = useState<GpsDtcEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -52,6 +59,9 @@ export default function GpsDtcsSection({
   }, [vinQuery]);
   const [milOnly, setMilOnly] = useState(false);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
+
+  const sel = useMultiSelect();
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -114,6 +124,22 @@ export default function GpsDtcsSection({
     }
   };
 
+  const handleBulkDelete = async () => {
+    const ids = Array.from(sel.selectedIds);
+    try {
+      const res = await api.bulkDeleteGpsDtcEvents(ids);
+      toast.success(`Deleted ${res.deleted} DTC event${res.deleted === 1 ? '' : 's'}`);
+      sel.clear();
+      setBulkDeleteOpen(false);
+      load();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete DTC events');
+      setBulkDeleteOpen(false);
+    }
+  };
+
+  const visibleIds = events.map((e) => e.id);
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Toolbar */}
@@ -164,6 +190,20 @@ export default function GpsDtcsSection({
         </div>
       )}
 
+      {/* Bulk-action bar (only super-admins can delete; renders only when
+          at least one row is selected). */}
+      {canDelete && (
+        <BulkActionBar
+          count={sel.selectedIds.size}
+          total={visibleIds.length}
+          allSelected={sel.allSelected(visibleIds)}
+          onDelete={() => setBulkDeleteOpen(true)}
+          onCancel={sel.clear}
+          onToggleAll={() => sel.toggleAll(visibleIds)}
+          itemLabel="DTC event"
+        />
+      )}
+
       {/* List */}
       {loading ? (
         <div className="space-y-2">
@@ -184,6 +224,9 @@ export default function GpsDtcsSection({
             <DtcEventRow
               key={e.id}
               event={e}
+              selectable={canDelete}
+              selected={sel.isSelected(e.id)}
+              onToggleSelect={() => sel.toggle(e.id)}
               onAnalyze={() => handleAnalyze(e.id)}
               analyzing={analyzingId === e.id}
             />
@@ -213,16 +256,38 @@ export default function GpsDtcsSection({
           </div>
         </div>
       )}
+
+      {bulkDeleteOpen && (
+        <ConfirmPasswordModal
+          title="Delete DTC Events"
+          message={
+            <span>
+              Permanently delete <span className="font-semibold">{sel.selectedIds.size}</span>{' '}
+              selected DTC event{sel.selectedIds.size === 1 ? '' : 's'}? Linked AI scans
+              are unaffected; only the raw event rows are removed.
+            </span>
+          }
+          onConfirm={handleBulkDelete}
+          onClose={() => setBulkDeleteOpen(false)}
+        />
+      )}
     </div>
   );
 }
 
 function DtcEventRow({
   event,
+  selectable,
+  selected,
+  onToggleSelect,
   onAnalyze,
   analyzing,
 }: {
   event: GpsDtcEvent;
+  /** When true, render the leading checkbox (only super-admins). */
+  selectable: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
   onAnalyze: () => void;
   analyzing: boolean;
 }) {
@@ -239,8 +304,20 @@ function DtcEventRow({
     : event.vin;
 
   return (
-    <div className="px-4 py-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 transition-all">
+    <div className={`px-4 py-3 rounded-xl border transition-all ${
+      selected
+        ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-300 dark:border-blue-500/40'
+        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+    }`}>
       <div className="flex items-start justify-between gap-3">
+        {selectable && (
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            className="mt-1 w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 flex-shrink-0"
+          />
+        )}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-mono text-gray-900 dark:text-white truncate">{label}</p>

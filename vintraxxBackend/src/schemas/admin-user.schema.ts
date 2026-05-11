@@ -50,8 +50,9 @@ export const createUserBodySchema = z.object({
 
 /**
  * Update schema mirrors create but all fields optional. `password` is
- * deliberately omitted — there is a separate password-reset flow and the
- * prior silent-drop behaviour was a footgun.
+ * deliberately omitted here — password rotation goes through the dedicated
+ * `resetUserPasswordBodySchema` endpoint below so it can be audited
+ * separately and gated by `requireSuperAdmin`.
  */
 export const updateUserBodySchema = z.object({
   body: z.object({
@@ -63,5 +64,16 @@ export const updateUserBodySchema = z.object({
     qrCodeUrl: imageField,
     maxScannerDevices: positiveIntField.optional().nullable(),
     maxVins: positiveIntField.optional().nullable(),
+  }),
+});
+
+/**
+ * Admin-initiated password reset. Requires the same minimum-strength rule
+ * as user-facing `/auth/reset-password` (8 chars) so we don't end up with
+ * weaker passwords through the admin path.
+ */
+export const resetUserPasswordBodySchema = z.object({
+  body: z.object({
+    password: z.string().min(8, 'Password must be at least 8 characters'),
   }),
 });

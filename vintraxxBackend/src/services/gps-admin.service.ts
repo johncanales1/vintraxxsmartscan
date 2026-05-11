@@ -31,6 +31,10 @@ import { acknowledgeAlarm } from './gps-alarm.service';
  * row exists yet (NEVER_CONNECTED terminal). Throws 404 only when the
  * terminal id itself is unknown — distinguishing "no telemetry yet" from
  * "no such terminal".
+ *
+ * Also returns the most-recent GpsObdSnapshot so the Overview pane can show
+ * OBD-derived speed/battery alongside the GPS-derived ones (the bench-test
+ * case where GPS speed = 0 but OBD speed = 65 km/h motivated this).
  */
 export async function adminGetLatestLocation(terminalId: string) {
   const terminal = await prisma.gpsTerminal.findUnique({
@@ -39,10 +43,18 @@ export async function adminGetLatestLocation(terminalId: string) {
   });
   if (!terminal) throw new AppError('Terminal not found', 404);
 
-  return prisma.gpsLocation.findFirst({
-    where: { terminalId },
-    orderBy: { reportedAt: 'desc' },
-  });
+  const [location, obd] = await Promise.all([
+    prisma.gpsLocation.findFirst({
+      where: { terminalId },
+      orderBy: { reportedAt: 'desc' },
+    }),
+    prisma.gpsObdSnapshot.findFirst({
+      where: { terminalId },
+      orderBy: { reportedAt: 'desc' },
+    }),
+  ]);
+
+  return { location, obd };
 }
 
 interface AdminLocationHistoryOptions {

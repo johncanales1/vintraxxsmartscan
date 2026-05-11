@@ -18,6 +18,7 @@
  * support both by sniffing the body length.
  */
 
+import * as iconv from 'iconv-lite';
 import type { DecodedRegister } from '../types';
 
 const HEADER_2013_LEN = 37; // through plateColor, before plateNumber
@@ -48,7 +49,10 @@ export function decode(body: Buffer): DecodedRegister {
   const plateColor = body.readUInt8(cursor);
   cursor += 1;
 
-  const plateNumber = body.length > cursor ? readAscii(body, cursor, body.length - cursor) : '';
+  // Plate is GBK on the wire (JT/T 808 §3.3 — Chinese plates carry the province
+  // glyph as a 2-byte GBK character; e.g. `D4 C1 = 粤`). Read it via iconv,
+  // not as latin1 — otherwise `粤B88888` becomes `ÔÁB88888` in the DB.
+  const plateNumber = body.length > cursor ? readGbk(body, cursor, body.length - cursor) : '';
 
   return {
     provinceId,
@@ -76,4 +80,28 @@ function readAscii(buf: Buffer, offset: number, length: number): string {
     }
   }
   return slice.toString('latin1', 0, end).trim();
+}
+
+/**
+ * Read a GBK-encoded variable-length field (used for the Chinese license-plate
+ * field). Trims trailing NUL bytes before decoding so `粤B88888\0\0` doesn't
+ * round-trip with U+0000 noise. Falls back to latin-1 if iconv-lite throws on
+ * a malformed multi-byte sequence — keeps the gateway resilient against
+ * non-conformant firmware.
+ */
+function readGbk(buf: Buffer, offset: number, length: number): string {
+  const slice = buf.subarray(offset, offset + length);
+  let end = slice.length;
+  for (let i = 0; i < slice.length; i++) {
+    if (slice[i] === 0x00) {
+      end = i;
+      break;
+    }
+  }
+  const trimmed = slice.subarray(0, end);
+  try {
+    return iconv.decode(trimmed, 'gbk').trim();
+  } catch {
+    return trimmed.toString('latin1').trim();
+  }
 }

@@ -118,9 +118,11 @@ export async function emit(event: GpsEvent): Promise<void> {
       });
       return;
     }
-    // pg_notify(text, text). Use raw query so Prisma doesn't try to escape
-    // the channel name as an identifier.
-    await prisma.$queryRaw`SELECT pg_notify('gps_event', ${payload}::text)`;
+    // pg_notify(text, text). Use $executeRaw — pg_notify returns void, and
+    // $queryRaw tries to deserialize the void column which fails with
+    // "Failed to deserialize column of type 'void'". $executeRaw doesn't
+    // materialize a result set, which is what we want for fire-and-forget.
+    await prisma.$executeRaw`SELECT pg_notify('gps_event', ${payload}::text)`;
   } catch (err) {
     logger.warn('pg_notify failed (non-fatal)', {
       err: (err as Error).message,

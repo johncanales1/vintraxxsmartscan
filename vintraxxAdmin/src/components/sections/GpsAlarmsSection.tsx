@@ -10,11 +10,14 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { api, GpsAlarm, GpsAlarmSeverity, GpsAlarmStatus, GpsAlarmType } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { gpsAdminWs } from '@/lib/gpsAdminWs';
 import { fmtRelative, vehicleLabel, severityColor, alarmTypeLabel } from '@/lib/gpsHelpers';
 import GpsAlarmDetailModal from '@/components/modals/GpsAlarmDetailModal';
+import ConfirmPasswordModal from '@/components/modals/ConfirmPasswordModal';
 import {
   Search, RefreshCw, CheckCircle, Bell, AlertTriangle, ChevronLeft, ChevronRight, Filter,
+  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -68,6 +71,10 @@ export default function GpsAlarmsSection({
   initialTerminalId,
   onClearInitialTerminal,
 }: Props) {
+  const { admin } = useAuth();
+  // Bulk delete is gated by `requireSuperAdmin` on the backend — hide the
+  // button for non-super admins instead of surfacing a 403 after they click.
+  const canDelete = !!admin?.superAdmin;
   const [alarms, setAlarms] = useState<GpsAlarm[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -90,6 +97,7 @@ export default function GpsAlarmsSection({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [detailId, setDetailId] = useState<string | null>(null);
   const [bulkAcking, setBulkAcking] = useState(false);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -156,12 +164,16 @@ export default function GpsAlarmsSection({
     });
   };
 
+  // The select-all toggle covers different things for ack vs delete:
+  //   - Non-super admins can only ack — so we offer "select all unacked".
+  //   - Super-admins can delete too — so we offer "select all visible".
   const toggleSelectAll = () => {
     setSelectedIds((prev) => {
-      // If everything currently visible is already selected, clear.
-      // Otherwise select everything visible.
-      const visibleIds = alarms.filter((a) => !a.acknowledged).map((a) => a.id);
-      const allSelected = visibleIds.length > 0 && visibleIds.every((id) => prev.has(id));
+      const visibleIds = canDelete
+        ? alarms.map((a) => a.id)
+        : alarms.filter((a) => !a.acknowledged).map((a) => a.id);
+      const allSelected =
+        visibleIds.length > 0 && visibleIds.every((id) => prev.has(id));
       if (allSelected) return new Set();
       return new Set(visibleIds);
     });
@@ -187,8 +199,27 @@ export default function GpsAlarmsSection({
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    try {
+      const ids: string[] = [];
+      selectedIds.forEach((id) => ids.push(id));
+      const res = await api.bulkDeleteGpsAlarms(ids);
+      toast.success(`Deleted ${res.deleted} alarm${res.deleted === 1 ? '' : 's'}`);
+      setSelectedIds(new Set());
+      setBulkDeleteOpen(false);
+      load();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete alarms');
+      setBulkDeleteOpen(false);
+    }
+  };
+
   const unackVisibleCount = alarms.filter((a) => !a.acknowledged).length;
   const selectedCount = selectedIds.size;
+  const selectedHasUnacked = alarms.some(
+    (a) => selectedIds.has(a.id) && !a.acknowledged,
+  );
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -223,7 +254,7 @@ export default function GpsAlarmsSection({
           <button onClick={load} className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
             <RefreshCw size={18} />
           </button>
-          {selectedCount > 0 && (
+          {selectedCount > 0 && selectedHasUnacked && (
             <button
               onClick={handleBulkAck}
               disabled={bulkAcking}
@@ -235,6 +266,15 @@ export default function GpsAlarmsSection({
                 <CheckCircle size={16} />
               )}
               Acknowledge {selectedCount}
+            </button>
+          )}
+          {canDelete && selectedCount > 0 && (
+            <button
+              onClick={() => setBulkDeleteOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-all shadow-sm"
+            >
+              <Trash2 size={16} />
+              Delete {selectedCount}
             </button>
           )}
         </div>
@@ -309,20 +349,25 @@ export default function GpsAlarmsSection({
         </div>
       ) : (
         <>
-          {/* Select-all bar */}
-          {unackVisibleCount > 0 && (
+          {/* Select-all bar — copy depends on whether the admin can also
+              delete (super-admins) or only ack. */}
+          {(canDelete ? alarms.length > 0 : unackVisibleCount > 0) && (
             <div className="flex items-center justify-between px-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
               <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={
-                    unackVisibleCount > 0 &&
-                    alarms.filter((a) => !a.acknowledged).every((a) => selectedIds.has(a.id))
+                    canDelete
+                      ? alarms.length > 0 && alarms.every((a) => selectedIds.has(a.id))
+                      : unackVisibleCount > 0 &&
+                        alarms.filter((a) => !a.acknowledged).every((a) => selectedIds.has(a.id))
                   }
                   onChange={toggleSelectAll}
                   className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
                 />
-                Select all unacknowledged on this page ({unackVisibleCount})
+                {canDelete
+                  ? `Select all on this page (${alarms.length})`
+                  : `Select all unacknowledged on this page (${unackVisibleCount})`}
               </label>
               {selectedCount > 0 && (
                 <span className="text-xs text-gray-500 dark:text-gray-400">{selectedCount} selected</span>
@@ -334,6 +379,10 @@ export default function GpsAlarmsSection({
               <AlarmRow
                 key={a.id}
                 alarm={a}
+                // Super-admins can select even acknowledged rows so they can
+                // bulk-delete history. Regular admins are still limited to
+                // unacked because their only bulk action is `ack`.
+                selectable={canDelete || !a.acknowledged}
                 selected={selectedIds.has(a.id)}
                 onToggleSelect={() => toggleSelect(a.id)}
                 onClick={() => setDetailId(a.id)}
@@ -376,17 +425,36 @@ export default function GpsAlarmsSection({
           }}
         />
       )}
+
+      {bulkDeleteOpen && (
+        <ConfirmPasswordModal
+          title="Delete Alarms"
+          message={
+            <span>
+              Permanently delete <span className="font-semibold">{selectedCount}</span>{' '}
+              selected alarm{selectedCount === 1 ? '' : 's'}? This cannot be undone and
+              is recorded in the admin audit log.
+            </span>
+          }
+          onConfirm={handleBulkDelete}
+          onClose={() => setBulkDeleteOpen(false)}
+        />
+      )}
     </div>
   );
 }
 
 function AlarmRow({
   alarm,
+  selectable,
   selected,
   onToggleSelect,
   onClick,
 }: {
   alarm: GpsAlarm;
+  /** When false, the row checkbox is rendered disabled (visible but inert).
+   *  Used to gate row selection for non-super-admins on already-acked rows. */
+  selectable: boolean;
   selected: boolean;
   onToggleSelect: () => void;
   onClick: () => void;
@@ -418,7 +486,7 @@ function AlarmRow({
         <input
           type="checkbox"
           checked={selected}
-          disabled={alarm.acknowledged}
+          disabled={!selectable}
           onChange={onToggleSelect}
           className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 disabled:opacity-30"
         />

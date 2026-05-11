@@ -156,6 +156,12 @@ export const api = {
   deleteUser: (id: string) =>
     request<{ success: boolean }>(`/users/${id}`, { method: 'DELETE' }),
 
+  resetUserPassword: (id: string, password: string) =>
+    request<{ success: boolean; message: string }>(`/users/${id}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    }),
+
   // Scans
   getScans: (page = 1, limit = 50) =>
     request<{ success: boolean; scans: Scan[]; total: number; page: number; totalPages: number }>(
@@ -280,14 +286,21 @@ export const api = {
     }),
 
   /**
-   * Most-recent GpsLocation for a terminal. `location` is null when the
-   * terminal has never reported (NEVER_CONNECTED). Throws 404 if the
-   * terminal id itself is unknown.
+   * Most-recent GpsLocation + GpsObdSnapshot for a terminal. Both are null
+   * when the terminal has never reported (NEVER_CONNECTED) or hasn't sent
+   * any OBD pass-through frames yet. Throws 404 if the terminal id itself
+   * is unknown.
+   *
+   * The `obd` field powers the Overview pane's "OBD Speed" + battery-fallback
+   * stats, which differ from the GPS-derived ones when the device is on a
+   * bench (GPS speed = 0, OBD bus speed = whatever the simulator drives).
    */
   getGpsTerminalLatest: (id: string) =>
-    request<{ success: boolean; location: GpsLocation | null }>(
-      `/gps/terminals/${id}/latest`,
-    ),
+    request<{
+      success: boolean;
+      location: GpsLocation | null;
+      obd: GpsObdSnapshot | null;
+    }>(`/gps/terminals/${id}/latest`),
 
   getGpsLocations: (
     id: string,
@@ -492,6 +505,46 @@ export const api = {
   deleteAuditLog: (id: string) =>
     request<{ success: boolean; message?: string }>(`/audit-logs/${id}`, {
       method: 'DELETE',
+    }),
+
+  // ── Bulk-delete (super-admin only) ──────────────────────────────────────
+  // Each endpoint takes a UUID array (max 1000) and returns the count of
+  // rows actually removed. Non-super-admins receive 403 from the route
+  // middleware — the UI surfaces this as a toast.
+  bulkDeleteGpsLocations: (ids: string[]) =>
+    request<{ success: boolean; deleted: number }>('/gps/locations/bulk-delete', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    }),
+  bulkDeleteGpsObd: (ids: string[]) =>
+    request<{ success: boolean; deleted: number }>('/gps/obd/bulk-delete', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    }),
+  bulkDeleteGpsAlarms: (ids: string[]) =>
+    request<{ success: boolean; deleted: number }>('/gps/alarms/bulk-delete', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    }),
+  bulkDeleteGpsDtcEvents: (ids: string[]) =>
+    request<{ success: boolean; deleted: number }>('/gps/dtc-events/bulk-delete', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    }),
+  bulkDeleteGpsTrips: (ids: string[]) =>
+    request<{ success: boolean; deleted: number }>('/gps/trips/bulk-delete', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    }),
+  bulkDeleteGpsCommands: (ids: string[]) =>
+    request<{ success: boolean; deleted: number }>('/gps/commands/bulk-delete', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    }),
+  bulkDeleteGpsTerminals: (ids: string[]) =>
+    request<{ success: boolean; deleted: number }>('/gps/terminals/bulk-delete', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
     }),
 };
 
@@ -867,25 +920,39 @@ export interface GpsLocation {
   statusBits: number | string;
 }
 
+/**
+ * Mirrors the Prisma `GpsObdSnapshot` columns 1:1 (renames included). The
+ * earlier shape on the wire was aspirational and didn't match the DB —
+ * fields like `storedDtcCodes`, `dtcCount`, `protocol`, `fuelLevelPct`,
+ * `intakeTempC`, `speedKmh` simply do not exist on this row. DTC info lives
+ * on `GpsDtcEvent` and is rendered by the DTC tab, not the OBD tab.
+ */
 export interface GpsObdSnapshot {
   id: string;
   terminalId: string;
   reportedAt: string;
+  serverReceivedAt?: string;
   vin: string | null;
-  protocol: string | null;
   rpm: number | null;
-  engineLoadPct: number | string | null;
+  /** Vehicle-bus speed reported by the OBD ECU (PID 0x0D). Kilometres/hour. */
+  vehicleSpeedKmh: number | string | null;
   coolantTempC: number | null;
-  intakeTempC: number | null;
+  intakeAirTempC: number | null;
   throttlePct: number | string | null;
-  fuelLevelPct: number | string | null;
-  speedKmh: number | string | null;
+  enginePowerKw: number | string | null;
+  engineLoadPct: number | string | null;
+  fuelPressureKpa: number | null;
+  fuelRateLph: number | string | null;
+  fuelConsumedL: number | string | null;
+  /** External system voltage (Control-Module Voltage, PID 0x42), mV. */
   batteryVoltageMv: number | null;
-  milOn: boolean;
-  dtcCount: number;
-  storedDtcCodes: string[];
-  pendingDtcCodes: string[];
-  permanentDtcCodes: string[];
+  odometerKm: number | string | null;
+  mafGps: number | string | null;
+  o2Voltage: number | string | null;
+  milOn: boolean | null;
+  milDistanceKm: number | string | null;
+  /** Vendor-specific PIDs we don't natively decode — `key` is hex ("0x21"). */
+  extraPidsJson: Record<string, unknown> | null;
 }
 
 export type GpsAlarmSeverity = 'INFO' | 'WARNING' | 'CRITICAL';
@@ -998,24 +1065,39 @@ export interface GpsDtcEvent {
 
 export type GpsTripStatus = 'OPEN' | 'CLOSED';
 
+/**
+ * Mirrors the Prisma `GpsTrip` columns 1:1. The previous shape invented
+ * `drivingSec`/`idleSec`/`driverScore`/`harshEventCount` that don't exist on
+ * the row — accessing them returned `undefined` and produced `NaNm / NaNm`
+ * cells in the Trips tab. Drive time = `durationSec − idleDurationSec`.
+ */
 export interface GpsTrip {
   id: string;
   terminalId: string;
   ownerUserId: string | null;
+  vin: string | null;
   status: GpsTripStatus;
   startAt: string;
   endAt: string | null;
-  startLatitude: number | string | null;
-  startLongitude: number | string | null;
-  endLatitude: number | string | null;
-  endLongitude: number | string | null;
-  distanceKm: number | string;
-  drivingSec: number;
-  idleSec: number;
+  startLat: number | string | null;
+  startLng: number | string | null;
+  endLat: number | string | null;
+  endLng: number | string | null;
+  distanceKm: number | string | null;
+  durationSec: number | null;
+  idleDurationSec: number | null;
   maxSpeedKmh: number | string | null;
   avgSpeedKmh: number | string | null;
-  harshEventCount: number;
-  driverScore: number | null;
+  harshAccelCount: number;
+  harshBrakeCount: number;
+  harshTurnCount: number;
+  overspeedCount: number;
+  fuelConsumedL: number | string | null;
+  /** Driver score 0..100 from the trip-grading service; null until close. */
+  score: number | null;
+  rawSummary: Record<string, unknown> | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 /**

@@ -354,6 +354,45 @@ export async function updateUser(userId: string, data: {
   }
 }
 
+/**
+ * Admin-initiated password reset for a User row.
+ *
+ * Use case: admins create dealer accounts via `createUser` with a chosen
+ * password. There was previously no path to ROTATE that password without
+ * deleting and recreating the user (which would purge their scans,
+ * appraisals, terminals, etc). This function plugs that hole.
+ *
+ * Audit:
+ *   • The route guard already records who called this in AdminAuditLog;
+ *     we just emit a structured log line here for grep-ability.
+ *   • PasswordResetToken rows for the user are invalidated so any
+ *     outstanding /auth/reset-password flow is killed on rotation.
+ */
+export async function resetUserPassword(userId: string, newPassword: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true },
+  });
+  if (!user) throw new AppError('User not found', 404);
+
+  const passwordHash = await bcrypt.hash(newPassword, APP_CONSTANTS.BCRYPT_SALT_ROUNDS);
+
+  // Wrap in a transaction so that if the token invalidation fails, the
+  // password mutation also rolls back — leaves the row in a coherent state.
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    }),
+    prisma.passwordResetToken.updateMany({
+      where: { userId, usedAt: null },
+      data: { usedAt: new Date() },
+    }),
+  ]);
+
+  logger.info('Admin reset user password', { userId, email: user.email });
+}
+
 export async function deleteUser(userId: string) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new AppError('User not found', 404);

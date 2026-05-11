@@ -114,6 +114,16 @@ export async function deleteUser(req: Request, res: Response, next: NextFunction
   } catch (err) { next(err); }
 }
 
+// Admin-initiated password reset for a User. Gated by `requireSuperAdmin`
+// in the route layer — non-super admins should not be able to silently
+// rotate dealer credentials.
+export async function resetUserPassword(req: Request, res: Response, next: NextFunction) {
+  try {
+    await adminService.resetUserPassword(req.params.id as string, req.body.password);
+    res.json({ success: true, message: 'Password reset' });
+  } catch (err) { next(err); }
+}
+
 // ── Scans ─────────────────────────────────────────────────────────────────────
 
 export async function listScans(req: Request, res: Response, next: NextFunction) {

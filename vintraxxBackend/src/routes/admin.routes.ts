@@ -29,10 +29,12 @@ import {
   adminBulkAckAlarmsSchema,
   adminListAuditLogsQuerySchema,
   auditLogIdParamsSchema,
+  adminBulkDeleteSchema,
 } from '../schemas/gps-admin.schema';
 import {
   createUserBodySchema,
   updateUserBodySchema,
+  resetUserPasswordBodySchema,
 } from '../schemas/admin-user.schema';
 import {
   adminLoginBodySchema,
@@ -72,6 +74,15 @@ router.put('/users/:id', validateRequest(updateUserBodySchema), adminCtrl.update
 // Destructive user delete cascades through scans/reports/devices — gate to
 // super-admins only, matching the symmetric `DELETE /gps/terminals/:id`.
 router.delete('/users/:id', requireSuperAdmin, adminCtrl.deleteUser);
+// Password reset is also gated to super-admins: a non-super admin should
+// never be able to silently take over a dealer's session by rotating their
+// credentials.
+router.post(
+  '/users/:id/reset-password',
+  requireSuperAdmin,
+  validateRequest(resetUserPasswordBodySchema),
+  adminCtrl.resetUserPassword,
+);
 
 // Scans
 router.get('/scans', adminCtrl.listScans);
@@ -232,6 +243,56 @@ router.delete(
   requireSuperAdmin,
   validateRequest(auditLogIdParamsSchema),
   gpsCtrl.adminDeleteAuditLog,
+);
+
+// ── Admin: bulk-delete (super-admin only) ──────────────────────────────────
+//
+// Each endpoint takes `{ ids: string[] }` (max 1000 uuids per call) and
+// deletes every matching row in one Prisma `deleteMany`. Cascades through
+// the FK ON DELETE rules in `schema.prisma`. The audit middleware records
+// one row per POST; per-id provenance is the deletion itself (the row is
+// gone, so the audit trail is the only forensic record).
+router.post(
+  '/gps/locations/bulk-delete',
+  requireSuperAdmin,
+  validateRequest(adminBulkDeleteSchema),
+  gpsCtrl.adminBulkDeleteLocations,
+);
+router.post(
+  '/gps/obd/bulk-delete',
+  requireSuperAdmin,
+  validateRequest(adminBulkDeleteSchema),
+  gpsCtrl.adminBulkDeleteObd,
+);
+router.post(
+  '/gps/alarms/bulk-delete',
+  requireSuperAdmin,
+  validateRequest(adminBulkDeleteSchema),
+  gpsCtrl.adminBulkDeleteAlarms,
+);
+router.post(
+  '/gps/dtc-events/bulk-delete',
+  requireSuperAdmin,
+  validateRequest(adminBulkDeleteSchema),
+  gpsCtrl.adminBulkDeleteDtcEvents,
+);
+router.post(
+  '/gps/trips/bulk-delete',
+  requireSuperAdmin,
+  validateRequest(adminBulkDeleteSchema),
+  gpsCtrl.adminBulkDeleteTrips,
+);
+router.post(
+  '/gps/commands/bulk-delete',
+  requireSuperAdmin,
+  validateRequest(adminBulkDeleteSchema),
+  gpsCtrl.adminBulkDeleteCommands,
+);
+router.post(
+  '/gps/terminals/bulk-delete',
+  requireSuperAdmin,
+  validateRequest(adminBulkDeleteSchema),
+  gpsCtrl.adminBulkDeleteTerminals,
 );
 
 export default router;

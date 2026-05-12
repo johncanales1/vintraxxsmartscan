@@ -2,12 +2,11 @@
  * VinTraxxSmartScanDashboard layout.
  *
  * Wraps every page under /VinTraxxSmartScanDashboard/* with:
- *   1. <DealerNav /> \u2014 hoisted out of the original page.tsx so all
+ *   1. <DealerNav /> — hoisted out of the original page.tsx so all
  *      sub-routes share the same header without re-fetching profile data.
- *   2. <DashboardTabBar /> \u2014 sticky tabs persistent across navigation.
- *   3. <RealtimePill />     \u2014 WebSocket status indicator (right of tab bar).
- *   4. <GpsWsLifecycle />   \u2014 connects + disconnects the singleton WS based
- *      on auth presence; mirrors the mobile RootNavigator's pattern.
+ *   2. <GpsTabBar />    — sticky GPS Fleet tabs on GPS routes.
+ *   3. <RealtimePill /> — WebSocket status indicator (inside DealerNav).
+ *   4. GpsWs lifecycle  — connects the singleton WS on mount.
  *   5. Providers: GoogleMapsProvider + ScanDetailProvider.
  *
  * IMPORTANT: this layout fetches `dealer/profile` once and passes it to

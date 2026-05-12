@@ -20,6 +20,15 @@ import {
     Route as RouteIcon,
     ArrowRight,
 } from "lucide-react";
+import {
+    LineChart,
+    Line,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip,
+    ResponsiveContainer,
+} from "recharts";
 import { useGpsTerminals } from "../_lib/useGpsTerminals";
 import { useFleetKpis } from "../_lib/useFleetKpis";
 import { useGpsAlarms } from "../_lib/useGpsAlarms";
@@ -30,6 +39,11 @@ import {
     formatDuration,
     vehicleLabel,
 } from "../_lib/format";
+import {
+    ActivityPeriod,
+    PERIOD_OPTIONS,
+    bucketByPeriod,
+} from "../_lib/activityBuckets";
 import type { GpsTrip } from "../_lib/types";
 
 const ROOT = "/VinTraxxSmartScanDashboard";
@@ -46,6 +60,21 @@ export default function GpsFleetOverviewPage() {
         since: sinceIso,
         limit: 5,
     });
+
+    // Fleet alerts activity chart — separate 12-month window, period-selectable.
+    const [activityPeriod, setActivityPeriod] = useState<ActivityPeriod>("12m");
+    const activitySinceIso = useMemo(
+        () => new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString(),
+        [],
+    );
+    const { alarms: activityAlarms } = useGpsAlarms({
+        since: activitySinceIso,
+        limit: 1000,
+    });
+    const activityData = useMemo(
+        () => bucketByPeriod(activityAlarms, (a) => a.openedAt, activityPeriod),
+        [activityAlarms, activityPeriod],
+    );
 
     // Fleet-wide trips (latest 5) — same fan-out pattern as /trips page.
     const [trips, setTrips] = useState<GpsTrip[]>([]);
@@ -174,6 +203,50 @@ export default function GpsFleetOverviewPage() {
                     </p>
                     <p className="text-xs text-slate-500 mt-1">Miles driven</p>
                 </Link>
+            </div>
+
+            {/* Fleet Alerts Activity chart */}
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-3 sm:mb-4">
+                    <h2 className="flex items-center gap-2 text-sm sm:text-base font-semibold text-[#1B3A5F]">
+                        <AlertTriangle className="w-4 h-4 text-rose-500" />
+                        Fleet Alerts Activity
+                    </h2>
+                    <select
+                        value={activityPeriod}
+                        onChange={(e) => setActivityPeriod(e.target.value as ActivityPeriod)}
+                        className="text-xs sm:text-sm border border-slate-300 rounded-lg px-2 sm:px-3 py-1 sm:py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer w-full sm:w-auto"
+                    >
+                        {PERIOD_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+                {activityData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={220} className="sm:!h-[260px]">
+                        <LineChart data={activityData} style={{ outline: "none" }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                            <XAxis dataKey="label" stroke="#64748b" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+                            <YAxis stroke="#64748b" allowDecimals={false} axisLine={false} tickLine={false} />
+                            <Tooltip
+                                cursor={false}
+                                contentStyle={{
+                                    backgroundColor: "rgb(255, 255, 255)",
+                                    border: "1px solid rgb(226, 232, 240)",
+                                    borderRadius: "8px",
+                                    boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+                                }}
+                            />
+                            <Line type="monotone" dataKey="count" name="Alerts" stroke="#ef4444" strokeWidth={3} dot={{ fill: "#ef4444", r: 4 }} />
+                        </LineChart>
+                    </ResponsiveContainer>
+                ) : (
+                    <div className="h-[220px] sm:h-[260px] flex items-center justify-center text-slate-400 text-sm">
+                        No alert data available
+                    </div>
+                )}
             </div>
 
             {/* Activity feed */}

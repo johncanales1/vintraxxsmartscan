@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Search, Menu, ChevronDown, ChevronRight, User, LogOut, UserCircle, X, Upload, Calendar, DollarSign, Mail, Hash, ZoomIn, ZoomOut, Move, Check, Pencil, Activity, Scan, Cpu, Wallet } from "lucide-react";
+import { Search, Menu, ChevronDown, ChevronRight, User, LogOut, UserCircle, X, Upload, Calendar, DollarSign, Mail, Hash, ZoomIn, ZoomOut, Move, Check, Pencil, Activity, Scan, Cpu, Wallet, FileText, CalendarDays } from "lucide-react";
 import { Button as AriaButton, Dialog as AriaDialog, DialogTrigger as AriaDialogTrigger, Popover as AriaPopover } from "react-aria-components";
 import { cx } from "@/utils/cx";
 import { API_BASE } from "@/lib/api-config";
@@ -697,7 +697,17 @@ const UserDropdownMenu = ({ className, userEmail, fullName, onProfileClick, onCl
 };
 
 // --- Smart Scan dropdown items shared by desktop + mobile menus.
-const SMART_SCAN_ITEMS = [
+//
+//   All entries render at the same level (no nesting). Each item is its own
+//   top-level destination.
+type SmartScanItem = {
+    href: string;
+    label: string;
+    description: string;
+    Icon: typeof Activity;
+};
+
+const SMART_SCAN_ITEMS: ReadonlyArray<SmartScanItem> = [
     {
         href: "/VinTraxxSmartScanDashboard",
         label: "Overview",
@@ -707,8 +717,20 @@ const SMART_SCAN_ITEMS = [
     {
         href: "/VinTraxxSmartScanDashboard/obd",
         label: "OBD Scan",
-        description: "Scans, appraisals & service",
+        description: "Diagnostic scan analytics",
         Icon: Scan,
+    },
+    {
+        href: "/VinTraxxSmartScanDashboard/appraisals",
+        label: "Appraisals",
+        description: "Appraisal activity + records",
+        Icon: FileText,
+    },
+    {
+        href: "/VinTraxxSmartScanDashboard/schedule",
+        label: "Schedule Service",
+        description: "Appointments + activity",
+        Icon: CalendarDays,
     },
     {
         href: "/VinTraxxSmartScanDashboard/gps",
@@ -716,7 +738,7 @@ const SMART_SCAN_ITEMS = [
         description: "Live map, alerts & trips",
         Icon: Cpu,
     },
-] as const;
+];
 
 const SmartScanMenu = ({ onItemClick }: { onItemClick?: () => void }) => {
     const pathname = usePathname();
@@ -732,19 +754,29 @@ const SmartScanMenu = ({ onItemClick }: { onItemClick?: () => void }) => {
         closeTimer.current = setTimeout(() => setIsOpen(false), 120);
     };
 
+    // Sub-routes that belong to a sibling top-level item (so Overview
+    // shouldn't claim them when computing `overviewActive`).
+    const NON_OVERVIEW_PREFIXES = [
+        "/VinTraxxSmartScanDashboard/obd",
+        "/VinTraxxSmartScanDashboard/appraisals",
+        "/VinTraxxSmartScanDashboard/schedule",
+        "/VinTraxxSmartScanDashboard/gps",
+    ];
+    const matchesNonOverview = (p: string) =>
+        NON_OVERVIEW_PREFIXES.some((r) => p === r || p.startsWith(`${r}/`));
+
     const isAnyActive = SMART_SCAN_ITEMS.some(
         (i) =>
             pathname === i.href ||
             (i.href !== "/VinTraxxSmartScanDashboard" &&
                 pathname.startsWith(`${i.href}/`)),
     );
-    // The Overview link should win if we are exactly on the dashboard root or a
-    // sub-route that is NOT under /obd or /gps (i.e. devices/map/alerts/etc.).
+    // Overview wins on the dashboard root or sub-routes not owned by another
+    // top-level item.
     const overviewActive =
         pathname === "/VinTraxxSmartScanDashboard" ||
         (pathname.startsWith("/VinTraxxSmartScanDashboard/") &&
-            !pathname.startsWith("/VinTraxxSmartScanDashboard/obd") &&
-            !pathname.startsWith("/VinTraxxSmartScanDashboard/gps"));
+            !matchesNonOverview(pathname));
 
     return (
         <div

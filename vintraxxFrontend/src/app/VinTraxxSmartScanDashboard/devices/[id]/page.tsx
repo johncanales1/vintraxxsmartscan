@@ -20,7 +20,7 @@ import type {
   GpsTerminal,
   GpsTrip,
 } from "../../_lib/types";
-import { BackLink } from "../../_components/DashboardTabBar";
+import { BackLink } from "../../_components/BackLink";
 import { DeviceMapPanel } from "../../_components/DeviceMapPanel";
 import { LiveObdPanel } from "../../_components/LiveObdPanel";
 import { TripsTable } from "../../_components/TripsTable";

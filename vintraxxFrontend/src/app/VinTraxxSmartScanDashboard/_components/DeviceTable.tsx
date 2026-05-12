@@ -1,15 +1,22 @@
 /**
- * DeviceTable \u2014 reusable terminal table. Mounted in:
- *   \u2022 /devices              (full-width fleet list)
- *   \u2022 /map drawer           (filtered to map viewport)
+ * DeviceTable — reusable terminal table. Mounted in:
+ *   • /devices              (full-width fleet list)
+ *   • /map drawer           (filtered to map viewport, via onRowClick)
  *
- * Click a row \u2192 navigates to /devices/[id]?sub=live.
+ * Click a row → navigates to /devices/[id]?sub=live (or fires onRowClick).
+ *
+ * Visual style matches the OBD / Appraisal tables on the dashboard:
+ * blue (`#1B3A5F`) header, gradient `Cpu` avatars, status pills, hover
+ * highlight. The first column is labelled "Device" rather than "Vehicle"
+ * because `vehicleLabel(t)` falls back through nickname → year/make/model
+ * → VIN → JT/T 808 device identifier — i.e. the value identifies the
+ * fleet item, not always a vehicle.
  */
 
 "use client";
 
-import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ChevronRight, Cpu } from "lucide-react";
 import type { GpsTerminal } from "../_lib/types";
 import {
   formatRelativeOrAbsolute,
@@ -17,11 +24,27 @@ import {
   formatMph,
 } from "../_lib/format";
 
-const STATUS_DOT: Record<GpsTerminal["status"], string> = {
-  ONLINE: "bg-emerald-500",
-  OFFLINE: "bg-slate-400",
-  NEVER_CONNECTED: "bg-slate-300",
-  SUSPENDED: "bg-rose-500",
+const STATUS_PILL: Record<GpsTerminal["status"], { label: string; classes: string; dot: string }> = {
+  ONLINE: {
+    label: "Online",
+    classes: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    dot: "bg-emerald-500",
+  },
+  OFFLINE: {
+    label: "Offline",
+    classes: "bg-slate-50 text-slate-600 border-slate-200",
+    dot: "bg-slate-400",
+  },
+  NEVER_CONNECTED: {
+    label: "Never connected",
+    classes: "bg-slate-50 text-slate-500 border-slate-200",
+    dot: "bg-slate-300",
+  },
+  SUSPENDED: {
+    label: "Suspended",
+    classes: "bg-rose-50 text-rose-700 border-rose-200",
+    dot: "bg-rose-500",
+  },
 };
 
 interface Props {
@@ -32,7 +55,8 @@ interface Props {
   /** Per-row alarm count override. Defaults to 0 since the list endpoint
    *  doesn't include alarm aggregates today. */
   alarmCounts?: Record<string, number>;
-  /** Optional row-click handler. If omitted, rows are <Link>s to detail. */
+  /** Optional row-click handler. If omitted, rows route to the device
+   *  detail page via next/navigation. */
   onRowClick?: (terminal: GpsTerminal) => void;
 }
 
@@ -43,9 +67,11 @@ export function DeviceTable({
   alarmCounts,
   onRowClick,
 }: Props) {
+  const router = useRouter();
+
   if (loading) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-8 text-center">
+      <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
         <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
         <p className="text-sm text-slate-500">Loading fleet...</p>
       </div>
@@ -53,139 +79,113 @@ export function DeviceTable({
   }
   if (terminals.length === 0) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-12 text-center">
-        <p className="text-sm text-slate-500">
+      <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+        <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-slate-100 flex items-center justify-center">
+          <Cpu className="w-6 h-6 text-slate-400" />
+        </div>
+        <p className="text-sm text-slate-500 font-medium">
           No GPS terminals are paired with your account yet.
         </p>
         <p className="text-xs text-slate-400 mt-1">
-          Pairing is admin-only \u2014 share your device identifier with your
+          Pairing is admin-only — share your device identifier with your
           administrator to provision a new device.
         </p>
       </div>
     );
   }
 
+  const handleRowClick = (t: GpsTerminal) => {
+    if (onRowClick) {
+      onRowClick(t);
+    } else {
+      router.push(`/VinTraxxSmartScanDashboard/devices/${t.id}?sub=live`);
+    }
+  };
+
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+    <div className="rounded-xl border border-slate-200 overflow-hidden bg-white shadow-sm">
       <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide">
-            <tr>
-              <th className="px-4 py-3 text-left">Vehicle</th>
-              <th className="px-4 py-3 text-left">VIN</th>
-              <th className="px-4 py-3 text-left">Status</th>
-              <th className="px-4 py-3 text-left">Speed</th>
-              <th className="px-4 py-3 text-left">Last seen</th>
-              <th className="px-4 py-3 text-left">Battery</th>
-              <th className="px-4 py-3 text-left">Alarms</th>
-              <th className="px-4 py-3 text-right" aria-label="Open" />
+        <table className="w-full caption-bottom text-sm">
+          <thead>
+            <tr className="bg-[#1B3A5F]">
+              <th className="text-white px-4 py-3 font-semibold text-left">Device</th>
+              <th className="text-white px-4 py-3 font-semibold text-left">VIN</th>
+              <th className="text-white px-4 py-3 font-semibold text-left">Status</th>
+              <th className="text-white px-4 py-3 font-semibold text-left">Speed</th>
+              <th className="text-white px-4 py-3 font-semibold text-left">Last Seen</th>
+              <th className="text-white px-4 py-3 font-semibold text-left">Battery</th>
+              <th className="text-white px-4 py-3 font-semibold text-left">Alarms</th>
+              <th className="text-white px-4 py-3 font-semibold text-right w-10" aria-label="Open" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody>
             {terminals.map((t) => {
-              const dot = STATUS_DOT[t.status];
+              const status = STATUS_PILL[t.status];
               const speed =
                 latestSpeedKmh && latestSpeedKmh[t.id] !== undefined
                   ? latestSpeedKmh[t.id]
                   : null;
               const alarms = alarmCounts?.[t.id] ?? 0;
-              const inner = (
-                <>
-                  <td className="px-4 py-3 font-medium text-slate-900">
-                    {vehicleLabel(t)}
+              return (
+                <tr
+                  key={t.id}
+                  onClick={() => handleRowClick(t)}
+                  className="border-b border-slate-100 hover:bg-blue-50/40 transition-colors cursor-pointer"
+                >
+                  <td className="px-4 py-3.5">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 bg-gradient-to-br from-[#1B3A5F] to-[#2d5278] rounded-lg flex items-center justify-center flex-shrink-0">
+                        <Cpu className="w-4 h-4 text-white" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-slate-900 text-sm truncate">
+                          {vehicleLabel(t)}
+                        </p>
+                        {t.deviceIdentifier && t.deviceIdentifier !== vehicleLabel(t) && (
+                          <p className="text-xs text-slate-400 font-mono truncate">
+                            ID: {t.deviceIdentifier}
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-500">
-                    {t.vehicleVin ?? "—"}
+                  <td className="px-4 py-3.5 font-mono text-xs text-slate-600">
+                    {t.vehicleVin ?? <span className="text-slate-300">—</span>}
                   </td>
-                  <td className="px-4 py-3">
-                    <span className="inline-flex items-center gap-2 text-xs text-slate-600">
-                      <span className={`w-2 h-2 rounded-full ${dot}`} />
-                      {t.status === "ONLINE"
-                        ? "Online"
-                        : t.status === "OFFLINE"
-                          ? "Offline"
-                          : t.status === "SUSPENDED"
-                            ? "Suspended"
-                            : "Never connected"}
+                  <td className="px-4 py-3.5">
+                    <span
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-semibold ${status.classes}`}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
+                      {status.label}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {formatMph(speed ?? null)}
+                  <td className="px-4 py-3.5 text-slate-700 text-sm font-medium tabular-nums">
+                    {speed != null ? (
+                      formatMph(speed)
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {formatRelativeOrAbsolute(t.lastHeartbeatAt)}
+                  <td className="px-4 py-3.5 text-slate-500 text-sm">
+                    {t.lastHeartbeatAt ? (
+                      formatRelativeOrAbsolute(t.lastHeartbeatAt)
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">—</td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3.5 text-slate-400 text-sm">—</td>
+                  <td className="px-4 py-3.5">
                     {alarms > 0 ? (
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 text-xs font-semibold">
                         {alarms}
                       </span>
                     ) : (
-                      <span className="text-slate-400 text-xs">0</span>
+                      <span className="text-slate-300 text-xs">0</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3.5 text-right">
                     <ChevronRight className="w-4 h-4 text-slate-400 inline" />
-                  </td>
-                </>
-              );
-              if (onRowClick) {
-                return (
-                  <tr
-                    key={t.id}
-                    onClick={() => onRowClick(t)}
-                    className="hover:bg-slate-50 cursor-pointer"
-                  >
-                    {inner}
-                  </tr>
-                );
-              }
-              return (
-                <tr key={t.id} className="hover:bg-slate-50">
-                  <td colSpan={8} className="p-0">
-                    <Link
-                      href={`/VinTraxxSmartScanDashboard/devices/${t.id}?sub=live`}
-                      className="grid grid-cols-[2fr_2fr_1fr_1fr_1fr_1fr_0.5fr_auto] items-center gap-0"
-                    >
-                      <span className="px-4 py-3 font-medium text-slate-900 truncate">
-                        {vehicleLabel(t)}
-                      </span>
-                      <span className="px-4 py-3 font-mono text-xs text-slate-500 truncate">
-                        {t.vehicleVin ?? "—"}
-                      </span>
-                      <span className="px-4 py-3">
-                        <span className="inline-flex items-center gap-2 text-xs text-slate-600">
-                          <span className={`w-2 h-2 rounded-full ${dot}`} />
-                          {t.status === "ONLINE"
-                            ? "Online"
-                            : t.status === "OFFLINE"
-                              ? "Offline"
-                              : t.status === "SUSPENDED"
-                                ? "Suspended"
-                                : "Never"}
-                        </span>
-                      </span>
-                      <span className="px-4 py-3 text-slate-600">
-                        {formatMph(speed ?? null)}
-                      </span>
-                      <span className="px-4 py-3 text-slate-600">
-                        {formatRelativeOrAbsolute(t.lastHeartbeatAt)}
-                      </span>
-                      <span className="px-4 py-3 text-slate-600">—</span>
-                      <span className="px-4 py-3">
-                        {alarms > 0 ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 text-xs font-semibold">
-                            {alarms}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400 text-xs">0</span>
-                        )}
-                      </span>
-                      <span className="px-4 py-3 text-right">
-                        <ChevronRight className="w-4 h-4 text-slate-400" />
-                      </span>
-                    </Link>
                   </td>
                 </tr>
               );

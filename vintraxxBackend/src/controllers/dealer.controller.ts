@@ -887,8 +887,14 @@ export async function getDealerAppointments(req: Request, res: Response, next: N
       return;
     }
 
+    // Exclude auto-generated GPS-alarm appointments (created by
+    // gps-alarm-bridge.service.ts). Those rows already live on the Alerts
+    // page and should not pollute the dealer Schedule Service feed.
     const appointments = await prisma.serviceAppointment.findMany({
-      where: { userId },
+      where: {
+        userId,
+        NOT: { serviceType: { startsWith: 'gps-alert-' } },
+      },
       orderBy: { createdAt: 'desc' },
     });
 

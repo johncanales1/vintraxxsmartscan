@@ -157,7 +157,11 @@ const isoDate = z.string().datetime({ offset: true });
 export const listAlarmsQuerySchema = z.object({
   query: z.object({
     page: z.coerce.number().int().min(1).default(1).optional(),
-    limit: z.coerce.number().int().min(1).max(200).default(50).optional(),
+    // Cap aligned with `locationHistoryQuerySchema` (max 5000) so the
+    // dashboard alarm-activity chart can fetch a 12-month window in one
+    // round-trip for client-side bucketing. Paginated listing UIs still
+    // use the default of 50.
+    limit: z.coerce.number().int().min(1).max(5000).default(50).optional(),
     terminalId: z.string().uuid().optional(),
     severity: z.enum(['INFO', 'WARNING', 'CRITICAL']).optional(),
     /**

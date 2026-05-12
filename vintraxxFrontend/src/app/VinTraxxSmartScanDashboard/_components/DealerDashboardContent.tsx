@@ -3,13 +3,15 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Search, Eye, Car, Scan, DollarSign, TrendingUp, ClipboardList, X, FileText, Wrench, Activity, CalendarDays, Mail, Send, User, CheckCircle, Cpu, AlertTriangle, Route as RouteIcon } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line, ResponsiveContainer } from "recharts";
+import { Search, Eye, Car, Scan, DollarSign, TrendingUp, ClipboardList, X, FileText, Wrench, Activity, CalendarDays, Mail, Send, User, CheckCircle, Cpu, AlertTriangle, Route as RouteIcon, Clock, CircleDashed } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line, ResponsiveContainer, Legend } from "recharts";
 import { useScanDetail } from "./ScanDetailContext";
 import { useGpsTerminals } from "../_lib/useGpsTerminals";
 import { useFleetKpis } from "../_lib/useFleetKpis";
 import { gpsWs } from "../_lib/gpsWs";
 import { formatCurrency } from "../_lib/format";
+import { ActivityPeriod, PERIOD_OPTIONS, bucketByPeriod } from "../_lib/activityBuckets";
+import { useGpsAlarms } from "../_lib/useGpsAlarms";
 import { API_BASE } from "@/lib/api-config";
 
 interface DealerUser {
@@ -125,7 +127,7 @@ interface ServiceAppointment {
     createdAt: string;
 }
 
-export type DashboardMode = "overview" | "obd";
+export type DashboardMode = "overview" | "obd" | "appraisals" | "schedule";
 
 interface DealerDashboardContentProps {
     mode?: DashboardMode;
@@ -164,7 +166,25 @@ export function DealerDashboardContent({ mode = "overview" }: DealerDashboardCon
     const fleetKpis = useFleetKpis(gpsTerminals);
     
     // Scan Activity Period
-    const [scanActivityPeriod, setScanActivityPeriod] = useState<'1w' | '1m' | '3m' | '6m' | '12m'>('12m');
+    const [scanActivityPeriod, setScanActivityPeriod] = useState<ActivityPeriod>('12m');
+    // Appraisal Activity Period (Overview + Appraisals pages)
+    const [appraisalActivityPeriod, setAppraisalActivityPeriod] = useState<ActivityPeriod>('12m');
+    // Schedule Service Activity Period (Overview + Schedule pages)
+    const [scheduleActivityPeriod, setScheduleActivityPeriod] = useState<ActivityPeriod>('12m');
+    // GPS Fleet Alert Activity Period (Overview only)
+    const [fleetActivityPeriod, setFleetActivityPeriod] = useState<ActivityPeriod>('12m');
+
+    // GPS alarms — 12 months back so the chart can show the full range
+    // regardless of which period is selected. Only fetched in Overview mode.
+    const fleetAlarmsSince = mode === 'overview'
+        ? new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString()
+        : undefined;
+    const { alarms: fleetAlarms } = useGpsAlarms(
+        fleetAlarmsSince ? { since: fleetAlarmsSince, limit: 1000 } : {},
+    );
+    const fleetActivityData = mode === 'overview'
+        ? bucketByPeriod(fleetAlarms, (a) => a.openedAt, fleetActivityPeriod)
+        : [];
 
     // Schedule Service Appointment Modal
     const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -452,14 +472,7 @@ export function DealerDashboardContent({ mode = "overview" }: DealerDashboardCon
     
     // Chart data
     const scanActivityData = getActivityData();
-    
-    const periodOptions = [
-        { value: '1w', label: 'Last Week' },
-        { value: '1m', label: 'Last Month' },
-        { value: '3m', label: 'Last 3 Months' },
-        { value: '6m', label: 'Last 6 Months' },
-        { value: '12m', label: 'Last 12 Months' },
-    ];
+    const periodOptions = PERIOD_OPTIONS;
     
     // Cost distribution for bar chart
     const costDistribution = [
@@ -500,6 +513,125 @@ export function DealerDashboardContent({ mode = "overview" }: DealerDashboardCon
                a.userEmail?.toLowerCase().includes(query);
     });
 
+    // ==================================================================
+    // Mode-driven section visibility.
+    // - overview : GPS Fleet KPIs + alert chart, OBD analytics, Appraisal
+    //              summary (4-card row + chart), Schedule stats (no list).
+    // - obd      : OBD analytics + new full OBD scans table (no appraisals,
+    //              no schedule).
+    // - appraisals: Appraisal summary + table only.
+    // - schedule : Schedule list + stats only.
+    // ==================================================================
+    const showGpsFleet = mode === 'overview';
+    const showObdAnalytics = mode === 'overview' || mode === 'obd';
+    const showObdTable = mode === 'obd';
+    const showAppraisalSummary = mode === 'overview' || mode === 'appraisals';
+    const showAppraisalTable = mode === 'appraisals';
+    const showAppraisalSection = showAppraisalSummary || showAppraisalTable;
+    const showScheduleList = mode === 'schedule';
+    const showScheduleStats = mode === 'overview' || mode === 'schedule';
+    const showScheduleSection = showScheduleList || showScheduleStats;
+
+    // ==================================================================
+    // Appraisal summary stats (Total + Avg Wholesale/Retail/Trade-In).
+    // ==================================================================
+    const totalAppraisals = appraisals.length;
+    const avgWholesale = totalAppraisals > 0
+        ? appraisals.reduce((s, a) => s + (a.valuation?.wholesale || 0), 0) / totalAppraisals
+        : 0;
+    const avgRetail = totalAppraisals > 0
+        ? appraisals.reduce((s, a) => s + (a.valuation?.retail || 0), 0) / totalAppraisals
+        : 0;
+    const avgTradeIn = totalAppraisals > 0
+        ? appraisals.reduce((s, a) => s + (a.valuation?.tradeIn || 0), 0) / totalAppraisals
+        : 0;
+
+    // Appraisal activity (line chart): new appraisals per bucket.
+    const appraisalActivityData = bucketByPeriod(
+        appraisals,
+        (a) => a.createdAt,
+        appraisalActivityPeriod,
+    ).map((b) => ({ label: b.label, count: b.count }));
+
+    // ==================================================================
+    // Schedule Service stats.
+    //   - Total: appointments in the dealer feed (already filtered to
+    //     exclude GPS-alarm rows by the backend).
+    //   - Confirmed / Unconfirmed: status buckets.
+    //   - Within 24h: preferredDate falls into [startOfToday, endOfTomorrow]
+    //     and is not completed/cancelled.
+    // ==================================================================
+    const nowDate = new Date();
+    const startOfToday = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate());
+    const endOfTomorrow = new Date(startOfToday);
+    endOfTomorrow.setDate(endOfTomorrow.getDate() + 2);
+    endOfTomorrow.setMilliseconds(endOfTomorrow.getMilliseconds() - 1);
+
+    const parsePreferredDate = (s?: string | null): Date | null => {
+        if (!s) return null;
+        // preferredDate is stored as yyyy-mm-dd. Parse as local-midnight so
+        // the "within 24h" boundary matches the user's wall-clock day.
+        const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+        if (m) {
+            const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+            if (!Number.isNaN(d.getTime())) return d;
+        }
+        const fallback = new Date(s);
+        return Number.isNaN(fallback.getTime()) ? null : fallback;
+    };
+
+    const totalAppointments = appointments.length;
+    const confirmedAppointments = appointments.filter(a => a.status === 'confirmed').length;
+    const unconfirmedAppointments = appointments.filter(
+        a => a.status !== 'confirmed' && a.status !== 'completed' && a.status !== 'cancelled',
+    ).length;
+    const dueWithin24hAppointments = appointments.filter((a) => {
+        if (a.status === 'completed' || a.status === 'cancelled') return false;
+        const d = parsePreferredDate(a.preferredDate);
+        if (!d) return false;
+        return d >= startOfToday && d <= endOfTomorrow;
+    }).length;
+
+    // Schedule activity (grouped bar chart): per bucket, emit the 4 series.
+    const scheduleActivitySeries = (() => {
+        const total = bucketByPeriod(appointments, (a) => a.createdAt, scheduleActivityPeriod);
+        const confirmed = bucketByPeriod(
+            appointments.filter(a => a.status === 'confirmed'),
+            (a) => a.createdAt,
+            scheduleActivityPeriod,
+        );
+        const unconfirmed = bucketByPeriod(
+            appointments.filter(
+                a => a.status !== 'confirmed' && a.status !== 'completed' && a.status !== 'cancelled',
+            ),
+            (a) => a.createdAt,
+            scheduleActivityPeriod,
+        );
+        const dueWithin24h = bucketByPeriod(
+            appointments.filter((a) => {
+                if (a.status === 'completed' || a.status === 'cancelled') return false;
+                const d = parsePreferredDate(a.preferredDate);
+                if (!d) return false;
+                // For the bar chart we show per-bucket "was due within 24h of
+                // its created-at date". Using createdAt keeps parity with the
+                // other series (bucketed by createdAt).
+                const created = new Date(a.createdAt);
+                if (Number.isNaN(created.getTime())) return false;
+                const diff = d.getTime() - new Date(created.getFullYear(), created.getMonth(), created.getDate()).getTime();
+                return diff >= 0 && diff <= 24 * 60 * 60 * 1000 + 1;
+            }),
+            (a) => a.createdAt,
+            scheduleActivityPeriod,
+        );
+        return total.map((t, i) => ({
+            label: t.label,
+            total: t.count,
+            confirmed: confirmed[i]?.count ?? 0,
+            unconfirmed: unconfirmed[i]?.count ?? 0,
+            dueWithin24h: dueWithin24h[i]?.count ?? 0,
+        }));
+    })();
+
     if (loading) {
         return (
             <div className="flex min-h-screen items-center justify-center bg-slate-950">
@@ -527,9 +659,9 @@ export function DealerDashboardContent({ mode = "overview" }: DealerDashboardCon
         );
     }
 
-    // The dashboard layout (`layout.tsx`) now provides:
-    //   • <DealerNav/> (fixed header)
-    //   • <DashboardTabBar/> + <RealtimePill/>
+    // The dashboard layout (`layout.tsx`) provides:
+    //   • <DealerNav/> (fixed header with <RealtimePill/> in rightSlot)
+    //   • <GpsTabBar/> on GPS routes
     //   • The shared <ScanDetailProvider/>
     //   • The bg-slate-50 page background
     // This page therefore renders ONLY its own content (header + sections).
@@ -542,12 +674,22 @@ export function DealerDashboardContent({ mode = "overview" }: DealerDashboardCon
                             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                                 <div>
                                     <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-[#1B3A5F] mb-1">
-                                        {mode === "obd" ? "OBD Scan" : "Smart Scan Dashboard"}
+                                        {mode === "obd"
+                                            ? "OBD Scan"
+                                            : mode === "appraisals"
+                                                ? "Appraisals"
+                                                : mode === "schedule"
+                                                    ? "Schedule Service"
+                                                    : "Smart Scan Dashboard"}
                                     </h1>
                                     <p className="text-sm sm:text-base text-slate-600">
                                         {mode === "obd"
-                                            ? "OBD scan analytics, vehicle appraisals and service appointments"
-                                            : "View and manage all diagnostic scans and appraisals"}
+                                            ? "OBD scan analytics, vehicle appraisals and schedule service"
+                                            : mode === "appraisals"
+                                                ? "Appraisal activity summary and detailed records"
+                                                : mode === "schedule"
+                                                    ? "Track and manage scheduled service appointments"
+                                                    : "View and manage all diagnostic scans and appraisals"}
                                     </p>
                                 </div>
                                 <div className="flex gap-3">
@@ -571,15 +713,21 @@ export function DealerDashboardContent({ mode = "overview" }: DealerDashboardCon
 
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-12">
                         {/* GPS Fleet KPI strip — 4 quick stats with deep links
-                            into the dedicated GPS tabs. Hidden in OBD-only mode. */}
-                        {mode === "overview" && (
-                        <div className="mb-6 sm:mb-8">
-                            <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-[#1B3A5F] flex items-center gap-2 mb-3">
-                                <Cpu className="w-6 h-6" />
-                                GPS Fleet
-                            </h2>
+                            into the dedicated GPS tabs, plus an alerts-over-time
+                            activity chart. Overview only. */}
+                        {showGpsFleet && (
+                        <div className="mb-8 sm:mb-12">
+                            <div className="mb-4 sm:mb-6 flex flex-col gap-1">
+                                <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-[#1B3A5F] to-[#3d6a9f] bg-clip-text text-transparent flex items-center gap-3">
+                                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-[#1B3A5F] to-[#3d6a9f] flex items-center justify-center shadow-lg shadow-blue-500/20">
+                                        <Cpu className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                                    </div>
+                                    GPS Fleet
+                                </h2>
+                                <p className="text-slate-500 text-sm mt-1 ml-[52px] sm:ml-[60px]">Live fleet status, alerts and trips at a glance</p>
+                            </div>
                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                                <Link href="/VinTraxxSmartScanDashboard/devices" className="rounded-xl border border-slate-200 bg-white p-4 hover:shadow-md transition-shadow">
+                                <Link href="/VinTraxxSmartScanDashboard/devices" className="rounded-xl border border-slate-200 bg-white p-4 hover:shadow-lg hover:border-slate-300 hover:scale-[1.02] transition-all duration-200">
                                     <div className="flex items-center justify-between">
                                         <Cpu className="w-5 h-5 text-[#1B3A5F]" />
                                         <span className="text-xs text-slate-400">Total</span>
@@ -587,7 +735,7 @@ export function DealerDashboardContent({ mode = "overview" }: DealerDashboardCon
                                     <p className="text-2xl sm:text-3xl font-bold text-slate-900 mt-2">{fleetKpis.devicesTotal}</p>
                                     <p className="text-xs text-slate-500 mt-1">Devices paired</p>
                                 </Link>
-                                <Link href="/VinTraxxSmartScanDashboard/map" className="rounded-xl border border-slate-200 bg-white p-4 hover:shadow-md transition-shadow">
+                                <Link href="/VinTraxxSmartScanDashboard/map" className="rounded-xl border border-slate-200 bg-white p-4 hover:shadow-lg hover:border-slate-300 hover:scale-[1.02] transition-all duration-200">
                                     <div className="flex items-center justify-between">
                                         <Activity className="w-5 h-5 text-emerald-600" />
                                         <span className="inline-flex items-center gap-1 text-xs text-emerald-700">
@@ -598,7 +746,7 @@ export function DealerDashboardContent({ mode = "overview" }: DealerDashboardCon
                                     <p className="text-2xl sm:text-3xl font-bold text-slate-900 mt-2">{fleetKpis.devicesOnline}</p>
                                     <p className="text-xs text-slate-500 mt-1">Online now</p>
                                 </Link>
-                                <Link href="/VinTraxxSmartScanDashboard/alerts" className="rounded-xl border border-slate-200 bg-white p-4 hover:shadow-md transition-shadow">
+                                <Link href="/VinTraxxSmartScanDashboard/alerts" className="rounded-xl border border-slate-200 bg-white p-4 hover:shadow-lg hover:border-slate-300 hover:scale-[1.02] transition-all duration-200">
                                     <div className="flex items-center justify-between">
                                         <AlertTriangle className="w-5 h-5 text-rose-600" />
                                         <span className="text-xs text-slate-400">24h</span>
@@ -606,7 +754,7 @@ export function DealerDashboardContent({ mode = "overview" }: DealerDashboardCon
                                     <p className="text-2xl sm:text-3xl font-bold text-slate-900 mt-2">{fleetKpis.alarms24h}</p>
                                     <p className="text-xs text-slate-500 mt-1">Alerts</p>
                                 </Link>
-                                <Link href="/VinTraxxSmartScanDashboard/trips" className="rounded-xl border border-slate-200 bg-white p-4 hover:shadow-md transition-shadow">
+                                <Link href="/VinTraxxSmartScanDashboard/trips" className="rounded-xl border border-slate-200 bg-white p-4 hover:shadow-lg hover:border-slate-300 hover:scale-[1.02] transition-all duration-200">
                                     <div className="flex items-center justify-between">
                                         <RouteIcon className="w-5 h-5 text-[#1B3A5F]" />
                                         <span className="text-xs text-slate-400">7d</span>
@@ -615,16 +763,62 @@ export function DealerDashboardContent({ mode = "overview" }: DealerDashboardCon
                                     <p className="text-xs text-slate-500 mt-1">Miles driven</p>
                                 </Link>
                             </div>
+
+                            {/* Fleet alerts activity chart */}
+                            <div className="mt-4 sm:mt-6 rounded-xl border border-slate-200 bg-white shadow p-4 sm:p-6">
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-3 sm:mb-4">
+                                    <h3 className="text-sm sm:text-base text-slate-900 font-semibold flex items-center gap-2">
+                                        <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 text-rose-500" />
+                                        Fleet Alerts Activity
+                                    </h3>
+                                    <select
+                                        value={fleetActivityPeriod}
+                                        onChange={(e) => setFleetActivityPeriod(e.target.value as ActivityPeriod)}
+                                        className="text-xs sm:text-sm border border-slate-300 rounded-lg px-2 sm:px-3 py-1 sm:py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer w-full sm:w-auto"
+                                    >
+                                        {periodOptions.map(opt => (
+                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                {fleetActivityData.length > 0 ? (
+                                    <ResponsiveContainer width="100%" height={220} className="sm:!h-[260px]">
+                                        <LineChart data={fleetActivityData} style={{ outline: 'none' }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                                            <XAxis dataKey="label" stroke="#64748b" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+                                            <YAxis stroke="#64748b" allowDecimals={false} axisLine={false} tickLine={false} />
+                                            <Tooltip
+                                                cursor={false}
+                                                contentStyle={{
+                                                    backgroundColor: 'rgb(255, 255, 255)',
+                                                    border: '1px solid rgb(226, 232, 240)',
+                                                    borderRadius: '8px',
+                                                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                                                }}
+                                            />
+                                            <Line type="monotone" dataKey="count" name="Alerts" stroke="#ef4444" strokeWidth={3} dot={{ fill: '#ef4444', r: 4 }} />
+                                        </LineChart>
+                                    </ResponsiveContainer>
+                                ) : (
+                                    <div className="h-[220px] sm:h-[260px] flex items-center justify-center text-slate-400 text-sm">
+                                        No alert data available
+                                    </div>
+                                )}
+                            </div>
                         </div>
                         )}
 
                         {/* OBD Scan Section Header */}
-                        <div className="mb-4 sm:mb-6">
-                            <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-[#1B3A5F] flex items-center gap-2">
-                                <Activity className="w-6 h-6" />
+                        {showObdAnalytics && (
+                        <>
+                        <div className="mb-4 sm:mb-6 flex flex-col gap-1">
+                            <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-[#1B3A5F] to-[#3d6a9f] bg-clip-text text-transparent flex items-center gap-3">
+                                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-[#1B3A5F] to-[#3d6a9f] flex items-center justify-center shadow-lg shadow-blue-500/20">
+                                    <Activity className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                                </div>
                                 OBD Scan Analytics
                             </h2>
-                            <p className="text-slate-500 text-sm mt-1">Click panels to view detailed scan reports</p>
+                            <p className="text-slate-500 text-sm mt-1 ml-[52px] sm:ml-[60px]">Click panels to view detailed scan reports</p>
                         </div>
                         
                         {/* Stats Cards - Clickable Panels */}
@@ -694,7 +888,7 @@ export function DealerDashboardContent({ mode = "overview" }: DealerDashboardCon
                                     </h3>
                                     <select
                                         value={scanActivityPeriod}
-                                        onChange={(e) => setScanActivityPeriod(e.target.value as '1w' | '1m' | '3m' | '6m' | '12m')}
+                                        onChange={(e) => setScanActivityPeriod(e.target.value as ActivityPeriod)}
                                         className="text-xs sm:text-sm border border-slate-300 rounded-lg px-2 sm:px-3 py-1 sm:py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer w-full sm:w-auto"
                                     >
                                         {periodOptions.map(opt => (
@@ -733,17 +927,320 @@ export function DealerDashboardContent({ mode = "overview" }: DealerDashboardCon
                                 )}
                             </div>
                         </div>
+                        </>
+                        )}
+
+                        {/* OBD Scans Table — only on dedicated OBD page. Lists
+                            every completed scan with a search filter; clicking
+                            a row opens the shared scan-detail modal. */}
+                        {showObdTable && (
+                        <div className="mb-8 sm:mb-12">
+                            <div className="flex gap-3 w-full sm:max-w-2xl mb-4 sm:mb-6">
+                                <div className="relative flex-1">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                    <input
+                                        className="flex h-10 w-full rounded-lg border px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 pl-10 bg-white border-slate-300 text-slate-900 placeholder:text-slate-500"
+                                        placeholder="Search by VIN, Make, Model, Stock #, Owner, or Email..."
+                                        value={obdSearchQuery}
+                                        onChange={(e) => setObdSearchQuery(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Mobile Card View */}
+                            <div className="block md:hidden space-y-3">
+                                {filteredScanReports.length === 0 ? (
+                                    <div className="bg-white rounded-xl shadow-sm p-8 text-center text-slate-400">
+                                        {completedReports.length === 0 ? 'No scan reports found' : 'No matching scan reports'}
+                                    </div>
+                                ) : (
+                                    filteredScanReports.map((report) => {
+                                        const repairCost = getTotalRepairCost(report);
+                                        return (
+                                            <div
+                                                key={report.scanId}
+                                                onClick={() => handleScanItemClick(report.scanId)}
+                                                className="bg-white rounded-xl shadow-sm p-4 border border-slate-200 cursor-pointer hover:shadow-md transition-shadow"
+                                            >
+                                                <div className="flex items-start justify-between mb-2">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-10 h-10 bg-gradient-to-br from-[#1B3A5F] to-[#2d5278] rounded-lg flex items-center justify-center flex-shrink-0">
+                                                            <Car className="w-5 h-5 text-white" />
+                                                        </div>
+                                                        <div>
+                                                            <p className="font-semibold text-slate-900 text-sm">{report.vehicleYear} {report.vehicleMake}</p>
+                                                            <p className="text-xs text-slate-500">{report.vehicleModel}</p>
+                                                        </div>
+                                                    </div>
+                                                    <span className="text-xs text-slate-400">{formatDate(report.scanDate)}</span>
+                                                </div>
+                                                <p className="font-mono text-xs text-slate-500 mb-2 truncate">{report.vin}</p>
+                                                <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
+                                                    {report.stockNumber && <span>Stock: {report.stockNumber}</span>}
+                                                    <span className={`font-semibold ${repairCost > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                                        {repairCost > 0 ? formatCurrency(repairCost) : 'No repairs'}
+                                                    </span>
+                                                </div>
+                                                {/* Owner badges */}
+                                                {(() => {
+                                                    const emailOwner = report.emailOwnerName || report.userFullName;
+                                                    const hasOwnerInfo = emailOwner || report.scannerOwnerName || report.vehicleOwnerName || report.emailOwnerEmail;
+                                                    if (!hasOwnerInfo) return null;
+                                                    return (
+                                                        <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap gap-1.5">
+                                                            {emailOwner && (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 text-[10px] font-medium">
+                                                                    <Mail className="w-3 h-3" />
+                                                                    {emailOwner}
+                                                                </span>
+                                                            )}
+                                                            {report.scannerOwnerName && (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-700 text-[10px] font-medium">
+                                                                    <Scan className="w-3 h-3" />
+                                                                    {report.scannerOwnerName}
+                                                                </span>
+                                                            )}
+                                                            {report.vehicleOwnerName && (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-medium">
+                                                                    <User className="w-3 h-3" />
+                                                                    {report.vehicleOwnerName}
+                                                                </span>
+                                                            )}
+                                                            {report.emailOwnerEmail && (
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); openEmailCompose(report.emailOwnerEmail!); }}
+                                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-[10px] font-medium hover:bg-indigo-100 transition-colors cursor-pointer"
+                                                                >
+                                                                    <Send className="w-3 h-3" />
+                                                                    {report.emailOwnerEmail}
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()}
+                                                {report.pdfUrl && (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); window.open(report.pdfUrl!, '_blank'); }}
+                                                        className="mt-2 inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-medium hover:bg-blue-200 transition-colors"
+                                                    >
+                                                        <FileText className="w-3 h-3" />
+                                                        PDF
+                                                    </button>
+                                                )}
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+
+                            {/* Desktop Table View */}
+                            <div className="hidden md:block rounded-xl border border-slate-200 overflow-hidden bg-white shadow-sm">
+                                <div className="relative w-full overflow-x-auto">
+                                    <table className="w-full caption-bottom text-sm">
+                                        <thead>
+                                            <tr className="bg-[#1B3A5F]">
+                                                <th className="text-white px-4 py-3 font-semibold text-left">Vehicle</th>
+                                                <th className="text-white px-4 py-3 font-semibold text-left">VIN</th>
+                                                <th className="text-white px-4 py-3 font-semibold text-left">Stock #</th>
+                                                <th className="text-white px-4 py-3 font-semibold text-left">Scan Date</th>
+                                                <th className="text-white px-4 py-3 font-semibold text-left">Owners</th>
+                                                <th className="text-white px-4 py-3 font-semibold text-right">Repair Cost</th>
+                                                <th className="text-white px-4 py-3 font-semibold text-center w-20">PDF</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {filteredScanReports.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={7} className="text-center py-12 text-slate-400">
+                                                        {completedReports.length === 0 ? 'No scan reports found' : 'No matching scan reports'}
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                filteredScanReports.map((report) => {
+                                                    const repairCost = getTotalRepairCost(report);
+                                                    const emailOwner = report.emailOwnerName || report.userFullName;
+                                                    const hasOwnerInfo = emailOwner || report.scannerOwnerName || report.vehicleOwnerName || report.emailOwnerEmail;
+                                                    return (
+                                                        <tr
+                                                            key={report.scanId}
+                                                            onClick={() => handleScanItemClick(report.scanId)}
+                                                            className="border-b border-slate-100 hover:bg-blue-50/40 transition-colors cursor-pointer"
+                                                        >
+                                                            <td className="px-4 py-3.5">
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="w-9 h-9 bg-gradient-to-br from-[#1B3A5F] to-[#2d5278] rounded-lg flex items-center justify-center flex-shrink-0">
+                                                                        <Car className="w-4 h-4 text-white" />
+                                                                    </div>
+                                                                    <div>
+                                                                        <p className="font-semibold text-slate-900 text-sm">{report.vehicleYear} {report.vehicleMake}</p>
+                                                                        <p className="text-xs text-slate-500">{report.vehicleModel}</p>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-4 py-3.5 font-mono text-xs text-slate-600">{report.vin}</td>
+                                                            <td className="px-4 py-3.5 text-slate-600 text-sm">{report.stockNumber || <span className="text-slate-300">—</span>}</td>
+                                                            <td className="px-4 py-3.5 text-slate-500 text-sm">{formatDate(report.scanDate)}</td>
+                                                            <td className="px-4 py-3.5">
+                                                                {hasOwnerInfo ? (
+                                                                    <div className="flex flex-wrap gap-1.5 max-w-[260px]">
+                                                                        {emailOwner && (
+                                                                            <span title={`Email Owner: ${emailOwner}`} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 text-[11px] font-medium">
+                                                                                <Mail className="w-3 h-3" />
+                                                                                {emailOwner}
+                                                                            </span>
+                                                                        )}
+                                                                        {report.scannerOwnerName && (
+                                                                            <span title={`Scanner Owner: ${report.scannerOwnerName}`} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-700 text-[11px] font-medium">
+                                                                                <Scan className="w-3 h-3" />
+                                                                                {report.scannerOwnerName}
+                                                                            </span>
+                                                                        )}
+                                                                        {report.vehicleOwnerName && (
+                                                                            <span title={`Vehicle Owner: ${report.vehicleOwnerName}`} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[11px] font-medium">
+                                                                                <User className="w-3 h-3" />
+                                                                                {report.vehicleOwnerName}
+                                                                            </span>
+                                                                        )}
+                                                                        {report.emailOwnerEmail && (
+                                                                            <button
+                                                                                onClick={(e) => { e.stopPropagation(); openEmailCompose(report.emailOwnerEmail!); }}
+                                                                                title={`Email: ${report.emailOwnerEmail}`}
+                                                                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-[11px] font-medium hover:bg-indigo-100 transition-colors cursor-pointer"
+                                                                            >
+                                                                                <Send className="w-3 h-3" />
+                                                                                {report.emailOwnerEmail}
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-slate-300 text-xs">—</span>
+                                                                )}
+                                                            </td>
+                                                            <td className={`px-4 py-3.5 font-semibold text-sm text-right ${repairCost > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                                                {repairCost > 0 ? formatCurrency(repairCost) : 'No repairs'}
+                                                            </td>
+                                                            <td className="px-4 py-3.5 text-center">
+                                                                {report.pdfUrl ? (
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); window.open(report.pdfUrl!, '_blank'); }}
+                                                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-medium hover:bg-blue-200 transition-colors"
+                                                                    >
+                                                                        <FileText className="w-3 h-3" />
+                                                                        PDF
+                                                                    </button>
+                                                                ) : (
+                                                                    <span className="text-slate-300 text-xs">—</span>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        )}
 
                         {/* Appraisal Data Section */}
+                        {showAppraisalSection && (
                         <div className="mb-8 sm:mb-12">
-                            <div className="mb-4 sm:mb-6">
-                                <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-[#1B3A5F] flex items-center gap-2">
-                                    <FileText className="w-5 h-5 sm:w-6 sm:h-6" />
+                            <div className="mb-4 sm:mb-6 flex flex-col gap-1">
+                                <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-[#1B3A5F] to-[#3d6a9f] bg-clip-text text-transparent flex items-center gap-3">
+                                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-[#1B3A5F] to-[#3d6a9f] flex items-center justify-center shadow-lg shadow-blue-500/20">
+                                        <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                                    </div>
                                     Vehicle Appraisals
                                 </h2>
-                                <p className="text-slate-500 text-xs sm:text-sm mt-1">Click on any row to view detailed appraisal information</p>
+                                <p className="text-slate-500 text-sm mt-1 ml-[52px] sm:ml-[60px]">
+                                    {showAppraisalTable
+                                        ? "Click on any row to view detailed appraisal information"
+                                        : "Summary of appraisal activity"}
+                                </p>
                             </div>
-                            
+
+                            {/* Appraisal summary (4-card row + activity chart row).
+                                Renders on Overview + dedicated Appraisals page. */}
+                            {showAppraisalSummary && (
+                                <>
+                                {/* Row 1: 4 stat cards */}
+                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
+                                    <div className="rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 p-4 sm:p-5 text-white shadow-lg cursor-default hover:shadow-xl hover:scale-[1.02] transition-all duration-200">
+                                        <p className="text-[11px] uppercase tracking-wide text-blue-100 font-semibold">Total</p>
+                                        <p className="text-2xl sm:text-3xl font-bold mt-1">{totalAppraisals}</p>
+                                        <p className="text-[11px] text-blue-200 mt-1">Appraisals</p>
+                                    </div>
+                                    <div className="rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 p-4 sm:p-5 text-white shadow-lg cursor-default hover:shadow-xl hover:scale-[1.02] transition-all duration-200">
+                                        <p className="text-[11px] uppercase tracking-wide text-emerald-100 font-semibold">Avg Wholesale</p>
+                                        <p className="text-2xl sm:text-3xl font-bold mt-1">{formatCurrency(avgWholesale)}</p>
+                                        <p className="text-[11px] text-emerald-100 mt-1">per vehicle</p>
+                                    </div>
+                                    <div className="rounded-xl bg-gradient-to-br from-sky-500 to-sky-600 p-4 sm:p-5 text-white shadow-lg cursor-default hover:shadow-xl hover:scale-[1.02] transition-all duration-200">
+                                        <p className="text-[11px] uppercase tracking-wide text-sky-100 font-semibold">Avg Retail</p>
+                                        <p className="text-2xl sm:text-3xl font-bold mt-1">{formatCurrency(avgRetail)}</p>
+                                        <p className="text-[11px] text-sky-100 mt-1">per vehicle</p>
+                                    </div>
+                                    <div className="rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 p-4 sm:p-5 text-white shadow-lg cursor-default hover:shadow-xl hover:scale-[1.02] transition-all duration-200">
+                                        <p className="text-[11px] uppercase tracking-wide text-amber-100 font-semibold">Avg Trade-In</p>
+                                        <p className="text-2xl sm:text-3xl font-bold mt-1">{formatCurrency(avgTradeIn)}</p>
+                                        <p className="text-[11px] text-amber-100 mt-1">per vehicle</p>
+                                    </div>
+                                </div>
+
+                                {/* Row 2: appraisal activity line chart (full width) */}
+                                <div className="rounded-xl border border-slate-200 bg-white shadow p-4 sm:p-6 mb-6 sm:mb-8">
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-3 sm:mb-4">
+                                        <h3 className="text-sm sm:text-base text-slate-900 font-semibold flex items-center gap-2">
+                                            <Activity className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" />
+                                            Appraisal Activity
+                                        </h3>
+                                        <select
+                                            value={appraisalActivityPeriod}
+                                            onChange={(e) => setAppraisalActivityPeriod(e.target.value as ActivityPeriod)}
+                                            className="text-xs sm:text-sm border border-slate-300 rounded-lg px-2 sm:px-3 py-1 sm:py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer w-full sm:w-auto"
+                                        >
+                                            {periodOptions.map(opt => (
+                                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    {appraisalActivityData.length > 0 ? (
+                                        <ResponsiveContainer width="100%" height={220} className="sm:!h-[260px]">
+                                            <LineChart data={appraisalActivityData} style={{ outline: 'none' }}>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                                                <XAxis dataKey="label" stroke="#64748b" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+                                                <YAxis stroke="#64748b" allowDecimals={false} axisLine={false} tickLine={false} />
+                                                <Tooltip
+                                                    cursor={false}
+                                                    contentStyle={{
+                                                        backgroundColor: 'rgb(255, 255, 255)',
+                                                        border: '1px solid rgb(226, 232, 240)',
+                                                        borderRadius: '8px',
+                                                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+                                                    }}
+                                                />
+                                                <Line
+                                                    type="monotone"
+                                                    dataKey="count"
+                                                    name="Appraisals"
+                                                    stroke="#1B3A5F"
+                                                    strokeWidth={3}
+                                                    dot={{ fill: "#1B3A5F", r: 4 }}
+                                                />
+                                            </LineChart>
+                                        </ResponsiveContainer>
+                                    ) : (
+                                        <div className="h-[220px] sm:h-[260px] flex items-center justify-center text-slate-400 text-sm">
+                                            No appraisal data available
+                                        </div>
+                                    )}
+                                </div>
+                                </>
+                            )}
+
+                            {showAppraisalTable && (
+                            <>
                             <div className="flex gap-3 w-full sm:max-w-2xl mb-4 sm:mb-6">
                                 <div className="relative flex-1">
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -899,10 +1396,17 @@ export function DealerDashboardContent({ mode = "overview" }: DealerDashboardCon
                                     </table>
                                 </div>
                             </div>
+                            </>
+                            )}
                         </div>
-                        {/* Service Appointment Activity History.
-                            The DashboardTabBar's "Appointments" tab links to
-                            #appointments, which scrolls here. */}
+                        )}
+                        {/* Schedule Service section — appointment activity list
+                            + summary stats + activity chart. Mode-gated so
+                            dedicated pages render only their relevant block.
+                            The gradient header renders on every mode that
+                            shows the section (Overview + Schedule); the
+                            appointment-count pill is list-only. */}
+                        {showScheduleSection && (
                         <div id="appointments" className="mb-8 sm:mb-12 scroll-mt-32">
                             <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                 <div>
@@ -910,17 +1414,21 @@ export function DealerDashboardContent({ mode = "overview" }: DealerDashboardCon
                                         <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-[#1B3A5F] to-[#3d6a9f] flex items-center justify-center shadow-lg shadow-blue-500/20">
                                             <CalendarDays className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                                         </div>
-                                        Service Appointments
+                                        Schedule Service
                                     </h2>
                                     <p className="text-slate-500 text-sm mt-2 ml-[52px] sm:ml-[60px]">Track and manage your scheduled service appointments</p>
                                 </div>
-                                <div className="flex items-center gap-2 ml-[52px] sm:ml-0">
-                                    <span className="px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 text-xs font-medium">
-                                        {appointments.length} {appointments.length === 1 ? 'appointment' : 'appointments'}
-                                    </span>
-                                </div>
+                                {showScheduleList && (
+                                    <div className="flex items-center gap-2 ml-[52px] sm:ml-0">
+                                        <span className="px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 text-xs font-medium">
+                                            {appointments.length} {appointments.length === 1 ? 'appointment' : 'appointments'}
+                                        </span>
+                                    </div>
+                                )}
                             </div>
 
+                            {showScheduleList && (
+                            <>
                             {appointments.length === 0 ? (
                                 <div className="bg-gradient-to-br from-slate-50 to-white rounded-2xl shadow-sm p-12 text-center border border-slate-200/60">
                                     <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-slate-100 flex items-center justify-center">
@@ -1006,7 +1514,7 @@ export function DealerDashboardContent({ mode = "overview" }: DealerDashboardCon
                                                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
                                                         {apt.vehicle && (
                                                             <div className="bg-slate-50/80 rounded-xl p-3">
-                                                                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Vehicle</p>
+                                                                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Vehicle Info</p>
                                                                 <p className="text-sm font-semibold text-slate-700 truncate">{apt.vehicle}</p>
                                                             </div>
                                                         )}
@@ -1061,7 +1569,97 @@ export function DealerDashboardContent({ mode = "overview" }: DealerDashboardCon
                                     ))}
                                 </div>
                             )}
+                            </>
+                            )}
+
+                            {/* Schedule Service summary (4 stat cards + grouped
+                                bar chart). Visible on Overview, OBD and the
+                                dedicated Schedule page. */}
+                            {showScheduleStats && (
+                            <div className="mt-6 sm:mt-8">
+                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
+                                    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm cursor-default hover:shadow-lg hover:border-slate-300 hover:scale-[1.02] transition-all duration-200">
+                                        <div className="flex items-center justify-between">
+                                            <CalendarDays className="w-5 h-5 text-[#1B3A5F]" />
+                                            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Total</span>
+                                        </div>
+                                        <p className="text-2xl sm:text-3xl font-bold text-slate-900 mt-2">{totalAppointments}</p>
+                                        <p className="text-xs text-slate-500 mt-1">Appointments</p>
+                                    </div>
+                                    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm cursor-default hover:shadow-lg hover:border-slate-300 hover:scale-[1.02] transition-all duration-200">
+                                        <div className="flex items-center justify-between">
+                                            <CheckCircle className="w-5 h-5 text-emerald-600" />
+                                            <span className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wide">Confirmed</span>
+                                        </div>
+                                        <p className="text-2xl sm:text-3xl font-bold text-slate-900 mt-2">{confirmedAppointments}</p>
+                                        <p className="text-xs text-slate-500 mt-1">Ready to go</p>
+                                    </div>
+                                    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm cursor-default hover:shadow-lg hover:border-slate-300 hover:scale-[1.02] transition-all duration-200">
+                                        <div className="flex items-center justify-between">
+                                            <CircleDashed className="w-5 h-5 text-amber-500" />
+                                            <span className="text-[11px] font-semibold text-amber-600 uppercase tracking-wide">Unconfirmed</span>
+                                        </div>
+                                        <p className="text-2xl sm:text-3xl font-bold text-slate-900 mt-2">{unconfirmedAppointments}</p>
+                                        <p className="text-xs text-slate-500 mt-1">Needs attention</p>
+                                    </div>
+                                    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm cursor-default hover:shadow-lg hover:border-slate-300 hover:scale-[1.02] transition-all duration-200">
+                                        <div className="flex items-center justify-between">
+                                            <Clock className="w-5 h-5 text-rose-600" />
+                                            <span className="text-[11px] font-semibold text-rose-600 uppercase tracking-wide">≤24h</span>
+                                        </div>
+                                        <p className="text-2xl sm:text-3xl font-bold text-slate-900 mt-2">{dueWithin24hAppointments}</p>
+                                        <p className="text-xs text-slate-500 mt-1">Due within 24h</p>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-xl border border-slate-200 bg-white shadow p-4 sm:p-6">
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-3 sm:mb-4">
+                                        <h3 className="text-sm sm:text-base text-slate-900 font-semibold flex items-center gap-2">
+                                            <Activity className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" />
+                                            Schedule Service Activity
+                                        </h3>
+                                        <select
+                                            value={scheduleActivityPeriod}
+                                            onChange={(e) => setScheduleActivityPeriod(e.target.value as ActivityPeriod)}
+                                            className="text-xs sm:text-sm border border-slate-300 rounded-lg px-2 sm:px-3 py-1 sm:py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer w-full sm:w-auto"
+                                        >
+                                            {periodOptions.map(opt => (
+                                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    {scheduleActivitySeries.length > 0 ? (
+                                        <ResponsiveContainer width="100%" height={240} className="sm:!h-[280px]">
+                                            <BarChart data={scheduleActivitySeries} style={{ outline: 'none' }}>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                                                <XAxis dataKey="label" stroke="#64748b" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+                                                <YAxis stroke="#64748b" allowDecimals={false} axisLine={false} tickLine={false} />
+                                                <Tooltip
+                                                    cursor={{ fill: 'rgba(148, 163, 184, 0.08)' }}
+                                                    contentStyle={{
+                                                        backgroundColor: 'rgb(255, 255, 255)',
+                                                        border: '1px solid rgb(226, 232, 240)',
+                                                        borderRadius: '8px',
+                                                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+                                                    }}
+                                                />
+                                                <Legend wrapperStyle={{ fontSize: 12 }} />
+                                                <Bar dataKey="total" name="Total" fill="#1B3A5F" radius={[6, 6, 0, 0]} />
+                                                <Bar dataKey="confirmed" name="Confirmed" fill="#10b981" radius={[6, 6, 0, 0]} />
+                                                <Bar dataKey="unconfirmed" name="Unconfirmed" fill="#f59e0b" radius={[6, 6, 0, 0]} />
+                                                <Bar dataKey="dueWithin24h" name="≤24h" fill="#ef4444" radius={[6, 6, 0, 0]} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    ) : (
+                                        <div className="h-[240px] sm:h-[280px] flex items-center justify-center text-slate-400 text-sm">
+                                            No schedule data available
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            )}
                         </div>
+                        )}
                     </div>
                 </div>
 

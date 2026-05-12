@@ -1,9 +1,10 @@
 /**
- * /VinTraxxSmartScanDashboard/dtcs \u2014 fleet-wide DTC events.
+ * /VinTraxxSmartScanDashboard/dtcs \u2014 fleet-wide fault-code feed.
  *
- * Each row exposes [Generate AI Report] which calls the AI bridge
- * (POST /gps/dtc-events/:id/analyze) and routes the resulting Scan into the
- * shared scan-detail modal.
+ * Passive, read-only view of every F2 fault-code event decoded by the
+ * corrected D450 codec. The AI-promotion workflow has moved to the
+ * per-vehicle Full Scan Report page (`/devices/[id]/scan`); that's where
+ * users hit Refresh + Generate AI Report.
  */
 
 "use client";

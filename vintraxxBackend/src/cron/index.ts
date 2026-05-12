@@ -22,6 +22,7 @@ import {
   timeoutSentCommands,
   expireStaleQueuedCommands,
 } from '../services/gps-command.service';
+import { sweepStaleScanReports } from '../services/gps-scan-report.service';
 import { runOtpCleanup, runPasswordResetCleanup } from './authCleanup';
 
 // 60 s — slightly longer than the gateway's per-command 30 s timeout to act
@@ -102,6 +103,19 @@ export function startCronJobs(): void {
     cron.schedule('*/15 * * * *', () => {
       void expireStaleQueuedCommands(COMMAND_QUEUE_MAX_MS).catch((err) => {
         logger.error('expireStaleQueuedCommands crashed', {
+          err: (err as Error).message,
+        });
+      });
+    }),
+  );
+
+  // Every 30 s on the :45 — flip abandoned PENDING GpsScanReport rows to
+  // TIMED_OUT. Belt-and-braces around the in-process timer the orchestrator
+  // installs in the REST node (catches the case where REST restarts mid-scan).
+  tasks.push(
+    cron.schedule('45 * * * * *', () => {
+      void sweepStaleScanReports().catch((err) => {
+        logger.error('sweepStaleScanReports crashed', {
           err: (err as Error).message,
         });
       });

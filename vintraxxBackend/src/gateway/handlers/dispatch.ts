@@ -22,6 +22,7 @@ import { handleRegister } from './handleRegister';
 import { handleAuth } from './handleAuth';
 import { handleHeartbeat } from './handleHeartbeat';
 import { handleTerminalGeneralResponse } from './handleTerminalGeneralResponse';
+import * as m0104 from '../codec/messages/m0104-query-params-response';
 import { handleLocation, handleBatchLocation } from './handleLocation';
 import { handlePassThrough } from './handlePassThrough';
 import type { Session } from '../session/Session';
@@ -80,6 +81,26 @@ export async function dispatchFrame(session: Session, frame: DecodedFrame): Prom
       // a 0x0001 (would create an infinite ack loop).
       const decoded = m0001.decode(body);
       handleTerminalGeneralResponse(session, decoded);
+      return;
+    }
+
+    case MsgId.QUERY_TERMINAL_PARAMS_RESPONSE: {
+      // 0x0104 — dedicated response to our 0x8104 query. The device replies
+      // with a TLV dump of ALL its parameters. We resolve the pending command
+      // so it doesn't time out, and do NOT send 0x8001 (it's a response msg).
+      const decoded0104 = m0104.decode(body);
+      session.log.info('Received 0x0104 param query response', {
+        replyToSerial: decoded0104.replyToSerial,
+        paramCount: decoded0104.paramCount,
+        actualParams: decoded0104.params.length,
+      });
+      // Resolve the pending 0x8104 command keyed by replyToSerial.
+      const pending0104 = session.pendingCommands.get(decoded0104.replyToSerial);
+      if (pending0104) {
+        clearTimeout(pending0104.timeoutHandle);
+        session.pendingCommands.delete(decoded0104.replyToSerial);
+        pending0104.resolve(0); // 0 = success
+      }
       return;
     }
 

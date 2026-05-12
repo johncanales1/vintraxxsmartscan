@@ -17,6 +17,9 @@ import * as pushService from '../services/push.service';
 import * as gpsAdminService from '../services/gps-admin.service';
 import * as bulkDeleteService from '../services/gps-bulk-delete.service';
 import { promoteDtcEventToScan } from '../services/gps-dtc-promote.service';
+import * as scanReportService from '../services/gps-scan-report.service';
+import { generateGpsScanReportPdf } from '../services/gps-scan-report-pdf.service';
+import { sendGpsScanReportEmail } from '../services/email.service';
 import { AppError } from '../middleware/errorHandler';
 import prisma from '../config/db';
 
@@ -1015,6 +1018,175 @@ export async function adminBulkDeleteTerminals(
   try {
     const result = await bulkDeleteService.bulkDeleteTerminals(pickIds(req));
     res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ── GPS Full Scan Report (Refresh / Email / AI promotion) ───────────────────
+
+/**
+ * Owner-only "Run full scan" trigger. Creates a PENDING GpsScanReport, fires
+ * 0x8103 set-params + 0x8104 query against the terminal, and returns the
+ * scanReportId so the client can poll / subscribe.
+ */
+export async function myRequestScanReport(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const userId = req.user!.userId;
+    const terminalId = req.params.id as string;
+    await assertTerminalOwnership(userId, terminalId);
+
+    const result = await scanReportService.requestFullScan({
+      terminalId,
+      requestedByUserId: userId,
+    });
+    res.status(202).json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Owner-only read of a single GpsScanReport row. 404 on cross-user access.
+ * Returns the row verbatim — Prisma serialises Decimal fields as strings, so
+ * the client converts them when it renders the KPI tiles.
+ */
+export async function myGetScanReport(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const userId = req.user!.userId;
+    const id = req.params.id as string;
+    const report = await scanReportService.getScanReport(id);
+    if (!report || report.ownerUserId !== userId) {
+      throw new AppError('Scan report not found', 404);
+    }
+    res.json({ success: true, report });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Owner-only list of recent scan reports for a terminal (newest first).
+ * Used to populate the "previous scans" rail on the Full Report screen.
+ */
+export async function myListScanReports(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const userId = req.user!.userId;
+    const terminalId = req.params.id as string;
+    await assertTerminalOwnership(userId, terminalId);
+
+    const limit = Number(req.query.limit ?? 20);
+    const reports = await scanReportService.listScanReports({ terminalId, limit });
+    res.json({ success: true, reports });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Owner-only "Email PDF" — renders the GPS scan report to a PDF and emails
+ * it to the calling user's account (or an override address). The PDF is
+ * deliberately the raw-OBD shape (no AI write-up); the user can still tap
+ * "Generate AI Report" if they want the deeper analysis.
+ */
+export async function myEmailScanReport(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const userId = req.user!.userId;
+    const id = req.params.id as string;
+    const overrideEmail = (req.body as { email?: string } | undefined)?.email;
+
+    const report = await scanReportService.getScanReport(id);
+    if (!report || report.ownerUserId !== userId) {
+      throw new AppError('Scan report not found', 404);
+    }
+    if (report.status !== 'COMPLETED') {
+      throw new AppError('Scan is not yet complete', 409);
+    }
+
+    const [terminal, user] = await Promise.all([
+      prisma.gpsTerminal.findUnique({ where: { id: report.terminalId } }),
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, fullName: true },
+      }),
+    ]);
+    if (!terminal) throw new AppError('Terminal not found', 404);
+
+    const toEmail = overrideEmail ?? user?.email;
+    if (!toEmail) {
+      throw new AppError('No email address on file', 400);
+    }
+
+    const pdfPath = await generateGpsScanReportPdf({
+      report,
+      terminal,
+      ownerName: user?.fullName ?? null,
+      ownerEmail: toEmail,
+    });
+
+    const vehicleLabel =
+      [report.vehicleYear, report.vehicleMake, report.vehicleModel].filter(Boolean).join(' ') ||
+      terminal.nickname ||
+      `Device ${(terminal.deviceIdentifier ?? '').slice(-6)}`;
+
+    await sendGpsScanReportEmail({
+      toEmail,
+      pdfPath,
+      vehicleLabel,
+      vin: report.vin,
+      reportedAt: report.completedAt ?? report.requestedAt,
+      dtcCount: report.dtcCount ?? 0,
+      milOn: report.milOn === true,
+    });
+
+    res.json({
+      success: true,
+      sentTo: toEmail,
+      // Path is server-local — the client never opens it directly, but it's
+      // useful for the success toast ("PDF ready") if a future endpoint
+      // serves the file via signed URL.
+      pdfPath,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Owner-only "Generate AI Report" — promote a COMPLETED GpsScanReport into
+ * the BLE Scan pipeline so the existing AI worker can analyse it. The mobile
+ * client then polls `/scan/report/:scanId` like any other AI report.
+ */
+export async function myPromoteScanToAi(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const userId = req.user!.userId;
+    const id = req.params.id as string;
+    const report = await scanReportService.getScanReport(id);
+    if (!report || report.ownerUserId !== userId) {
+      throw new AppError('Scan report not found', 404);
+    }
+    const result = await scanReportService.promoteToAi(id, userId);
+    res.status(202).json({ success: true, ...result });
   } catch (err) {
     next(err);
   }

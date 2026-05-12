@@ -323,6 +323,103 @@ export interface AnalyzeDtcEventResponse {
 }
 
 // ================================================================
+// GPS FULL SCAN REPORT (D450 Refresh / Email / AI promotion)
+// ================================================================
+
+export type GpsScanReportStatus =
+  | 'PENDING'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'TIMED_OUT';
+
+/**
+ * Aggregated D450 scan result. Mirrors the BLE Scan shape but stays raw — the
+ * AI write-up is produced separately by promoting this row into a Scan via
+ * `POST /scan-reports/:id/promote-ai`.
+ */
+export interface GpsScanReport {
+  id: string;
+  terminalId: string;
+  ownerUserId: string | null;
+  requestedByAdminId: string | null;
+  requestedByUserId: string | null;
+  status: GpsScanReportStatus;
+  requestedAt: string;
+  completedAt: string | null;
+  errorText: string | null;
+
+  vin: string | null;
+  vehicleYear: number | null;
+  vehicleMake: string | null;
+  vehicleModel: string | null;
+  /** Decimal string from Prisma; convert with Number() when rendering. */
+  mileageKm: string | number | null;
+
+  milOn: boolean | null;
+  dtcCount: number | null;
+  storedDtcCodes: string[];
+  pendingDtcCodes: string[];
+  permanentDtcCodes: string[];
+
+  fuelSystemStatus: string | null;
+  secondaryAirStatus: string | null;
+  distanceWithMilKm: string | number | null;
+  distanceSinceClearKm: string | number | null;
+  warmupsSinceClear: number | null;
+  runtimeSinceStartSec: number | null;
+
+  rpm: number | null;
+  vehicleSpeedKmh: string | number | null;
+  coolantTempC: number | null;
+  intakeAirTempC: number | null;
+  throttlePct: string | number | null;
+  engineLoadPct: string | number | null;
+  mafGps: string | number | null;
+  fuelLevelPct: string | number | null;
+  fuelRailPressureKpa: number | null;
+  batteryVoltageMv: number | null;
+  ambientTempC: number | null;
+  barometricKpa: number | null;
+  acceleratorPct: string | number | null;
+  intakeManifoldKpa: number | null;
+
+  protocol: string | null;
+  rawObdJson: Record<string, unknown> | null;
+
+  promotedScanId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RequestScanReportResponse {
+  success: boolean;
+  scanReportId: string;
+  reused: boolean;
+}
+
+export interface ScanReportDetailResponse {
+  success: boolean;
+  report: GpsScanReport;
+}
+
+export interface ScanReportListResponse {
+  success: boolean;
+  reports: GpsScanReport[];
+}
+
+export interface ScanReportEmailResponse {
+  success: boolean;
+  sentTo: string;
+  pdfPath: string;
+}
+
+export interface ScanReportPromoteAiResponse {
+  success: boolean;
+  scanId: string;
+  reused: boolean;
+}
+
+// ================================================================
 // WEBSOCKET EVENT UNION
 // ================================================================
 

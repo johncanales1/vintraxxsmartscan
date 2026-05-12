@@ -291,6 +291,7 @@ const setParamsItemSchema = z.object({
     z.number().int().min(0).max(0xffffffff),
     z.string().max(1024), // byte length re-checked in the service
   ]),
+  byteWidth: z.union([z.literal(1), z.literal(2), z.literal(4)]).optional(),
 });
 
 /**
@@ -382,4 +383,33 @@ export const userLocateTerminalSchema = z.object({
 /** Owner-only DTC-event → Scan promotion (AI bridge). */
 export const userAnalyzeDtcEventSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
+});
+
+// ── GPS Full Scan Report (Refresh / Email / AI promotion) ───────────────────
+
+/** Owner-only "Run full scan" trigger. */
+export const userRequestScanReportSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+});
+
+/** Lookup / list / email / AI-promote on an existing scan report. */
+export const scanReportIdParamsSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+});
+
+export const listScanReportsQuerySchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+  query: z.object({
+    limit: z.coerce.number().int().min(1).max(100).default(20).optional(),
+  }),
+});
+
+export const emailScanReportSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+  body: z
+    .object({
+      /** Optional override email; defaults to the calling user's account. */
+      email: z.string().email().optional(),
+    })
+    .optional(),
 });

@@ -32,6 +32,12 @@ import type {
   RenameTerminalRequest,
   LocateCommandResponse,
   AnalyzeDtcEventResponse,
+  RequestScanReportResponse,
+  ScanReportDetailResponse,
+  ScanReportListResponse,
+  ScanReportEmailResponse,
+  ScanReportPromoteAiResponse,
+  GpsScanReport,
 } from '../../types/gps';
 
 interface ApiResult<T> {
@@ -325,6 +331,72 @@ class GpsApiService {
     return this.request<AnalyzeDtcEventResponse>(
       'POST',
       this.interpolate(GPS_ENDPOINTS.DTC_EVENT_ANALYZE, { id }),
+    );
+  }
+
+  // ── GPS Full Scan Report ──────────────────────────────────────────────────
+  //
+  // These five endpoints back the mobile Full Scan Report screen. They are
+  // distinct from `analyzeDtcEvent` above — that bridge has been retired
+  // from the mobile UI in favour of the Refresh flow on the Full Report
+  // screen, which calls `requestGpsScan` and then `getGpsScanReport`.
+
+  /** Owner-only "Run full scan" trigger. Returns the scan-report id to poll. */
+  async requestGpsScan(
+    terminalId: string,
+  ): Promise<ApiResult<RequestScanReportResponse>> {
+    return this.request<RequestScanReportResponse>(
+      'POST',
+      this.interpolate(GPS_ENDPOINTS.TERMINAL_REQUEST_SCAN, { id: terminalId }),
+    );
+  }
+
+  /** Owner-only lookup of a single scan report by id. */
+  async getGpsScanReport(
+    id: string,
+  ): Promise<ApiResult<{ report: GpsScanReport }>> {
+    return this.request<ScanReportDetailResponse>(
+      'GET',
+      this.interpolate(GPS_ENDPOINTS.SCAN_REPORT_DETAIL, { id }),
+    );
+  }
+
+  /** Owner-only list of recent scan reports for a terminal (newest first). */
+  async listGpsScanReports(
+    terminalId: string,
+    opts: { limit?: number } = {},
+  ): Promise<ApiResult<{ reports: GpsScanReport[] }>> {
+    return this.request<ScanReportListResponse>(
+      'GET',
+      this.interpolate(GPS_ENDPOINTS.TERMINAL_LIST_SCANS, { id: terminalId }),
+      { query: opts as Record<string, string | number | undefined> },
+    );
+  }
+
+  /** Owner-only "Email PDF". Optionally override the destination address. */
+  async emailGpsScanReport(
+    id: string,
+    body: { email?: string } = {},
+  ): Promise<ApiResult<ScanReportEmailResponse>> {
+    return this.request<ScanReportEmailResponse>(
+      'POST',
+      this.interpolate(GPS_ENDPOINTS.SCAN_REPORT_EMAIL, { id }),
+      { body },
+    );
+  }
+
+  /**
+   * Owner-only "Generate AI Report" — promote a COMPLETED scan report into
+   * a Scan + queue background AI processing. Mobile then polls
+   * `/scan/report/:scanId` via the BLE flow's `apiService.pollReport`
+   * helper to land on FullReportScreen.
+   */
+  async promoteGpsScanToAi(
+    id: string,
+  ): Promise<ApiResult<ScanReportPromoteAiResponse>> {
+    return this.request<ScanReportPromoteAiResponse>(
+      'POST',
+      this.interpolate(GPS_ENDPOINTS.SCAN_REPORT_PROMOTE_AI, { id }),
     );
   }
 

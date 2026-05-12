@@ -67,6 +67,8 @@ export type RootStackParamList = {
   DtcEvents: { terminalId?: string } | undefined;
   /** Single DTC event + "Run AI analysis" CTA. */
   DtcEventDetail: { dtcEventId: string };
+  /** Full Scan Report — Refresh / Email / AI promotion. */
+  GpsScanReport: { terminalId: string };
 };
 
 // Combined navigation prop types

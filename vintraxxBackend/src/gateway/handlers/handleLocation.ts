@@ -36,6 +36,7 @@ import {
   type TripLocationPoint,
 } from '../../services/gps-trip.service';
 import { ALARM_BITS } from '../codec/messages/m0200-location';
+import { onObdLiveArrived } from '../../services/gps-scan-report.service';
 import type { Session } from '../session/Session';
 
 export async function handleLocation(
@@ -82,6 +83,11 @@ export async function handleLocation(
   }
 
   await persistLocations(session.terminalId, [decoded], rawFrameSnippet);
+
+  // If the device shipped extended OBD PIDs alongside the location fix
+  // (containers 0xE1/0xEA/0xEB/0xEC), snapshot them and tell the Full Scan
+  // orchestrator. The orchestrator quietly no-ops when no scan is pending.
+  await persistObdSnapshot(terminal, decoded);
 
   const alarmTransitions = await processAlarmTransitions(terminal, decoded);
   await processTrips(terminal, [decoded], alarmTransitions.openedOverspeed);
@@ -167,6 +173,11 @@ export async function handleBatchLocation(
     (a, b) => a.reportedAt.getTime() - b.reportedAt.getTime(),
   );
   const latest = sortedAsc[sortedAsc.length - 1];
+
+  // Persist any OBD telemetry the device piggybacked on the LATEST batch
+  // entry. We could iterate the whole batch but OBD live data is high
+  // cardinality + low value if it's already minutes old.
+  await persistObdSnapshot(terminal, latest);
 
   // Diff alarm bits only against the LATEST entry — back-fill batches must
   // not generate a flap of open/close events for transient states the
@@ -416,4 +427,90 @@ async function persistLocations(
   }));
 
   await prisma.gpsLocation.createMany({ data });
+}
+
+/**
+ * Persist a GpsObdSnapshot row when the device shipped extended OBD PIDs
+ * alongside the location report (containers 0xE1 / 0xEA / 0xEB / 0xEC),
+ * and notify the Full Scan orchestrator so a pending Refresh resolves.
+ *
+ * Quietly no-ops when the location packet carried no OBD data — keeping
+ * this guard in one place avoids cluttering the main flow with `if (obd)`.
+ */
+async function persistObdSnapshot(
+  terminal: GpsTerminal,
+  decoded: DecodedLocation,
+): Promise<void> {
+  const obd = decoded.additional.obd;
+  if (!obd) return;
+
+  try {
+    await prisma.gpsObdSnapshot.create({
+      data: {
+        terminalId: terminal.id,
+        reportedAt: decoded.reportedAt,
+        vin: obd.vin ?? terminal.vehicleVin,
+        rpm: obd.rpm,
+        vehicleSpeedKmh:
+          obd.vehicleSpeedKmh !== undefined
+            ? new Prisma.Decimal(obd.vehicleSpeedKmh.toFixed(1))
+            : null,
+        coolantTempC: obd.coolantTempC,
+        intakeAirTempC: obd.intakeAirTempC,
+        throttlePct:
+          obd.throttlePct !== undefined
+            ? new Prisma.Decimal(obd.throttlePct.toFixed(1))
+            : null,
+        engineLoadPct:
+          obd.engineLoadPct !== undefined
+            ? new Prisma.Decimal(obd.engineLoadPct.toFixed(1))
+            : null,
+        fuelPressureKpa: obd.fuelRailPressureKpa,
+        batteryVoltageMv:
+          obd.vehicleVoltageV !== undefined
+            ? Math.round(obd.vehicleVoltageV * 1000)
+            : null,
+        mafGps:
+          obd.mafGps !== undefined ? new Prisma.Decimal(obd.mafGps.toFixed(2)) : null,
+        milOn: obd.milOn ?? null,
+        milDistanceKm:
+          obd.distanceWithMilKm !== undefined
+            ? new Prisma.Decimal(obd.distanceWithMilKm.toFixed(1))
+            : null,
+        extraPidsJson: {
+          ...(obd.fuelLevelPct !== undefined ? { fuelLevelPct: obd.fuelLevelPct } : {}),
+          ...(obd.acceleratorPct !== undefined ? { acceleratorPct: obd.acceleratorPct } : {}),
+          ...(obd.intakeManifoldKpa !== undefined ? { intakeManifoldKpa: obd.intakeManifoldKpa } : {}),
+          ...(obd.barometricKpa !== undefined ? { barometricKpa: obd.barometricKpa } : {}),
+          ...(obd.ambientTempC !== undefined ? { ambientTempC: obd.ambientTempC } : {}),
+          ...(obd.faultCodeCount !== undefined ? { faultCodeCount: obd.faultCodeCount } : {}),
+          ...(obd.runtimeSinceStartSec !== undefined ? { runtimeSinceStartSec: obd.runtimeSinceStartSec } : {}),
+          ...(obd.totalMileageKm !== undefined ? { totalMileageKm: obd.totalMileageKm } : {}),
+          ...(obd.totalFuelL !== undefined ? { totalFuelL: obd.totalFuelL } : {}),
+          ...(obd.diagnosticProtocol ? { diagnosticProtocol: obd.diagnosticProtocol } : {}),
+          ...(Object.keys(obd.unknownPids).length > 0 ? { unknownPids: obd.unknownPids } : {}),
+        },
+      },
+    });
+  } catch (err) {
+    // Don't bubble — a failed snapshot must not NACK the location frame.
+    // eslint-disable-next-line no-console
+    console.warn('[handleLocation] failed to persist GpsObdSnapshot', {
+      err: (err as Error).message,
+    });
+  }
+
+  // Always notify the orchestrator (even if the snapshot insert failed — the
+  // in-memory orchestrator state doesn't depend on the row being persisted).
+  void onObdLiveArrived(terminal.id, obd, decoded);
+
+  // Best-effort backfill of GpsTerminal.vehicleVin from a fresh OBD VIN read,
+  // so subsequent reports (and the Full Scan Report row) get to use it.
+  if (obd.vin && terminal.vehicleVin !== obd.vin) {
+    void prisma.gpsTerminal
+      .update({ where: { id: terminal.id }, data: { vehicleVin: obd.vin } })
+      .catch(() => {
+        /* swallow — vehicleVin is best-effort */
+      });
+  }
 }

@@ -18,6 +18,7 @@ import { TripsScreen } from '../screens/TripsScreen';
 import { TripDetailScreen } from '../screens/TripDetailScreen';
 import { DtcEventsScreen } from '../screens/DtcEventsScreen';
 import { DtcEventDetailScreen } from '../screens/DtcEventDetailScreen';
+import { GpsScanReportScreen } from '../screens/GpsScanReportScreen';
 import { DeviceSettingsScreen } from '../screens/DeviceSettingsScreen';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -241,6 +242,11 @@ export const RootNavigator: React.FC = () => {
             name="DtcEventDetail"
             component={DtcEventDetailScreen}
             options={{ headerShown: true, title: 'DTC event' }}
+          />
+          <Stack.Screen
+            name="GpsScanReport"
+            component={GpsScanReportScreen}
+            options={{ headerShown: true, title: 'Full Scan Report' }}
           />
         </>
       )}

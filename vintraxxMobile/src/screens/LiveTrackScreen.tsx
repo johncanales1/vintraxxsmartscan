@@ -455,15 +455,18 @@ export const LiveTrackScreen: React.FC = () => {
         </ScrollView>
 
         <View style={styles.sheetActions}>
-          <TouchableOpacity style={styles.sheetActionBtn} onPress={onRequestLocate}>
-            <Text style={styles.sheetActionText}>Request live position</Text>
+          <TouchableOpacity
+            style={styles.sheetActionBtn}
+            onPress={() => navigation.navigate('GpsScanReport', { terminalId })}
+          >
+            <Text style={styles.sheetActionText}>Run full scan</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.sheetActionBtn, styles.sheetActionGhost]}
-            onPress={() => navigation.navigate('Trips', { terminalId })}
+            onPress={onRequestLocate}
           >
             <Text style={[styles.sheetActionText, styles.sheetActionTextGhost]}>
-              View trips
+              Request live position
             </Text>
           </TouchableOpacity>
         </View>

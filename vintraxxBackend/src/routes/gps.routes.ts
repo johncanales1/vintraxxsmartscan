@@ -32,6 +32,10 @@ import {
   renameTerminalSchema,
   userLocateTerminalSchema,
   userAnalyzeDtcEventSchema,
+  userRequestScanReportSchema,
+  scanReportIdParamsSchema,
+  listScanReportsQuerySchema,
+  emailScanReportSchema,
 } from '../schemas/gps.schema';
 
 const router = Router();
@@ -110,6 +114,33 @@ router.post(
   '/dtc-events/:id/analyze',
   validateRequest(userAnalyzeDtcEventSchema),
   gpsCtrl.myAnalyzeDtcEvent,
+);
+
+// GPS Full Scan Reports (D450 Refresh / Email / AI promotion)
+router.post(
+  '/terminals/:id/scan',
+  validateRequest(userRequestScanReportSchema),
+  gpsCtrl.myRequestScanReport,
+);
+router.get(
+  '/terminals/:id/scan-reports',
+  validateRequest(listScanReportsQuerySchema),
+  gpsCtrl.myListScanReports,
+);
+router.get(
+  '/scan-reports/:id',
+  validateRequest(scanReportIdParamsSchema),
+  gpsCtrl.myGetScanReport,
+);
+router.post(
+  '/scan-reports/:id/email',
+  validateRequest(emailScanReportSchema),
+  gpsCtrl.myEmailScanReport,
+);
+router.post(
+  '/scan-reports/:id/promote-ai',
+  validateRequest(scanReportIdParamsSchema),
+  gpsCtrl.myPromoteScanToAi,
 );
 
 // Mobile push tokens (Phase 5)

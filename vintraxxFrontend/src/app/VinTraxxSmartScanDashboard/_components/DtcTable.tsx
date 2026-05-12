@@ -1,16 +1,17 @@
 /**
- * DtcTable \u2014 list of GPS-detected DTC events. Each row exposes a
- * [Generate AI Report] button that hits POST /gps/dtc-events/:id/analyze and
- * polls the resulting Scan via the shared ScanDetailContext, so the final
- * report shows up in the SAME modal as the Overview OBD scan list.
+ * DtcTable \u2014 passive feed of decoded F2 fault-code events.
+ *
+ * Each row used to expose a [Generate AI Report] button that hit the
+ * /gps/dtc-events/:id/analyze bridge. That control has been removed: the
+ * Full Scan Report workflow at `/devices/[id]/scan` is now the single
+ * entry-point into the AI pipeline for GPS-sourced data. This page is
+ * intentionally read-only \u2014 it lists the actual fault-code events the
+ * corrected D450 decoder has surfaced, nothing more.
  */
 
 "use client";
 
-import { useState } from "react";
-import { Sparkles, AlertTriangle } from "lucide-react";
-import { gpsApi } from "../_lib/gpsApi";
-import { useScanDetail } from "./ScanDetailContext";
+import { AlertTriangle } from "lucide-react";
 import type { GpsDtcEvent, GpsTerminal } from "../_lib/types";
 import { formatRelativeOrAbsolute, vehicleLabel } from "../_lib/format";
 
@@ -21,31 +22,6 @@ interface Props {
 }
 
 export function DtcTable({ events, terminals, loading }: Props) {
-  const { openByScanId } = useScanDetail();
-  /** Per-event request state: idle | submitting | running */
-  const [stateById, setStateById] = useState<Record<string, "idle" | "submitting" | "running">>({});
-  const [errorById, setErrorById] = useState<Record<string, string | undefined>>({});
-
-  const onAnalyze = async (eventId: string) => {
-    setErrorById((prev) => ({ ...prev, [eventId]: undefined }));
-    setStateById((prev) => ({ ...prev, [eventId]: "submitting" }));
-    const res = await gpsApi.analyzeDtcEvent(eventId);
-    if (!res.success || !res.data) {
-      setStateById((prev) => ({ ...prev, [eventId]: "idle" }));
-      setErrorById((prev) => ({
-        ...prev,
-        [eventId]: res.message ?? "Failed to start analysis",
-      }));
-      return;
-    }
-    setStateById((prev) => ({ ...prev, [eventId]: "running" }));
-    // Open the modal in the loading state and let the context poll until
-    // the report is ready.
-    openByScanId(res.data.scanId, { pollUntilComplete: true });
-    // We leave state="running" so the row keeps showing the spinner; if the
-    // user closes the modal we can safely reset on next click.
-  };
-
   if (loading) {
     return (
       <div className="rounded-xl border border-slate-200 bg-white p-8 text-center">
@@ -77,15 +53,13 @@ export function DtcTable({ events, terminals, loading }: Props) {
               <th className="px-4 py-3 text-left">VIN</th>
               <th className="px-4 py-3 text-left">Codes</th>
               <th className="px-4 py-3 text-left">MIL</th>
-              <th className="px-4 py-3 text-left">Reported</th>
-              <th className="px-4 py-3 text-right">Action</th>
+              <th className="px-4 py-3 text-left">Protocol</th>
+              <th className="px-4 py-3 text-right">Reported</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {events.map((event) => {
               const t = terminalById.get(event.terminalId);
-              const state = stateById[event.id] ?? "idle";
-              const err = errorById[event.id];
               return (
                 <tr key={event.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3 text-slate-900">
@@ -121,25 +95,11 @@ export function DtcTable({ events, terminals, loading }: Props) {
                       <span className="text-xs text-slate-500">off</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {formatRelativeOrAbsolute(event.reportedAt)}
+                  <td className="px-4 py-3 text-xs font-mono text-slate-500">
+                    {event.protocol ?? "—"}
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => onAnalyze(event.id)}
-                      disabled={state !== "idle"}
-                      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-[#1B3A5F] hover:bg-[#2d5278] disabled:bg-slate-300 text-white text-xs font-semibold"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      {state === "idle"
-                        ? "Generate AI Report"
-                        : state === "submitting"
-                          ? "Starting..."
-                          : "Running"}
-                    </button>
-                    {err && (
-                      <p className="text-xs text-rose-600 mt-1">{err}</p>
-                    )}
+                  <td className="px-4 py-3 text-slate-600 text-right">
+                    {formatRelativeOrAbsolute(event.reportedAt)}
                   </td>
                 </tr>
               );

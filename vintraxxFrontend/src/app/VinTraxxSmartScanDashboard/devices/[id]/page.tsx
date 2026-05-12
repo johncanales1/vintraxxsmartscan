@@ -23,12 +23,13 @@ import type {
 import { BackLink } from "../../_components/BackLink";
 import { DeviceMapPanel } from "../../_components/DeviceMapPanel";
 import { LiveObdPanel } from "../../_components/LiveObdPanel";
+import { GpsScanReportPanel } from "../../_components/GpsScanReportPanel";
 import { TripsTable } from "../../_components/TripsTable";
 import { DtcTable } from "../../_components/DtcTable";
 import { AlertsTable } from "../../_components/AlertsTable";
 import { vehicleLabel, formatRelativeOrAbsolute } from "../../_lib/format";
 
-const SUB_TABS = ["live", "trips", "alarms", "dtcs", "settings"] as const;
+const SUB_TABS = ["live", "scan", "trips", "alarms", "dtcs", "settings"] as const;
 type SubTab = (typeof SUB_TABS)[number];
 
 export default function DeviceDetailPage() {
@@ -61,6 +62,7 @@ export default function DeviceDetailPage() {
       <DeviceHeader terminal={terminal} />
       <SubTabNav sub={sub} setSub={setSub} />
       {sub === "live" && terminal && <LiveTab terminal={terminal} />}
+      {sub === "scan" && terminal && <GpsScanReportPanel terminal={terminal} />}
       {sub === "trips" && terminal && <TripsTab terminal={terminal} />}
       {sub === "alarms" && terminal && <AlarmsTab terminal={terminal} />}
       {sub === "dtcs" && terminal && <DtcsTab terminal={terminal} />}
@@ -121,6 +123,7 @@ function StatusPill({ status }: { status: GpsTerminal["status"] }) {
 function SubTabNav({ sub, setSub }: { sub: SubTab; setSub: (s: SubTab) => void }) {
   const labels: Record<SubTab, string> = {
     live: "Live",
+    scan: "Full Scan",
     trips: "Trips",
     alarms: "Alarms",
     dtcs: "DTCs",

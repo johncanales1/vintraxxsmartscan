@@ -34,6 +34,13 @@ export interface ParamValueNumber {
   id: number;
   /** Encoded as uint32 BE. Caller is responsible for choosing values < 2^32. */
   value: number;
+  /**
+   * How many bytes to use on the wire. Defaults to 4 (DWORD). Set to 1 for
+   * BYTE-typed parameters (e.g. 0x2017 OBD enable) or 2 for WORD-typed
+   * parameters so the TLV length field matches what the device firmware
+   * expects.
+   */
+  byteWidth?: 1 | 2 | 4;
 }
 
 export interface ParamValueString {
@@ -68,8 +75,17 @@ export function encode(params: ParamEntry[]): Buffer {
           `0x8103 numeric param 0x${p.id.toString(16)} out of uint32 range`,
         );
       }
-      valueBuf = Buffer.alloc(4);
-      valueBuf.writeUInt32BE(p.value, 0);
+      const width = (p as ParamValueNumber).byteWidth ?? 4;
+      if (width === 1) {
+        valueBuf = Buffer.alloc(1);
+        valueBuf.writeUInt8(p.value & 0xff, 0);
+      } else if (width === 2) {
+        valueBuf = Buffer.alloc(2);
+        valueBuf.writeUInt16BE(p.value & 0xffff, 0);
+      } else {
+        valueBuf = Buffer.alloc(4);
+        valueBuf.writeUInt32BE(p.value, 0);
+      }
     } else if (typeof p.value === 'string') {
       valueBuf = Buffer.from(p.value, 'utf8');
     } else {

@@ -22,6 +22,7 @@ import type {
   GpsAlarm,
   GpsDtcEvent,
   GpsLocation,
+  GpsScanReport,
   GpsTerminal,
   GpsTerminalDailyStat,
   GpsTrip,
@@ -29,6 +30,8 @@ import type {
   ListDtcEventsResult,
   ListLocationsResult,
   ListTripsResult,
+  RequestScanReportResponse,
+  ScanReportEmailResponse,
 } from "./types";
 import { API_BASE } from "@/lib/api-config";
 import { gpsWs } from "./gpsWs";
@@ -306,6 +309,53 @@ export const gpsApi = {
       method: "POST",
       body: {},
     });
+  },
+
+  // ── GPS Full Scan Report (D450 Refresh / Email / AI promotion) ─────────
+  //
+  // These four endpoints back the Full Scan Report page. They are distinct
+  // from the AI `getScanReport` polling helper below — that one reads the
+  // BLE-format `Scan` row from `/scan/report/:id`. The GPS scan-report
+  // endpoints live under `/gps/scan-reports/*` and return the raw OBD
+  // payload sourced directly from the D450 wire codec.
+
+  /** Owner-only "Run full scan" trigger. */
+  requestGpsScan(terminalId: string) {
+    return request<RequestScanReportResponse>(
+      `/gps/terminals/${terminalId}/scan`,
+      { method: "POST", body: {} },
+    );
+  },
+  /** Owner-only lookup of one scan report. */
+  getGpsScanReport(id: string, signal?: AbortSignal) {
+    return request<{ report: GpsScanReport }>(`/gps/scan-reports/${id}`, {
+      signal,
+    });
+  },
+  /** Owner-only list of recent scan reports for a terminal. */
+  listGpsScanReports(
+    terminalId: string,
+    opts: { limit?: number } = {},
+    signal?: AbortSignal,
+  ) {
+    return request<{ reports: GpsScanReport[] }>(
+      `/gps/terminals/${terminalId}/scan-reports`,
+      { query: opts, signal },
+    );
+  },
+  /** Owner-only "Email PDF" — renders + emails the raw GPS scan PDF. */
+  emailGpsScanReport(id: string, body: { email?: string } = {}) {
+    return request<ScanReportEmailResponse>(
+      `/gps/scan-reports/${id}/email`,
+      { method: "POST", body },
+    );
+  },
+  /** Owner-only "Generate AI Report" — promote a COMPLETED scan report. */
+  promoteGpsScanToAi(id: string) {
+    return request<{ scanId: string; reused: boolean }>(
+      `/gps/scan-reports/${id}/promote-ai`,
+      { method: "POST", body: {} },
+    );
   },
 
   // Final-report polling — same endpoint the existing OBD scan list modal

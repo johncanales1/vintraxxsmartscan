@@ -111,6 +111,13 @@ export const GPS_ENDPOINTS = {
   DTC_EVENTS:               '/api/v1/gps/dtc-events',
   DTC_EVENT_DETAIL:         '/api/v1/gps/dtc-events/:id',
   DTC_EVENT_ANALYZE:        '/api/v1/gps/dtc-events/:id/analyze',
+  // Full Scan Report (Refresh / Email / AI promotion) — single source of
+  // truth for D450 OBD diagnostics on the mobile Full Report screen.
+  TERMINAL_REQUEST_SCAN:    '/api/v1/gps/terminals/:id/scan',
+  TERMINAL_LIST_SCANS:      '/api/v1/gps/terminals/:id/scan-reports',
+  SCAN_REPORT_DETAIL:       '/api/v1/gps/scan-reports/:id',
+  SCAN_REPORT_EMAIL:        '/api/v1/gps/scan-reports/:id/email',
+  SCAN_REPORT_PROMOTE_AI:   '/api/v1/gps/scan-reports/:id/promote-ai',
   PUSH_TOKEN:               '/api/v1/gps/devices/push-token',
 };
 

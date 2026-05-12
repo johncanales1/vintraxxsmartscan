@@ -47,6 +47,12 @@ export interface SetParamsItem {
   id: number;
   /** Encoded as uint32 BE if number, UTF-8 if string, opaque if Buffer-like. */
   value: number | string;
+  /**
+   * Wire byte width for numeric values: 1 = BYTE, 2 = WORD, 4 = DWORD
+   * (default). MUST match the param-type table in the device spec — a
+   * wrong length causes the device to silently misinterpret the value.
+   */
+  byteWidth?: 1 | 2 | 4;
 }
 
 export interface EnqueueInput {

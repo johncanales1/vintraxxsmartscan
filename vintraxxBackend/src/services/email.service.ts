@@ -144,6 +144,74 @@ export async function sendReportEmail(
   }
 }
 
+/**
+ * Send a GPS Full Scan Report PDF to the owner. Reuses the shared mailer
+ * transport; the PDF is rendered upstream by `gps-scan-report-pdf.service`.
+ */
+export async function sendGpsScanReportEmail(args: {
+  toEmail: string;
+  pdfPath: string;
+  vehicleLabel: string;
+  vin: string | null;
+  reportedAt: Date;
+  dtcCount: number;
+  milOn: boolean;
+}): Promise<void> {
+  const { toEmail, pdfPath, vehicleLabel, vin, reportedAt, dtcCount, milOn } = args;
+  const subject = `VinTraxx GPS Scan Report — ${vehicleLabel}`;
+  const htmlBody = `<!DOCTYPE html>
+<html>
+  <body style="font-family: Arial, Helvetica, sans-serif; color: #0F172A; line-height: 1.6;">
+    ${getEmailLogoHeaderHtml('GPS Smart-Scan Diagnostic', vehicleLabel)}
+    <div style="max-width: 640px; margin: 0 auto; padding: 24px;">
+      <h1 style="color:#1B3A5F; margin-bottom: 8px;">GPS Smart-Scan Diagnostic</h1>
+      <p style="color:#475569; margin-top: 0;">${vehicleLabel}${vin ? ` &middot; VIN ${vin}` : ''}</p>
+      <p style="color:#475569;">Captured ${reportedAt.toLocaleString()}.</p>
+
+      <div style="margin: 24px 0; padding: 16px 20px; background:#F1F5F9; border-left: 4px solid ${milOn ? '#D97706' : '#16A34A'}; border-radius: 6px;">
+        <strong>${milOn ? 'Check Engine indicator is ON.' : 'Check Engine indicator is OFF.'}</strong><br/>
+        <span style="color:#475569;">${dtcCount} stored fault code${dtcCount === 1 ? '' : 's'} reported by the ECU.</span>
+      </div>
+
+      <p>Your full diagnostic PDF is attached. Tap <em>Generate AI Report</em> inside VinTraxx to get a deeper breakdown of recommended repairs and emissions readiness.</p>
+
+      <p style="color:#94A3B8; font-size: 12px; margin-top: 32px;">
+        VinTraxx SmartScan &middot; ${new Date().getFullYear()}
+      </p>
+    </div>
+  </body>
+</html>`;
+
+  try {
+    await ensureTransporterVerified();
+    const info = await transporter.sendMail({
+      from: `"${env.EMAIL_FROM_NAME}" <${env.EMAIL_FROM}>`,
+      to: toEmail,
+      subject,
+      html: htmlBody,
+      attachments: [
+        {
+          filename: `VinTraxx-GPS-Scan-${vin ?? 'report'}.pdf`,
+          path: pdfPath,
+        },
+      ],
+    });
+    logger.info('GPS scan report email sent', {
+      to: toEmail,
+      vin,
+      messageId: info.messageId,
+      accepted: info.accepted,
+      rejected: info.rejected,
+    });
+  } catch (error) {
+    logger.error('Failed to send GPS scan report email', {
+      to: toEmail,
+      error: (error as Error).message,
+    });
+    rethrowAsEmailServiceError(error);
+  }
+}
+
 export async function sendPasswordResetEmail(toEmail: string, resetLink: string): Promise<void> {
   const htmlBody = `
 <!DOCTYPE html>

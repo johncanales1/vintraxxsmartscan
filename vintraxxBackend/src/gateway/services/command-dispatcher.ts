@@ -355,10 +355,14 @@ function buildBody(cmd: DispatchableRow): Buffer {
       // Convert to the codec's ParamEntry union — strings/numbers pass through;
       // anything else is rejected (the REST validator already enforces this).
       const entries: m8103.ParamEntry[] = (
-        payload.items as Array<{ id: number; value: unknown }>
+        payload.items as Array<{ id: number; value: unknown; byteWidth?: number }>
       ).map((p) => {
         if (typeof p.value === 'number') {
-          return { id: p.id, value: p.value };
+          return {
+            id: p.id,
+            value: p.value,
+            ...(p.byteWidth === 1 || p.byteWidth === 2 ? { byteWidth: p.byteWidth as 1 | 2 } : {}),
+          };
         }
         if (typeof p.value === 'string') {
           return { id: p.id, value: p.value };

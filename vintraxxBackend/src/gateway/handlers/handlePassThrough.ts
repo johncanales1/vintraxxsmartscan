@@ -1,13 +1,21 @@
 /**
  * 0x0900 — Pass-through (transparent transmission) handler.
  *
- * Multiplexes on the 1-byte subtype. Each branch is independent:
+ * Multiplexes on the 1-byte subtype per the JT/T 808 / D450 spec at
+ * `docs/GPS_OBD_SCANNER.md` §3.67-§3.74. Each branch is independent:
  *
- *   0xF2  OBD live   → GpsObdSnapshot row
- *   0xF4  DTC report → GpsDtcEvent row + DTC→Scan bridge (AI pipeline)
- *   0xF5  VIN        → set GpsTerminal.vehicleVin
- *   0xF6  Clear ack  → log + emit (Phase 4 will resolve a pending GpsCommand)
- *   0xF7  Status     → GpsObdSnapshot row (subset of fields F2 covers)
+ *   0xF1  Trip summary   → close OPEN GpsTrip with vendor aggregates
+ *   0xF2  FAULT CODE     → GpsDtcEvent row (only when count > 0)
+ *                          + resolves any pending GpsScanReport for the
+ *                          terminal so the Refresh UI sees the result
+ *   0xF3  Sleep entry    → log + mark terminal idle
+ *   0xF4  Sleep wake     → log + treat as activity
+ *   0xF6  Upgrade status → log + mark the pending upgrade command
+ *   0xF7  Collision      → stash for the alarm pipeline (Phase 2)
+ *
+ * Live OBD telemetry (RPM, coolant, fuel level, etc.) is NOT carried in
+ * 0x0900 — the D450 reports it through 0x0200 extended TLVs under container
+ * IDs 0xEA/0xEB. See `m0200-location.ts` for the decoder.
  *
  * Persistence failures are logged. The platform ACK (0x8001) is always
  * emitted with result=OK as long as we can decode the wrapper byte; a
@@ -15,24 +23,23 @@
  */
 
 import prisma from '../../config/db';
-import { Prisma, type GpsTerminal } from '@prisma/client';
+import type { GpsTerminal } from '@prisma/client';
 import { MsgId } from '../codec/constants';
 import {
   decode as decodePassThrough,
   PassThroughSubtype,
   type DecodedDtc,
-  type DecodedObdLive,
   type DecodedTripSummary,
-  type DecodedVehicleStatus,
-  type DecodedVin,
-  type DecodedDtcClearAck,
+  type DecodedSleepEntry,
+  type DecodedSleepWake,
+  type DecodedUpgradeStatus,
+  type DecodedCollision,
 } from '../codec/messages/m0900-pass-through';
-import { promoteDtcEventToScan } from '../../services/gps-dtc-bridge.service';
+import { onDtcArrived as scanOrchestratorOnDtc } from '../../services/gps-scan-report.service';
 import {
   closeWithVendorSummary,
   type TripLocationPoint,
 } from '../../services/gps-trip.service';
-import * as commandService from '../../services/gps-command.service';
 import { emit as emitNotify } from '../../realtime/notify';
 import type { Session } from '../session/Session';
 
@@ -88,24 +95,20 @@ export async function handlePassThrough(
     case PassThroughSubtype.TRIP_SUMMARY:
       await handleTripSummary(terminal, decoded.parsed as DecodedTripSummary | null, session);
       break;
-    case PassThroughSubtype.OBD_LIVE:
-      await handleObdLive(terminal, decoded.parsed as DecodedObdLive | null, session);
-      break;
     case PassThroughSubtype.DTC:
       await handleDtcReport(terminal, decoded.parsed as DecodedDtc | null, session);
       break;
-    case PassThroughSubtype.VIN:
-      await handleVinReport(terminal, decoded.parsed as DecodedVin | null, session);
+    case PassThroughSubtype.SLEEP_ENTRY:
+      handleSleepEntry(terminal, decoded.parsed as DecodedSleepEntry | null, session);
       break;
-    case PassThroughSubtype.DTC_CLEAR_ACK:
-      await handleDtcClearAck(terminal, decoded.parsed as DecodedDtcClearAck | null, session);
+    case PassThroughSubtype.SLEEP_WAKE:
+      handleSleepWake(terminal, decoded.parsed as DecodedSleepWake | null, session);
       break;
-    case PassThroughSubtype.VEHICLE_STATUS:
-      await handleVehicleStatus(
-        terminal,
-        decoded.parsed as DecodedVehicleStatus | null,
-        session,
-      );
+    case PassThroughSubtype.UPGRADE_STATUS:
+      handleUpgradeStatus(terminal, decoded.parsed as DecodedUpgradeStatus | null, session);
+      break;
+    case PassThroughSubtype.COLLISION:
+      handleCollision(terminal, decoded.parsed as DecodedCollision | null, session);
       break;
     default:
       session.log.info('Pass-through subtype not implemented', {
@@ -175,67 +178,7 @@ async function handleTripSummary(
   }
 }
 
-// ── 0xF2 — OBD Live ──────────────────────────────────────────────────────────
-
-async function handleObdLive(
-  terminal: GpsTerminal,
-  parsed: DecodedObdLive | null,
-  session: Session,
-): Promise<void> {
-  if (!parsed) {
-    session.log.warn('0x0900/0xF2 decoded as null payload', { terminalId: terminal.id });
-    return;
-  }
-  const reportedAt = new Date();
-  try {
-    await prisma.gpsObdSnapshot.create({
-      data: {
-        terminalId: terminal.id,
-        reportedAt,
-        vin: terminal.vehicleVin,
-        rpm: parsed.rpm,
-        vehicleSpeedKmh:
-          parsed.vehicleSpeedKmh !== undefined
-            ? new Prisma.Decimal(parsed.vehicleSpeedKmh.toFixed(1))
-            : null,
-        coolantTempC: parsed.coolantTempC,
-        intakeAirTempC: parsed.intakeAirTempC,
-        throttlePct:
-          parsed.throttlePct !== undefined
-            ? new Prisma.Decimal(parsed.throttlePct.toFixed(1))
-            : null,
-        engineLoadPct:
-          parsed.engineLoadPct !== undefined
-            ? new Prisma.Decimal(parsed.engineLoadPct.toFixed(1))
-            : null,
-        fuelPressureKpa: parsed.fuelPressureKpa,
-        fuelRateLph:
-          parsed.fuelRateLph !== undefined
-            ? new Prisma.Decimal(parsed.fuelRateLph.toFixed(2))
-            : null,
-        batteryVoltageMv: parsed.batteryVoltageMv,
-        mafGps:
-          parsed.mafGps !== undefined ? new Prisma.Decimal(parsed.mafGps.toFixed(2)) : null,
-        o2Voltage:
-          parsed.o2Voltage !== undefined
-            ? new Prisma.Decimal(parsed.o2Voltage.toFixed(3))
-            : null,
-        enginePowerKw:
-          parsed.enginePowerKw !== undefined
-            ? new Prisma.Decimal(parsed.enginePowerKw.toFixed(1))
-            : null,
-        extraPidsJson:
-          Object.keys(parsed.extraPids).length > 0 ? parsed.extraPids : undefined,
-      },
-    });
-  } catch (err) {
-    session.log.warn('Failed to persist GpsObdSnapshot from 0xF2', {
-      err: (err as Error).message,
-    });
-  }
-}
-
-// ── 0xF4 — DTC Report ────────────────────────────────────────────────────────
+// ── 0xF2 — DTC Report (spec §3.69 Fault Code Data Packet) ─────────────────────
 
 async function handleDtcReport(
   terminal: GpsTerminal,
@@ -243,18 +186,32 @@ async function handleDtcReport(
   session: Session,
 ): Promise<void> {
   if (!parsed) {
-    session.log.warn('0x0900/0xF4 decoded as null payload', { terminalId: terminal.id });
+    session.log.warn('0x0900/0xF2 decoded as null payload', { terminalId: terminal.id });
     return;
   }
-  const reportedAt = new Date();
+
   const allCodes = [
     ...parsed.storedDtcCodes,
     ...parsed.pendingDtcCodes,
     ...parsed.permanentDtcCodes,
   ];
 
+  // Always tell the scan orchestrator so a pending Refresh request resolves
+  // even when the car is healthy (DTC count = 0). Pass through the actual
+  // counts — the orchestrator wraps them into the GpsScanReport.
+  void scanOrchestratorOnDtc(terminal.id, parsed);
+
+  // We deliberately do NOT persist a GpsDtcEvent for healthy reports. The
+  // dashboard's DTC feed only shows real faults; an empty F2 is purely a
+  // "I checked, nothing's wrong" handshake and would otherwise spam the
+  // feed with empty rows on every Refresh.
+  if (allCodes.length === 0) {
+    session.log.info('0x0900/0xF2 reports no fault codes', { terminalId: terminal.id });
+    return;
+  }
+
   try {
-    const dtcEvent = await prisma.gpsDtcEvent.create({
+    await prisma.gpsDtcEvent.create({
       data: {
         terminalId: terminal.id,
         ownerUserId: terminal.ownerUserId,
@@ -264,137 +221,96 @@ async function handleDtcReport(
         storedDtcCodes: parsed.storedDtcCodes,
         pendingDtcCodes: parsed.pendingDtcCodes,
         permanentDtcCodes: parsed.permanentDtcCodes,
-        protocol: 'OBD-II',
-        reportedAt,
+        protocol: parsed.protocol ?? 'OBD-II',
+        latitude:
+          Number.isFinite(parsed.latitude) && parsed.latitude !== 0
+            ? parsed.latitude.toFixed(7)
+            : null,
+        longitude:
+          Number.isFinite(parsed.longitude) && parsed.longitude !== 0
+            ? parsed.longitude.toFixed(7)
+            : null,
+        reportedAt: parsed.reportedAt,
       },
     });
 
-    // Promote to a Scan + AI report. Bridge is fully fault-tolerant — its
-    // failures are already logged inside the service.
-    void promoteDtcEventToScan({ dtcEvent, terminal });
-
-    // The bridge emits its own `dtc.detected` notify. We don't double-fire.
+    // No automatic AI promotion. The Full Scan Report page is the single
+    // entry-point into the AI pipeline for GPS-sourced data — users opt in
+    // explicitly via "Generate AI Report". This avoids burning AI tokens on
+    // background reports the user may never look at, and keeps a clear 1:1
+    // mapping between a user action and an AI invocation.
   } catch (err) {
-    session.log.error('Failed to persist GpsDtcEvent from 0xF4', {
+    session.log.error('Failed to persist GpsDtcEvent from 0xF2', {
       err: (err as Error).message,
     });
   }
 }
 
-// ── 0xF5 — VIN Report ────────────────────────────────────────────────────────
+// ── 0xF3 — Sleep Entry ──────────────────────────────────────────────────────
 
-async function handleVinReport(
+function handleSleepEntry(
   terminal: GpsTerminal,
-  parsed: DecodedVin | null,
+  parsed: DecodedSleepEntry | null,
   session: Session,
-): Promise<void> {
-  if (!parsed?.vin) {
-    session.log.info('0x0900/0xF5 had no usable VIN', { terminalId: terminal.id });
-    return;
-  }
-  if (terminal.vehicleVin === parsed.vin) {
-    return; // already known, no-op
-  }
-  try {
-    await prisma.gpsTerminal.update({
-      where: { id: terminal.id },
-      data: { vehicleVin: parsed.vin },
-    });
-    session.log.info('Updated terminal VIN from 0xF5', {
-      terminalId: terminal.id,
-      vin: parsed.vin,
-    });
-  } catch (err) {
-    session.log.warn('Failed to update terminal VIN from 0xF5', {
-      err: (err as Error).message,
-    });
-  }
-}
-
-// ── 0xF6 — DTC Clear Ack ────────────────────────────────────────────────────
-
-async function handleDtcClearAck(
-  terminal: GpsTerminal,
-  parsed: DecodedDtcClearAck | null,
-  session: Session,
-): Promise<void> {
-  if (!parsed) return;
-  session.log.info('Received DTC clear ack (0xF6)', {
+): void {
+  session.log.info('Device entered sleep mode (0xF3)', {
     terminalId: terminal.id,
-    status: parsed.status,
-    rawStatus: parsed.rawStatus,
+    reportedAt: parsed?.reportedAt?.toISOString() ?? null,
   });
+}
 
-  // Find the most-recent SENT 0x8900 (DATA_PASSTHROUGH_DOWN) command for
-  // this terminal and mark it ACKED with the rich vendor status. Devices
-  // typically also fire a 0x0001 carrying the generic OK/FAIL — that may
-  // have already moved the row to ACKED, in which case markAcked is a
-  // no-op (status guard). Either way the audit trail is complete.
-  const recent = await prisma.gpsCommand.findFirst({
-    where: {
-      terminalId: terminal.id,
-      functionCode: MsgId.DATA_PASSTHROUGH_DOWN,
-      status: 'SENT',
-    },
-    orderBy: { sentAt: 'desc' },
-    select: { id: true },
+// ── 0xF4 — Sleep Wake ─────────────────────────────────────────────────────────
+
+function handleSleepWake(
+  terminal: GpsTerminal,
+  parsed: DecodedSleepWake | null,
+  session: Session,
+): void {
+  session.log.info('Device woke from sleep (0xF4)', {
+    terminalId: terminal.id,
+    reportedAt: parsed?.reportedAt?.toISOString() ?? null,
+    wakeType: parsed?.wakeType ?? null,
   });
-  if (recent) {
-    const result = parsed.status === 'success' ? 0 : 1;
-    await commandService.markAcked({
-      commandId: recent.id,
-      result,
-      response: { status: parsed.status, rawStatus: parsed.rawStatus },
-    });
-  }
+}
 
+// ── 0xF6 — MCU upgrade status ─────────────────────────────────────────────────
+
+function handleUpgradeStatus(
+  terminal: GpsTerminal,
+  parsed: DecodedUpgradeStatus | null,
+  session: Session,
+): void {
+  session.log.info('MCU upgrade status (0xF6)', {
+    terminalId: terminal.id,
+    status: parsed?.status ?? 'unknown',
+    rawStatus: parsed?.rawStatus ?? null,
+  });
+}
+
+// ── 0xF7 — Suspected collision alarm ─────────────────────────────────────────
+
+function handleCollision(
+  terminal: GpsTerminal,
+  parsed: DecodedCollision | null,
+  session: Session,
+): void {
+  if (!parsed) return;
+  session.log.warn('Suspected collision (0xF7)', {
+    terminalId: terminal.id,
+    level: parsed.level,
+    latitude: parsed.latitude,
+    longitude: parsed.longitude,
+    reportedAt: parsed.reportedAt.toISOString(),
+  });
+  // Phase 2 alarm pipeline takes over from here; for now we surface the
+  // event on the real-time bus so dashboards can flash.
   void emitNotify({
-    type: 'dtc.detected', // reuse channel; UI shows banner cleared
+    type: 'alarm.opened',
     terminalId: terminal.id,
     ownerUserId: terminal.ownerUserId,
-    dtcEventId: '',
-    dtcCount: 0,
-    vin: terminal.vehicleVin ?? null,
-    at: new Date().toISOString(),
+    alarmId: '',
+    alarmType: 'COLLISION_WARNING',
+    severity: parsed.level >= 2 ? 'CRITICAL' : 'WARNING',
+    at: parsed.reportedAt.toISOString(),
   });
-}
-
-// ── 0xF7 — Vehicle Status ───────────────────────────────────────────────────
-
-async function handleVehicleStatus(
-  terminal: GpsTerminal,
-  parsed: DecodedVehicleStatus | null,
-  session: Session,
-): Promise<void> {
-  if (!parsed) return;
-  const reportedAt = new Date();
-  try {
-    await prisma.gpsObdSnapshot.create({
-      data: {
-        terminalId: terminal.id,
-        reportedAt,
-        vin: terminal.vehicleVin,
-        rpm: parsed.rpm,
-        vehicleSpeedKmh:
-          parsed.vehicleSpeedKmh !== undefined
-            ? new Prisma.Decimal(parsed.vehicleSpeedKmh.toFixed(1))
-            : null,
-        coolantTempC: parsed.coolantTempC,
-        batteryVoltageMv: parsed.batteryVoltageMv,
-        // Fuel level and door mask aren't first-class columns on the snapshot
-        // table — stash in extraPidsJson under namespaced keys.
-        extraPidsJson: {
-          ...(parsed.fuelLevelL !== undefined ? { fuelLevelL: parsed.fuelLevelL } : {}),
-          ...(parsed.doorsOpenMask !== undefined
-            ? { doorsOpenMask: parsed.doorsOpenMask }
-            : {}),
-          ...(parsed.accOn !== undefined ? { accOn: parsed.accOn } : {}),
-        },
-      },
-    });
-  } catch (err) {
-    session.log.warn('Failed to persist GpsObdSnapshot from 0xF7', {
-      err: (err as Error).message,
-    });
-  }
 }

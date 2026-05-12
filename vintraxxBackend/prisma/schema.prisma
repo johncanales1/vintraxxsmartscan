@@ -112,6 +112,11 @@ model Scan {
   gpsDtcEventId String?  @unique
   gpsDtcEvent   GpsDtcEvent? @relation(fields: [gpsDtcEventId], references: [id])
 
+  /// Back-relation when a GPS Full Scan Report is promoted to an AI Scan.
+  /// The owning side lives on GpsScanReport.promotedScanId. The 1:1 invariant
+  /// is enforced by `@unique` on that side.
+  gpsScanReport GpsScanReport?
+
   @@index([userId])
   @@index([vin])
 }
@@ -450,6 +455,7 @@ model GpsTerminal {
   trips        GpsTrip[]
   commands     GpsCommand[]
   dailyStats   GpsTerminalDailyStats[]
+  scanReports  GpsScanReport[]
 
   @@index([ownerUserId])
   @@index([status])
@@ -725,4 +731,104 @@ model GpsAlarmPushDedup {
   id      String   @id @default(uuid())
   alarmId String   @unique
   sentAt  DateTime @default(now())
+}
+
+/// Lifecycle states of a user-triggered "Run full scan" request.
+///
+///   PENDING    - commands queued, awaiting F2 / OBD live response
+///   COMPLETED  - orchestrator received both F2 + extended PIDs (or hit the
+///                graceful single-source completion criterion)
+///   FAILED     - terminal offline / hard error before the window opened
+///   TIMED_OUT  - window elapsed with no F2 + no OBD live PIDs received
+enum GpsScanReportStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  TIMED_OUT
+}
+
+/// One row per user-initiated "Run full scan" request.
+///
+/// This is the SINGLE source of truth for the Full Report page on both the
+/// frontend dashboard and the mobile app. It mirrors the shape the BLE Scan
+/// model already exposes (VIN, MIL state, distance with MIL on, warm-ups,
+/// fuel-system status, secondary-air status, DTC buckets) so the same UI
+/// shells can render either source.
+///
+/// The orchestrator (`gps-scan-report.service.ts`) creates the row in
+/// PENDING, enqueues `8103 {0x2017=1, 0x201A=1}` + `8104` against the
+/// terminal, listens for the next F2 + 0x0200 extended-PID burst, then
+/// aggregates the results in-place and flips status to COMPLETED. A 30s
+/// inactivity window flips it to TIMED_OUT.
+model GpsScanReport {
+  id          String      @id @default(uuid())
+  terminalId  String
+  terminal    GpsTerminal @relation(fields: [terminalId], references: [id], onDelete: Cascade)
+
+  /// Snapshot of terminal owner at request time. Plain String (no FK) so the
+  /// audit trail survives owner reassignment.
+  ownerUserId String?
+  /// Originator. Exactly ONE of (requestedByAdminId, requestedByUserId) is
+  /// set per row; system-initiated scans (none yet) would leave both null.
+  requestedByAdminId String?
+  requestedByUserId  String?
+
+  status       GpsScanReportStatus @default(PENDING)
+  requestedAt  DateTime            @default(now())
+  completedAt  DateTime?
+  /// When status is FAILED or TIMED_OUT this carries a short human-readable
+  /// reason for the dashboard banner.
+  errorText    String?
+
+  // Aggregated payload (mirrors the BLE Scan shape)
+  vin                  String?
+  vehicleYear          Int?
+  vehicleMake          String?
+  vehicleModel         String?
+  mileageKm            Decimal? @db.Decimal(10, 1)
+
+  milOn                Boolean?
+  dtcCount             Int?
+  storedDtcCodes       String[]
+  pendingDtcCodes      String[]
+  permanentDtcCodes    String[]
+
+  fuelSystemStatus     String?
+  secondaryAirStatus   String?
+  distanceWithMilKm    Decimal? @db.Decimal(8, 1)
+  distanceSinceClearKm Decimal? @db.Decimal(8, 1)
+  warmupsSinceClear    Int?
+  runtimeSinceStartSec Int?
+
+  rpm                  Int?
+  vehicleSpeedKmh      Decimal? @db.Decimal(5, 1)
+  coolantTempC         Int?
+  intakeAirTempC       Int?
+  throttlePct          Decimal? @db.Decimal(4, 1)
+  engineLoadPct        Decimal? @db.Decimal(4, 1)
+  mafGps               Decimal? @db.Decimal(6, 2)
+  fuelLevelPct         Decimal? @db.Decimal(4, 1)
+  fuelRailPressureKpa  Int?
+  batteryVoltageMv     Int?
+  ambientTempC         Int?
+  barometricKpa        Int?
+  acceleratorPct       Decimal? @db.Decimal(4, 1)
+  intakeManifoldKpa    Int?
+
+  protocol             String?
+  /// Full TLV dump for forward-compat / forensic debug. Includes the raw
+  /// `unknownPids` map and the original F2 DTC bytes (hex).
+  rawObdJson           Json?
+
+  /// Optional AI promotion. When the user taps "Generate AI Report" we
+  /// create a Scan row and stamp its id here (unique 1:1).
+  promotedScanId String? @unique
+  promotedScan   Scan?   @relation(fields: [promotedScanId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([terminalId, createdAt])
+  @@index([ownerUserId, createdAt])
+  @@index([status])
 }

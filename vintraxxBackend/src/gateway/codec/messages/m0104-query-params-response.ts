@@ -24,6 +24,29 @@ export interface DecodedQueryParamsResponse {
   params: DecodedParam[];
 }
 
+/**
+ * D450 OBD-related parameter IDs (from device specification):
+ * 0x2017 — OBD function enable (BYTE, 0=off, 1=on)
+ * 0x201A — Read fault codes flag (BYTE, one-shot)
+ * 0x201B — OBD upload interval (DWORD, seconds) — &3Z in some docs
+ * 0x201C — OBD large packet upload interval (DWORD, seconds) — &5R in some docs
+ * 0x201D — Diagnostic/OBD log setting (BYTE) — &5P in some docs
+ */
+export const OBD_PARAM_IDS = {
+  ENABLE: 0x2017,
+  READ_FAULT_CODES: 0x201a,
+  UPLOAD_INTERVAL: 0x201b, // &3Z
+  LARGE_PACKET_INTERVAL: 0x201c, // &5R
+  DIAG_LOG_SETTING: 0x201d, // &5P
+} as const;
+
+export interface DecodedObdConfig {
+  obdEnabled: boolean;
+  uploadIntervalSec: number | null;
+  largePacketIntervalSec: number | null;
+  diagLogSetting: number | null;
+}
+
 export function decode(body: Buffer): DecodedQueryParamsResponse {
   if (body.length < 3) {
     throw new Error(`0x0104 body too short (${body.length} < 3)`);
@@ -47,4 +70,38 @@ export function decode(body: Buffer): DecodedQueryParamsResponse {
   }
 
   return { replyToSerial, paramCount, params };
+}
+
+/**
+ * Extract OBD configuration from decoded 0x0104 parameters.
+ * Returns null if OBD params are not present.
+ */
+export function extractObdConfig(params: DecodedParam[]): DecodedObdConfig | null {
+  let obdEnabled: boolean | null = null;
+  let uploadIntervalSec: number | null = null;
+  let largePacketIntervalSec: number | null = null;
+  let diagLogSetting: number | null = null;
+
+  for (const param of params) {
+    if (param.id === OBD_PARAM_IDS.ENABLE && param.raw.length >= 1) {
+      obdEnabled = param.raw.readUInt8(0) === 1;
+    } else if (param.id === OBD_PARAM_IDS.UPLOAD_INTERVAL && param.raw.length >= 4) {
+      uploadIntervalSec = param.raw.readUInt32BE(0);
+    } else if (param.id === OBD_PARAM_IDS.LARGE_PACKET_INTERVAL && param.raw.length >= 4) {
+      largePacketIntervalSec = param.raw.readUInt32BE(0);
+    } else if (param.id === OBD_PARAM_IDS.DIAG_LOG_SETTING && param.raw.length >= 1) {
+      diagLogSetting = param.raw.readUInt8(0);
+    }
+  }
+
+  if (obdEnabled === null) {
+    return null; // OBD params not present
+  }
+
+  return {
+    obdEnabled,
+    uploadIntervalSec,
+    largePacketIntervalSec,
+    diagLogSetting,
+  };
 }

@@ -743,6 +743,7 @@ model GpsAlarmPushDedup {
 enum GpsScanReportStatus {
   PENDING
   COMPLETED
+  PARTIAL
   FAILED
   TIMED_OUT
 }

@@ -104,15 +104,15 @@ export interface TripEvent {
 /**
  * Scan-report lifecycle. Fired when the user-triggered "Run full scan"
  * orchestrator transitions a GpsScanReport row through PENDING →
- * COMPLETED / FAILED / TIMED_OUT. Mobile + frontend subscribe to flip the
+ * COMPLETED / PARTIAL / FAILED / TIMED_OUT. Mobile + frontend subscribe to flip the
  * Refresh UI without polling.
  */
 export interface ScanReportEvent {
-  type: 'scan.requested' | 'scan.completed' | 'scan.failed';
+  type: 'scan.requested' | 'scan.completed' | 'scan.partial' | 'scan.failed';
   terminalId: string;
   ownerUserId: string | null;
   scanReportId: string;
-  status: 'PENDING' | 'COMPLETED' | 'FAILED' | 'TIMED_OUT';
+  status: 'PENDING' | 'COMPLETED' | 'PARTIAL' | 'FAILED' | 'TIMED_OUT';
   /** When status=COMPLETED, the optional promoted Scan id for the AI report. */
   promotedScanId?: string | null;
   /** When status=FAILED or TIMED_OUT, a short human-readable reason. */

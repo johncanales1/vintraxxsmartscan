@@ -25,6 +25,10 @@ import { handleTerminalGeneralResponse } from './handleTerminalGeneralResponse';
 import * as m0104 from '../codec/messages/m0104-query-params-response';
 import { handleLocation, handleBatchLocation } from './handleLocation';
 import { handlePassThrough } from './handlePassThrough';
+import { handleVersionInfo } from './handleVersionInfo';
+import * as m0205 from '../codec/messages/m0205-version-info';
+import prisma from '../../config/db';
+import { Prisma } from '@prisma/client';
 import type { Session } from '../session/Session';
 import type { DecodedFrame } from '../codec';
 
@@ -101,12 +105,62 @@ export async function dispatchFrame(session: Session, frame: DecodedFrame): Prom
         session.pendingCommands.delete(decoded0104.replyToSerial);
         pending0104.resolve(0); // 0 = success
       }
+      // Extract OBD-relevant config params and persist on the terminal row.
+      if (session.terminalId) {
+        const obdConfig: Record<string, unknown> = {};
+        for (const p of decoded0104.params) {
+          if (p.id === 0x2017 && p.raw.length >= 1) obdConfig.obdEnabled = p.raw.readUInt8(0);
+          if (p.id === 0x201a && p.raw.length >= 1) obdConfig.dtcReadFlag = p.raw.readUInt8(0);
+          if (p.id === 0x2012 && p.raw.length >= 1) obdConfig.mileageAndFuelType = p.raw.readUInt8(0);
+          if (p.id === 0x2013 && p.raw.length >= 4) obdConfig.mileageCoefficient = p.raw.readUInt32BE(0);
+          if (p.id === 0x2014 && p.raw.length >= 4) obdConfig.fuelCoefficient = p.raw.readUInt32BE(0);
+          if (p.id === 0x2015 && p.raw.length >= 4) obdConfig.fuelDensity = p.raw.readUInt32BE(0);
+          if (p.id === 0x2016 && p.raw.length >= 4) obdConfig.idleFuelCoefficient = p.raw.readUInt32BE(0);
+          // OBD interval parameters for scan timeout adjustment
+          if (p.id === 0x201b && p.raw.length >= 4) obdConfig.obdUploadIntervalSec = p.raw.readUInt32BE(0); // &3Z
+          if (p.id === 0x201c && p.raw.length >= 4) obdConfig.obdLargePacketIntervalSec = p.raw.readUInt32BE(0); // &5R
+          if (p.id === 0x201d && p.raw.length >= 1) obdConfig.obdDiagLogSetting = p.raw.readUInt8(0); // &5P
+        }
+        if (Object.keys(obdConfig).length > 0) {
+          session.log.info('OBD config from 0x0104 (decoded)', obdConfig);
+          void prisma.gpsTerminal.update({
+            where: { id: session.terminalId },
+            data: { parameters: obdConfig as Prisma.InputJsonValue },
+          }).catch(() => { /* best-effort */ });
+        }
+      }
+      return;
+    }
+
+    case MsgId.PROACTIVE_VERSION_INFO: {
+      // 0x0205 — proactive version report containing VIN, firmware, mileage.
+      // Handler sends 0x8205 reply (NOT 0x8001).
+      const decoded0205 = m0205.decode(body);
+      session.log.info('0x0205 proactive version info received', {
+        hasVin: !!decoded0205.vin,
+        hasMileage: decoded0205.totalMileageKm > 0,
+        softwareVersion: decoded0205.softwareVersion,
+      });
+      await handleVersionInfo(session, decoded0205, header.msgSerial);
       return;
     }
 
     case MsgId.LOCATION_REPORT: {
       // Pass the raw body so persistLocations can stash it on rawPayload.
       await handleLocation(session, body, header.msgSerial, body);
+      return;
+    }
+
+    case 0x0201: {
+      // 0x0201 — Location Information Query Response. Body is:
+      //   replyToSerial (uint16 BE) + standard 0x0200 location body.
+      // We skip the 2-byte serial prefix and decode the rest as a 0x0200.
+      if (body.length > 2) {
+        const locationBody = body.subarray(2);
+        await handleLocation(session, locationBody, header.msgSerial, body);
+      } else {
+        session.ack(0x0201, header.msgSerial, PlatformResult.FAILURE);
+      }
       return;
     }
 

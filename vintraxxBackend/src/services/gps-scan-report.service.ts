@@ -51,24 +51,61 @@ import type {
   DecodedLocation,
   DecodedObdLive,
 } from '../gateway/codec/messages/m0200-location';
+import type { DecodedObdConfig } from '../gateway/codec/messages/m0104-query-params-response';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
 /**
  * How long to wait between requesting the scan and forcibly TIMING_OUT the
- * row if neither F2 nor 0x0200 extended PIDs have arrived. The D450 typically
- * answers within 5–10 s on a healthy LTE link; 30 s gives us margin for
- * slow handshakes and ECU bus warm-up.
+ * row if neither F2 nor 0x0200 extended PIDs have arrived. Default is 45s,
+ * but this is adjusted based on the device's OBD interval settings from 0x0104.
  */
-const SCAN_TIMEOUT_MS = 30_000;
+const DEFAULT_SCAN_TIMEOUT_MS = 45_000;
+
+/**
+ * Debounce window: prevent multiple scan requests within 20 seconds for the
+ * same terminal. This protects against double-taps and rapid retry loops.
+ */
+const SCAN_DEBOUNCE_MS = 20_000;
 
 /**
  * A second window after the FIRST piece of telemetry arrives, used to wait
  * for the OTHER piece. We don't block forever — if F2 arrived but no OBD
  * PID burst is going to come (some ECUs don't report 0x6014 at all), we
- * complete on the first signal so the user gets *something*.
+ * complete as PARTIAL instead of COMPLETED.
  */
 const SECOND_SIGNAL_WAIT_MS = 8_000;
+
+/**
+ * Calculate scan timeout based on terminal's OBD interval settings.
+ * If the device is configured with long OBD upload intervals, we need to wait longer.
+ */
+function calculateScanTimeout(terminal: GpsTerminal): number {
+  const params = terminal.parameters as Record<string, unknown> | null;
+  if (!params) {
+    return DEFAULT_SCAN_TIMEOUT_MS;
+  }
+
+  const largePacketIntervalSec = params.obdLargePacketIntervalSec as number | undefined;
+  const uploadIntervalSec = params.obdUploadIntervalSec as number | undefined;
+
+  // Use the larger of the two intervals (whichever controls OBD live data)
+  const intervalSec = Math.max(
+    largePacketIntervalSec ?? 0,
+    uploadIntervalSec ?? 0,
+  );
+
+  if (intervalSec === 0) {
+    return DEFAULT_SCAN_TIMEOUT_MS;
+  }
+
+  // Add 5 seconds buffer on top of the configured interval
+  // If interval is 70s, wait 75s
+  const timeoutMs = (intervalSec + 5) * 1000;
+
+  // Cap at 120 seconds to avoid excessively long waits
+  return Math.min(timeoutMs, 120_000);
+}
 
 // ── In-memory pending-timer registry ───────────────────────────────────────
 
@@ -155,21 +192,24 @@ export async function requestFullScan(
     return { scanReportId: failed.id, reused: false };
   }
 
-  // Idempotency: a PENDING row newer than 30 s short-circuits a duplicate.
-  const recentPending = await prisma.gpsScanReport.findFirst({
+  // Idempotency/debounce: reject if ANY scan (PENDING, PARTIAL, or recent COMPLETED)
+  // exists within the last 20 seconds. This prevents rapid retry loops and
+  // double-taps from creating multiple parallel scans.
+  const recentScan = await prisma.gpsScanReport.findFirst({
     where: {
       terminalId: terminal.id,
-      status: 'PENDING',
-      requestedAt: { gt: new Date(Date.now() - SCAN_TIMEOUT_MS) },
+      requestedAt: { gt: new Date(Date.now() - SCAN_DEBOUNCE_MS) },
     },
     orderBy: { requestedAt: 'desc' },
   });
-  if (recentPending) {
-    logger.info('Re-using existing PENDING GpsScanReport', {
-      scanReportId: recentPending.id,
+  if (recentScan) {
+    logger.info('Re-using recent GpsScanReport within debounce window', {
+      scanReportId: recentScan.id,
       terminalId: terminal.id,
+      status: recentScan.status,
+      ageMs: Date.now() - recentScan.requestedAt.getTime(),
     });
-    return { scanReportId: recentPending.id, reused: true };
+    return { scanReportId: recentScan.id, reused: true };
   }
 
   const report = await prisma.gpsScanReport.create({
@@ -214,8 +254,16 @@ export async function requestFullScan(
     return { scanReportId: report.id, reused: false };
   }
 
-  // Register the timeout. Cleared as soon as the row leaves PENDING.
-  registerTimeout(report);
+  // Register the timeout. Calculate based on terminal's OBD interval settings.
+  const scanTimeoutMs = calculateScanTimeout(terminal);
+  logger.info('GPS scan timeout calculated', {
+    terminalId: terminal.id,
+    timeoutMs: scanTimeoutMs,
+    timeoutSec: scanTimeoutMs / 1000,
+    obdUploadInterval: (terminal.parameters as Record<string, unknown> | null)?.obdUploadIntervalSec,
+    obdLargePacketInterval: (terminal.parameters as Record<string, unknown> | null)?.obdLargePacketIntervalSec,
+  });
+  registerTimeout(report, scanTimeoutMs);
 
   void emitNotify({
     type: 'scan.requested',
@@ -287,17 +335,53 @@ export async function onDtcArrived(
 /**
  * Called by `handleLocation.ts` whenever a 0x0200 frame is decoded with
  * extended OBD PIDs. We merge the live telemetry into the most-recent
- * PENDING GpsScanReport for the same terminal.
+ * PENDING or PARTIAL GpsScanReport for the same terminal.
  */
 export async function onObdLiveArrived(
   terminalId: string,
   obd: DecodedObdLive,
   location: DecodedLocation | null,
 ): Promise<void> {
-  const report = await prisma.gpsScanReport.findFirst({
+  logger.info('0x0200 OBD live data arrived', {
+    terminalId,
+    hasRpm: obd.rpm !== null,
+    hasCoolantTemp: obd.coolantTempC !== null,
+    hasVin: obd.vin !== null,
+  });
+
+  // First try to find a PENDING scan
+  let report = await prisma.gpsScanReport.findFirst({
     where: { terminalId, status: 'PENDING' },
     orderBy: { requestedAt: 'desc' },
   });
+
+  // If no PENDING scan, check for a recent PARTIAL scan (late-arrival handling)
+  if (!report) {
+    const recentPartial = await prisma.gpsScanReport.findFirst({
+      where: {
+        terminalId,
+        status: 'PARTIAL',
+        completedAt: { gt: new Date(Date.now() - 60_000) }, // Within last 60 seconds
+      },
+      orderBy: { requestedAt: 'desc' },
+    });
+    if (recentPartial) {
+      logger.info('Late-arrival: updating PARTIAL scan with OBD live data', {
+        scanReportId: recentPartial.id,
+        terminalId,
+      });
+      report = recentPartial;
+      // Upgrade status from PARTIAL to COMPLETED since we now have live data
+      await prisma.gpsScanReport.update({
+        where: { id: report.id },
+        data: {
+          status: 'COMPLETED',
+          errorText: null, // Clear the partial error text
+        },
+      });
+    }
+  }
+
   if (!report) return;
 
   const data: Prisma.GpsScanReportUncheckedUpdateInput = {
@@ -386,7 +470,7 @@ export async function onObdLiveArrived(
  * could fire.
  */
 export async function sweepStaleScanReports(): Promise<number> {
-  const cutoff = new Date(Date.now() - SCAN_TIMEOUT_MS - 5_000);
+  const cutoff = new Date(Date.now() - DEFAULT_SCAN_TIMEOUT_MS - 5_000);
   const stale = await prisma.gpsScanReport.findMany({
     where: { status: 'PENDING', requestedAt: { lt: cutoff } },
     select: { id: true, terminalId: true, ownerUserId: true },
@@ -398,7 +482,7 @@ export async function sweepStaleScanReports(): Promise<number> {
       data: {
         status: 'TIMED_OUT',
         completedAt: new Date(),
-        errorText: 'No response from device within 30 seconds.',
+        errorText: `No response from device within ${DEFAULT_SCAN_TIMEOUT_MS / 1000} seconds.`,
       },
     });
     if (updated.count > 0) {
@@ -409,7 +493,7 @@ export async function sweepStaleScanReports(): Promise<number> {
         ownerUserId: row.ownerUserId,
         scanReportId: row.id,
         status: 'TIMED_OUT',
-        reason: 'No response from device within 30 seconds.',
+        reason: `No response from device within ${DEFAULT_SCAN_TIMEOUT_MS / 1000} seconds.`,
         at: new Date().toISOString(),
       });
     }
@@ -420,10 +504,10 @@ export async function sweepStaleScanReports(): Promise<number> {
 // ── Internal helpers ───────────────────────────────────────────────────────
 
 /**
- * Schedule the outer 30 s timeout. Cancelled by `maybeCompleteScan` when the
- * row transitions to COMPLETED.
+ * Schedule the outer timeout. Cancelled by `maybeCompleteScan` when the
+ * row transitions to COMPLETED or PARTIAL.
  */
-function registerTimeout(report: GpsScanReport): void {
+function registerTimeout(report: GpsScanReport, timeoutMs: number): void {
   const handle = setTimeout(async () => {
     pending.delete(report.id);
     const updated = await prisma.gpsScanReport.updateMany({
@@ -431,7 +515,7 @@ function registerTimeout(report: GpsScanReport): void {
       data: {
         status: 'TIMED_OUT',
         completedAt: new Date(),
-        errorText: 'No response from device within 30 seconds.',
+        errorText: `No response from device within ${timeoutMs / 1000} seconds.`,
       },
     });
     if (updated.count > 0) {
@@ -441,31 +525,29 @@ function registerTimeout(report: GpsScanReport): void {
         ownerUserId: report.ownerUserId,
         scanReportId: report.id,
         status: 'TIMED_OUT',
-        reason: 'No response from device within 30 seconds.',
+        reason: `No response from device within ${timeoutMs / 1000} seconds.`,
         at: new Date().toISOString(),
       });
     }
-  }, SCAN_TIMEOUT_MS);
-  // Hint Node we don't want this timer to prevent process exit during dev
-  // restarts. Production never exits while a scan is pending anyway.
+  }, timeoutMs);
   handle.unref?.();
 
   pending.set(report.id, {
     scanReportId: report.id,
     terminalId: report.terminalId,
-    timeoutAt: Date.now() + SCAN_TIMEOUT_MS,
+    timeoutAt: Date.now() + timeoutMs,
     cancelTimeout: () => clearTimeout(handle),
     done: Promise.resolve(),
   });
 }
 
 /**
- * Decide whether we have enough data to flip the row to COMPLETED. Strategy:
- *  - First piece of telemetry: arm the SECOND_SIGNAL_WAIT_MS short window
- *    (because the OTHER signal is usually ~3-4 s behind). If the second
- *    signal arrives, complete immediately.
- *  - On second signal: complete now.
- *  - On 30 s outer timeout (registered separately): TIMED_OUT.
+ * Decide whether we have enough data to flip the row to COMPLETED or PARTIAL. Strategy:
+ *  - If we have BOTH DTC and OBD live data: complete as COMPLETED
+ *  - If we have ONLY DTC data: wait SECOND_SIGNAL_WAIT_MS, then complete as PARTIAL
+ *  - If we have ONLY OBD live data: wait SECOND_SIGNAL_WAIT_MS, then complete as COMPLETED
+ *    (OBD live data is sufficient for a useful report even without DTC)
+ *  - On outer timeout: TIMED_OUT
  */
 async function maybeCompleteScan(
   scanReportId: string,
@@ -478,7 +560,8 @@ async function maybeCompleteScan(
   const hasObd = row.rpm !== null || row.coolantTempC !== null || row.vin !== null;
 
   if (hasDtc && hasObd) {
-    await completeScan(scanReportId);
+    // Full data: complete immediately as COMPLETED
+    await completeScan(scanReportId, 'COMPLETED');
     return;
   }
 
@@ -493,13 +576,26 @@ async function maybeCompleteScan(
   const handle = setTimeout(async () => {
     const fresh = await prisma.gpsScanReport.findUnique({ where: { id: scanReportId } });
     if (!fresh || fresh.status !== 'PENDING') return;
-    await completeScan(scanReportId);
+
+    // Determine final status based on what we have
+    const finalHasDtc = fresh.dtcCount !== null;
+    const finalHasObd = fresh.rpm !== null || fresh.coolantTempC !== null || fresh.vin !== null;
+
+    if (finalHasDtc && finalHasObd) {
+      await completeScan(scanReportId, 'COMPLETED');
+    } else if (finalHasObd) {
+      // OBD live data alone is sufficient for a useful report
+      await completeScan(scanReportId, 'COMPLETED');
+    } else if (finalHasDtc) {
+      // Only DTC data: mark as PARTIAL (no live OBD telemetry)
+      await completeScan(scanReportId, 'PARTIAL');
+    } else {
+      // Should not happen, but fail-safe
+      await completeScan(scanReportId, 'PARTIAL');
+    }
   }, SECOND_SIGNAL_WAIT_MS);
   handle.unref?.();
 
-  // We don't bother cancelling the prior short-window timer (it'll no-op
-  // because the row is no longer PENDING). The outer 30 s timeout is still
-  // armed and gets cancelled by `completeScan` below.
   logger.info('Partial scan signal received', {
     scanReportId,
     arrived,
@@ -508,12 +604,13 @@ async function maybeCompleteScan(
   });
 }
 
-async function completeScan(scanReportId: string): Promise<void> {
+async function completeScan(scanReportId: string, status: 'COMPLETED' | 'PARTIAL' = 'COMPLETED'): Promise<void> {
   const result = await prisma.gpsScanReport.update({
     where: { id: scanReportId },
     data: {
-      status: 'COMPLETED',
+      status,
       completedAt: new Date(),
+      errorText: status === 'PARTIAL' ? 'Partial scan: no live OBD telemetry received. Only DTC/VIN data available.' : null,
     },
   });
 
@@ -522,11 +619,11 @@ async function completeScan(scanReportId: string): Promise<void> {
   pending.delete(scanReportId);
 
   void emitNotify({
-    type: 'scan.completed',
+    type: status === 'PARTIAL' ? 'scan.partial' : 'scan.completed',
     terminalId: result.terminalId,
     ownerUserId: result.ownerUserId,
     scanReportId: result.id,
-    status: 'COMPLETED',
+    status,
     promotedScanId: result.promotedScanId,
     at: result.completedAt!.toISOString(),
   });

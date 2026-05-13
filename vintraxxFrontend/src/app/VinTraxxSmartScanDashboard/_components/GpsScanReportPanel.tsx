@@ -232,8 +232,8 @@ function KpiRow({ report }: { report: GpsScanReport }) {
       value: formatMiles(report.distanceWithMilKm),
     },
     {
-      label: "Warm-ups since clear",
-      value: report.warmupsSinceClear != null ? String(report.warmupsSinceClear) : "—",
+      label: "Odometer",
+      value: formatMiles(report.mileageKm),
     },
   ];
 
@@ -322,49 +322,52 @@ function DtcSection({ report }: { report: GpsScanReport }) {
 }
 
 function ObdLiveGrid({ report }: { report: GpsScanReport }) {
-  const rows: Array<[string, string]> = [
-    ["Engine RPM", report.rpm != null ? `${report.rpm} rpm` : "—"],
-    [
-      "Vehicle speed",
-      report.vehicleSpeedKmh != null
+  const rows: Array<{ label: string; value: string; unsupported?: boolean }> = [
+    { label: "Engine RPM", value: report.rpm != null ? `${report.rpm} rpm` : "—" },
+    {
+      label: "Vehicle speed",
+      value: report.vehicleSpeedKmh != null
         ? `${Math.round(Number(report.vehicleSpeedKmh) * 0.621371)} mph`
         : "—",
-    ],
-    ["Coolant", report.coolantTempC != null ? `${report.coolantTempC} °C` : "—"],
-    ["Intake air", report.intakeAirTempC != null ? `${report.intakeAirTempC} °C` : "—"],
-    ["Engine load", report.engineLoadPct != null ? `${report.engineLoadPct}%` : "—"],
-    ["Throttle", report.throttlePct != null ? `${report.throttlePct}%` : "—"],
-    ["MAF", report.mafGps != null ? `${report.mafGps} g/s` : "—"],
-    ["Fuel level", report.fuelLevelPct != null ? `${report.fuelLevelPct}%` : "—"],
-    [
-      "Battery",
-      report.batteryVoltageMv != null
+    },
+    { label: "Coolant", value: report.coolantTempC != null ? `${report.coolantTempC} °C` : "—" },
+    { label: "Intake air", value: report.intakeAirTempC != null ? `${report.intakeAirTempC} °C` : "—" },
+    { label: "Ambient temp", value: report.ambientTempC != null ? `${report.ambientTempC} °C` : "—" },
+    { label: "Engine load", value: report.engineLoadPct != null ? `${report.engineLoadPct}%` : "—" },
+    { label: "Throttle", value: report.throttlePct != null ? `${report.throttlePct}%` : "—" },
+    { label: "MAF", value: report.mafGps != null ? `${report.mafGps} g/s` : "—" },
+    { label: "Fuel level", value: report.fuelLevelPct != null ? `${Number(report.fuelLevelPct).toFixed(1)}%` : "—" },
+    {
+      label: "Battery",
+      value: report.batteryVoltageMv != null
         ? `${(report.batteryVoltageMv / 1000).toFixed(1)} V`
         : "—",
-    ],
-    ["Fuel-system status", report.fuelSystemStatus ?? "—"],
-    ["Secondary-air status", report.secondaryAirStatus ?? "—"],
-    [
-      "Distance since clear",
-      formatMiles(report.distanceSinceClearKm),
-    ],
-    [
-      "Runtime since start",
-      report.runtimeSinceStartSec != null ? `${report.runtimeSinceStartSec} s` : "—",
-    ],
+    },
+    {
+      label: "Runtime since start",
+      value: report.runtimeSinceStartSec != null ? `${report.runtimeSinceStartSec} s` : "—",
+    },
+    { label: "Fuel-system status", value: report.fuelSystemStatus ?? "—", unsupported: !report.fuelSystemStatus },
+    { label: "Secondary-air status", value: report.secondaryAirStatus ?? "—", unsupported: !report.secondaryAirStatus },
+    { label: "Distance since clear", value: formatMiles(report.distanceSinceClearKm), unsupported: report.distanceSinceClearKm == null },
   ];
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
       <h3 className="text-sm font-bold text-slate-900 mb-3">OBD Live Data</h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-        {rows.map(([label, value]) => (
+        {rows.map((r) => (
           <div
-            key={label}
+            key={r.label}
             className="flex items-center justify-between text-sm border-b border-slate-100 py-1.5"
           >
-            <span className="text-slate-500">{label}</span>
-            <span className="font-semibold text-slate-900">{value}</span>
+            <span className="text-slate-500">
+              {r.label}
+              {r.unsupported && r.value === "—" && (
+                <span className="ml-1 text-[10px] text-slate-400" title="GPS device does not support this field">(N/A)</span>
+              )}
+            </span>
+            <span className="font-semibold text-slate-900">{r.value}</span>
           </div>
         ))}
       </div>

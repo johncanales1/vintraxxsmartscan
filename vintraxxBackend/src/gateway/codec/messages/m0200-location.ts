@@ -198,7 +198,48 @@ export interface DecodedObdLive {
   vehicleVoltageV?: number;
   /** 0x0014 — cellular signal strength (CSQ). */
   csq?: number;
-  /** All unknown sub-IDs preserved as `{ '0x60B0': [bytes] }`. */
+
+  // ── 0xEA basic data flow: newly-decoded fields (spec §3.37) ──────────────
+  /** 0x0005 — cumulative total runtime (seconds). */
+  totalRuntimeSec?: number;
+  /** 0x0006 — cumulative total shutdown duration (seconds). */
+  totalShutdownSec?: number;
+  /** 0x0007 — cumulative total idle time (seconds). */
+  totalIdleSec?: number;
+  /** 0x0013 — terminal backup battery voltage (V, 0–5V, precision 0.1V). */
+  backupBatteryV?: number;
+  /** 0x0015 — vehicle model ID. */
+  vehicleModelId?: number;
+  /** 0x0016 — OBD protocol type from basic flow. */
+  obdProtocolType?: number;
+  /** 0x0017 — driving cycle label. */
+  drivingCycleLabel?: number;
+  /** 0x0018 — GPS satellite count. */
+  gpsSatelliteCount?: number;
+  /** 0x0019 — GPS positional accuracy (0.01 precision). */
+  gpsAccuracy?: number;
+  /** 0x001A — GPS average signal-to-noise ratio (dB). */
+  gpsSnrDb?: number;
+  /** 0x001D — device removal status (0x02 = unplugged). */
+  deviceRemovalStatus?: number;
+  /** 0x001E — cumulative mileage (km), from pulse/OBD. */
+  cumulativeMileageKm?: number;
+  /** 0x0020 — ignition type bit field. */
+  ignitionTypeBits?: number;
+
+  // ── 0xEB sedan data flow: newly-decoded fields (spec §3.38) ─────────────
+  /** 0x6070 — long-term fuel trim banks 1 & 3 (%, precision 0.1). */
+  longTermFuelTrimPct?: number;
+  /** 0x60E0 — first cylinder ignition timing advance (°, precision 0.1, offset -64). */
+  timingAdvanceDeg?: number;
+
+  // ── 0xEC truck data flow: readiness (spec §3.39) ────────────────────────
+  /** 0x5113 — diagnostic support status (bitmask). */
+  diagnosticSupportStatus?: number;
+  /** 0x5114 — diagnostic readiness status (bitmask). */
+  diagnosticReadinessStatus?: number;
+
+  /** All unknown sub-IDs preserved as `{ 'b_0x60B0': [bytes] }`. */
   unknownPids: Record<string, number[]>;
 }
 
@@ -308,6 +349,9 @@ export function decode(body: Buffer): DecodedLocation {
     cursor = valEnd;
   }
 
+  // Sanitize: clamp impossible values to undefined so they store as null.
+  sanitizeObdLive(obdAccumulator);
+
   if (
     obdAccumulator.rpm !== undefined ||
     obdAccumulator.vehicleSpeedKmh !== undefined ||
@@ -359,7 +403,80 @@ function decodeExtendedSubTlv(
     i = valEnd;
 
     switch (subId) {
-      // ── Sedan / shared OBD live (spec §3.38) ───────────────────────────
+      // ── 0xEA Basic data flow (spec §3.37) ──────────────────────────────
+      case 0x0003: {
+        // Total mileage: 5-byte (1-byte status + 4-byte uint32 meters) or 4-byte
+        if (subLen >= 5) obd.totalMileageKm = v.readUInt32BE(1) / 1000;
+        else if (subLen >= 4) obd.totalMileageKm = v.readUInt32BE(0) / 1000;
+        break;
+      }
+      case 0x0004: {
+        // Total fuel consumption: 5-byte (1-byte status + 4-byte uint32 mL) or 4-byte
+        if (subLen >= 5) obd.totalFuelL = v.readUInt32BE(1) / 1000;
+        else if (subLen >= 4) obd.totalFuelL = v.readUInt32BE(0) / 1000;
+        break;
+      }
+      case 0x0005: // Total runtime (seconds)
+        if (subLen >= 4) obd.totalRuntimeSec = v.readUInt32BE(0);
+        break;
+      case 0x0006: // Total shutdown duration (seconds)
+        if (subLen >= 4) obd.totalShutdownSec = v.readUInt32BE(0);
+        break;
+      case 0x0007: // Total idle time (seconds)
+        if (subLen >= 4) obd.totalIdleSec = v.readUInt32BE(0);
+        break;
+      case 0x0012: // Vehicle voltage (2 bytes, 0.1 V)
+        if (subLen >= 2) obd.vehicleVoltageV = v.readUInt16BE(0) / 10;
+        break;
+      case 0x0013: // Backup battery voltage (1 byte, 0.1V, 0–5V)
+        if (subLen >= 1) obd.backupBatteryV = v.readUInt8(0) / 10;
+        break;
+      case 0x0014: // CSQ signal strength
+        if (subLen >= 1) obd.csq = v.readUInt8(0);
+        break;
+      case 0x0015: // Vehicle model ID (2 bytes)
+        if (subLen >= 2) obd.vehicleModelId = v.readUInt16BE(0);
+        break;
+      case 0x0016: // OBD protocol type (1 byte)
+        if (subLen >= 1) {
+          obd.obdProtocolType = v.readUInt8(0);
+          // Also map to diagnosticProtocol string if not already set by 0xEC/0x5111
+          if (obd.diagnosticProtocol === undefined) {
+            const pt = v.readUInt8(0);
+            // Protocol type table values from spec — common mappings
+            if (pt === 0x01 || pt === 0x02 || pt === 0x03 || pt === 0x04 || pt === 0x05) {
+              obd.diagnosticProtocol = 'ISO15765';
+            } else if (pt === 0x06 || pt === 0x07 || pt === 0x08 || pt === 0x09 || pt === 0x0a) {
+              obd.diagnosticProtocol = 'SAE-J1939';
+            }
+          }
+        }
+        break;
+      case 0x0017: // Driving cycle label (2 bytes)
+        if (subLen >= 2) obd.drivingCycleLabel = v.readUInt16BE(0);
+        break;
+      case 0x0018: // GPS satellite count (1 byte)
+        if (subLen >= 1) obd.gpsSatelliteCount = v.readUInt8(0);
+        break;
+      case 0x0019: // GPS positional accuracy (2 bytes, 0.01 precision)
+        if (subLen >= 2) obd.gpsAccuracy = v.readUInt16BE(0) / 100;
+        break;
+      case 0x001a: // GPS average SNR (1 byte, dB)
+        if (subLen >= 1) obd.gpsSnrDb = v.readUInt8(0);
+        break;
+      case 0x001d: // Device removal status (1 byte)
+        if (subLen >= 1) obd.deviceRemovalStatus = v.readUInt8(0);
+        break;
+      case 0x001e: // Cumulative mileage (4 bytes, meters → km)
+        if (subLen >= 4) obd.cumulativeMileageKm = v.readUInt32BE(0) / 1000;
+        break;
+      case 0x0020: // Ignition type bit field (2 bytes)
+        if (subLen >= 2) obd.ignitionTypeBits = v.readUInt16BE(0);
+        break;
+      // 0x0010 (accelerometer, 14 bytes) and 0x0011 (vehicle status, 20 bytes)
+      // are variable-length diagnostic blobs — keep in unknownPids for now.
+
+      // ── 0xEB Sedan / shared OBD live (spec §3.38) ─────────────────────
       case 0x60c0: // RPM (2 bytes)
         if (subLen >= 2) obd.rpm = v.readUInt16BE(0);
         break;
@@ -412,22 +529,25 @@ function decodeExtendedSubTlv(
         if (subLen >= 1) obd.engineLoadPct = v.readUInt8(0);
         break;
       case 0x62f0: {
-        // Remaining fuel; high bit of MSB toggles unit (% vs L). For now
-        // we always project to %; if bit15==1 the value is L×10 and we
-        // would need tank capacity to project to %, which the device
-        // doesn't ship. Capture both interpretations so the snapshot
-        // layer can pick whichever it prefers.
+        // Remaining fuel: Bit15 toggles unit (0=%  1=L).
+        // Spec: "Display value as upload value divided by 10"
         if (subLen >= 2) {
           const raw = v.readUInt16BE(0);
           const isL = (raw & 0x8000) !== 0;
           const magnitude = raw & 0x7fff;
-          obd.fuelLevelPct = isL ? undefined : magnitude;
+          obd.fuelLevelPct = isL ? undefined : magnitude / 10;
           if (isL) (obd as unknown as { fuelRemainingL?: number }).fuelRemainingL = magnitude / 10;
         }
         break;
       }
+      case 0x6070: // Long-term fuel trim banks 1&3 (2 bytes, precision 0.1)
+        if (subLen >= 2) obd.longTermFuelTrimPct = v.readUInt16BE(0) / 10;
+        break;
+      case 0x60e0: // First cylinder ignition timing advance (2 bytes, precision 0.1, offset -64)
+        if (subLen >= 2) obd.timingAdvanceDeg = v.readUInt16BE(0) / 10 - 64;
+        break;
 
-      // ── Truck extended (spec §3.39): MIL state, VIN, etc. ──────────────
+      // ── 0xEC Truck extended (spec §3.39): MIL state, VIN, readiness ───
       case 0x5111: // OBD diagnostic protocol
         if (subLen >= 1) {
           const p = v.readUInt8(0);
@@ -438,6 +558,12 @@ function decodeExtendedSubTlv(
       case 0x5112: // MIL state (1 byte boolean)
         if (subLen >= 1) obd.milOn = v.readUInt8(0) === 1;
         break;
+      case 0x5113: // Diagnostic support status (2 bytes bitmask)
+        if (subLen >= 2) obd.diagnosticSupportStatus = v.readUInt16BE(0);
+        break;
+      case 0x5114: // Diagnostic readiness status (2 bytes bitmask)
+        if (subLen >= 2) obd.diagnosticReadinessStatus = v.readUInt16BE(0);
+        break;
       case 0x5115: {
         // VIN: 17 ASCII bytes. Some firmwares pad / null-terminate.
         const ascii = v.subarray(0, 17).toString('ascii').replace(/[\s\0]+$/, '');
@@ -445,33 +571,48 @@ function decodeExtendedSubTlv(
         break;
       }
 
-      // ── Basic data flow (spec §3.37): vehicle-level totals ─────────────
-      case 0x0003: {
-        // "Total mileage data" — 5-byte table: 1-byte status + 4-byte
-        // uint32 km. We only care about the km magnitude.
-        if (subLen >= 5) obd.totalMileageKm = v.readUInt32BE(1);
-        else if (subLen >= 4) obd.totalMileageKm = v.readUInt32BE(0);
-        break;
-      }
-      case 0x0004: {
-        // "Total fuel consumption data" — 5-byte table
-        if (subLen >= 5) obd.totalFuelL = v.readUInt32BE(1) / 1000;
-        else if (subLen >= 4) obd.totalFuelL = v.readUInt32BE(0) / 1000;
-        break;
-      }
-      case 0x0012: // Vehicle voltage (2 bytes, 0.1 V)
-        if (subLen >= 2) obd.vehicleVoltageV = v.readUInt16BE(0) / 10;
-        break;
-      case 0x0014: // CSQ
-        if (subLen >= 1) obd.csq = v.readUInt8(0);
-        break;
-
       default: {
         const key = `${containerId === 0xea ? 'b' : containerId === 0xeb ? 's' : containerId === 0xec ? 't' : 'n'}_0x${subId.toString(16).padStart(4, '0')}`;
         obd.unknownPids[key] = Array.from(v);
       }
     }
   }
+}
+
+/**
+ * Clamp OBD values that fall outside physically-possible ranges to
+ * `undefined` so they persist as NULL rather than misleading numbers.
+ * Ranges are from the D450 spec §3.37-§3.39 and SAE J1979.
+ */
+function sanitizeObdLive(obd: DecodedObdLive): void {
+  const clamp = <K extends keyof DecodedObdLive>(
+    key: K,
+    min: number,
+    max: number,
+  ) => {
+    const v = obd[key];
+    if (typeof v === 'number' && (v < min || v > max)) {
+      (obd as unknown as Record<string, unknown>)[key as string] = undefined;
+    }
+  };
+
+  clamp('rpm', 0, 8000);
+  clamp('vehicleSpeedKmh', 0, 240);
+  clamp('coolantTempC', -40, 210);
+  clamp('intakeAirTempC', -40, 210);
+  clamp('ambientTempC', -40, 210);
+  clamp('engineLoadPct', 0, 100);
+  clamp('throttlePct', 0, 100);
+  clamp('acceleratorPct', 0, 100);
+  clamp('fuelLevelPct', 0, 100);
+  clamp('barometricKpa', 0, 125);
+  clamp('intakeManifoldKpa', 0, 500);
+  clamp('fuelRailPressureKpa', 0, 65535);
+  // Battery voltage: 6V–36V (6000–36000 mV equivalent). vehicleVoltageV is in V.
+  clamp('vehicleVoltageV', 6, 36);
+  // Mileage sanity: reject > 2 million km (most vehicles never exceed 1M km)
+  clamp('totalMileageKm', 0, 2_000_000);
+  clamp('cumulativeMileageKm', 0, 2_000_000);
 }
 
 /**

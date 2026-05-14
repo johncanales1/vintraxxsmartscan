@@ -369,13 +369,13 @@ export async function googleAuth(idToken: string): Promise<{ user: { id: string;
       });
     }
   } else {
-    // Create new dealer user
+    // Create new user (regular by default; dealer status is admin-controlled)
     user = await prisma.user.create({
       data: {
         email: payload.email,
         googleId: payload.sub,
         authProvider: 'google',
-        isDealer: true,
+        isDealer: false,
       },
     });
     logger.info(`New user registered via Google: ${user.email}`);

@@ -329,6 +329,7 @@ export interface AnalyzeDtcEventResponse {
 export type GpsScanReportStatus =
   | 'PENDING'
   | 'COMPLETED'
+  | 'PARTIAL'
   | 'FAILED'
   | 'TIMED_OUT';
 

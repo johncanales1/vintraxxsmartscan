@@ -6,13 +6,11 @@
 //   • DTC bucket chips
 //   • OBD live grid (RPM, speed, temps, battery, fuel-system, secondary-air…)
 //
-// Three CTAs:
+// Two CTAs:
 //   • Run / Refresh   — POST /gps/terminals/:id/scan, then poll until
 //                       status leaves PENDING (≤ 30 s, backend-enforced).
-//   • Email PDF       — POST /gps/scan-reports/:id/email; backend renders
-//                       and mails the diagnostic PDF.
-//   • Generate AI     — POST /gps/scan-reports/:id/promote-ai; navigates to
-//                       the existing FullReportScreen via apiService.pollReport.
+//   • View Full Report — POST /gps/scan-reports/:id/promote-ai; navigates to
+//                        the existing FullReportScreen via apiService.pollReport.
 //
 // Same screen shell + visual hierarchy the BLE scan flow already uses on
 // FullReportScreen, so the user experience is identical regardless of
@@ -59,7 +57,6 @@ export const GpsScanReportScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [scanning, setScanning] = useState(false);
-  const [emailing, setEmailing] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
 
@@ -79,7 +76,7 @@ export const GpsScanReportScreen: React.FC = () => {
         setReport(next);
         if (next.status !== 'PENDING') {
           setScanning(false);
-          if (next.status !== 'COMPLETED') {
+          if (next.status !== 'COMPLETED' && next.status !== 'PARTIAL') {
             setErrorText(next.errorText ?? `Scan ${next.status.toLowerCase()}`);
           }
           return next;
@@ -136,20 +133,8 @@ export const GpsScanReportScreen: React.FC = () => {
     await pollUntilSettled(res.data.scanReportId);
   };
 
-  const onEmail = async () => {
-    if (!report || report.status !== 'COMPLETED') return;
-    setEmailing(true);
-    const res = await gpsApi.emailGpsScanReport(report.id);
-    setEmailing(false);
-    if (res.success && res.data) {
-      Alert.alert('Email sent', `The diagnostic PDF was sent to ${res.data.sentTo}.`);
-    } else {
-      Alert.alert('Could not send', res.message ?? 'Email service is unavailable.');
-    }
-  };
-
   const onPromoteAi = async () => {
-    if (!report || report.status !== 'COMPLETED') return;
+    if (!report || (report.status !== 'COMPLETED' && report.status !== 'PARTIAL')) return;
     setAiBusy(true);
     try {
       let scanId = report.promotedScanId;
@@ -250,18 +235,8 @@ export const GpsScanReportScreen: React.FC = () => {
 
       {report && <ReportBody report={report} />}
 
-      {report?.status === 'COMPLETED' && (
+      {(report?.status === 'COMPLETED' || report?.status === 'PARTIAL') && (
         <View style={styles.actionsRow}>
-          <TouchableOpacity
-            style={[styles.secondaryBtn, emailing && styles.btnDisabled]}
-            onPress={onEmail}
-            disabled={emailing}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.secondaryBtnText}>
-              {emailing ? 'Sending…' : 'Email PDF'}
-            </Text>
-          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.accentBtn, aiBusy && styles.btnDisabled]}
             onPress={onPromoteAi}
@@ -269,11 +244,7 @@ export const GpsScanReportScreen: React.FC = () => {
             activeOpacity={0.85}
           >
             <Text style={styles.accentBtnText}>
-              {aiBusy
-                ? 'Working…'
-                : report.promotedScanId
-                  ? 'View AI report'
-                  : 'Generate AI report'}
+              {aiBusy ? 'Working…' : 'View Full Report'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -295,6 +266,22 @@ const ReportBody: React.FC<{ report: GpsScanReport }> = ({ report }) => {
             Querying the ECU. This usually takes 5–15 seconds.
           </Text>
         </View>
+      </View>
+    );
+  }
+  if (report.status === 'PARTIAL') {
+    return (
+      <View>
+        <View style={[styles.statusBanner, styles.statusBannerPartial]}>
+          <Text style={styles.statusBannerTitle}>Partial scan</Text>
+          <Text style={styles.statusBannerBody}>
+            Some data was received but the scan did not fully complete. The
+            results below may be incomplete.
+          </Text>
+        </View>
+        <KpiGrid report={report} />
+        <DtcSection report={report} />
+        <ObdGrid report={report} />
       </View>
     );
   }
@@ -420,7 +407,23 @@ const DtcSection: React.FC<{ report: GpsScanReport }> = ({ report }) => {
 };
 
 const ObdGrid: React.FC<{ report: GpsScanReport }> = ({ report }) => {
-  const rows: Array<[string, string]> = [
+  const rows: Array<[string, string, boolean?]> = [
+    ['VIN', report.vin ?? '—'],
+    ['MIL Status', report.milOn === true ? 'ON' : report.milOn === false ? 'OFF' : '—'],
+    ['DTC Count', report.dtcCount != null ? String(report.dtcCount) : '—'],
+    [
+      'Stored DTC Codes',
+      report.storedDtcCodes?.length > 0 ? report.storedDtcCodes.join(', ') : '—',
+    ],
+    [
+      'Pending DTC Codes',
+      report.pendingDtcCodes?.length > 0 ? report.pendingDtcCodes.join(', ') : '—',
+    ],
+    [
+      'Permanent DTC Codes',
+      report.permanentDtcCodes?.length > 0 ? report.permanentDtcCodes.join(', ') : '—',
+    ],
+    ['Distance with MIL On', formatMiles(report.distanceWithMilKm)],
     ['Engine RPM', report.rpm != null ? `${report.rpm} rpm` : '—'],
     [
       'Vehicle speed',
@@ -428,37 +431,60 @@ const ObdGrid: React.FC<{ report: GpsScanReport }> = ({ report }) => {
         ? `${Math.round(Number(report.vehicleSpeedKmh) * 0.621371)} mph`
         : '—',
     ],
-    ['Coolant', formatTemp(report.coolantTempC)],
-    ['Intake air', formatTemp(report.intakeAirTempC)],
-    ['Engine load', formatPct(report.engineLoadPct)],
-    ['Throttle', formatPct(report.throttlePct)],
-    ['MAF', report.mafGps != null ? `${report.mafGps} g/s` : '—'],
-    ['Fuel level', formatPct(report.fuelLevelPct)],
+    ['Coolant Temp', formatTemp(report.coolantTempC)],
+    ['Intake Air Temp', formatTemp(report.intakeAirTempC)],
+    ['Ambient Temp', formatTemp(report.ambientTempC)],
+    ['Engine Load', formatPct(report.engineLoadPct)],
+    ['Throttle Position', formatPct(report.throttlePct)],
+    ['MAF (Mass Air Flow)', report.mafGps != null ? `${report.mafGps} g/s` : '—'],
+    ['Fuel Level', formatPct(report.fuelLevelPct)],
     [
-      'Battery',
+      'Battery Voltage',
       report.batteryVoltageMv != null
         ? `${(report.batteryVoltageMv / 1000).toFixed(1)} V`
         : '—',
     ],
-    ['Fuel-system', report.fuelSystemStatus ?? '—'],
-    ['Secondary-air', report.secondaryAirStatus ?? '—'],
-    ['Dist since clear', formatMiles(report.distanceSinceClearKm)],
     [
-      'Runtime since start',
-      report.runtimeSinceStartSec != null
-        ? `${report.runtimeSinceStartSec} s`
+      'Timing Advance',
+      (report as any).rawObdJson?.obdLive?.timingAdvanceDeg != null
+        ? `${(report as any).rawObdJson.obdLive.timingAdvanceDeg}°`
         : '—',
     ],
+    ['Intake Manifold Pressure', report.intakeManifoldKpa != null ? `${report.intakeManifoldKpa} kPa` : '—'],
+    [
+      'Long Term Fuel Trim',
+      (report as any).rawObdJson?.obdLive?.longTermFuelTrimPct != null
+        ? `${(report as any).rawObdJson.obdLive.longTermFuelTrimPct}%`
+        : '—',
+    ],
+    [
+      'Runtime Since Start',
+      report.runtimeSinceStartSec != null ? `${report.runtimeSinceStartSec} s` : '—',
+    ],
+    ['Barometric Pressure', report.barometricKpa != null ? `${report.barometricKpa} kPa` : '—'],
+    ['Accelerator Position', formatPct(report.acceleratorPct)],
+    ['Fuel System Status', report.fuelSystemStatus ?? '—'],
+    ['Secondary Air Status', report.secondaryAirStatus ?? '—'],
+    ['Distance Since Clear', formatMiles(report.distanceSinceClearKm)],
+    ['Warm-ups Since Clear', report.warmupsSinceClear != null ? String(report.warmupsSinceClear) : '—'],
   ];
   return (
     <View style={styles.card}>
       <Text style={styles.cardTitle}>OBD Live Data</Text>
-      {rows.map(([label, value]) => (
+      {rows.map(([label, value, unsupported]) => (
         <View key={label} style={styles.obdRow}>
-          <Text style={styles.obdLabel}>{label}</Text>
-          <Text style={styles.obdValue}>{value}</Text>
+          <Text style={styles.obdLabel}>
+            {label}
+            {unsupported && <Text style={styles.obdLabelUnsupported}> (N/A)</Text>}
+          </Text>
+          <Text style={[styles.obdValue, unsupported && styles.obdValueUnsupported]}>
+            {value}
+          </Text>
         </View>
       ))}
+      <Text style={styles.obdNote}>
+        GPS scanner supports live OBD telemetry; some BLE diagnostic fields may be unavailable unless supported by D450 firmware/protocol.
+      </Text>
     </View>
   );
 };
@@ -561,6 +587,11 @@ const styles = StyleSheet.create({
   },
   statusBannerWarn: {
     backgroundColor: '#FEF3C7',
+  },
+  statusBannerPartial: {
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FDBA74',
   },
   statusBannerTitle: {
     color: colors.primary.navy,
@@ -680,29 +711,30 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     fontSize: 13,
   },
+  obdLabelUnsupported: {
+    color: colors.text.muted,
+    fontSize: 10,
+  },
   obdValue: {
     color: colors.text.primary,
     fontSize: 13,
     fontWeight: '700',
   },
+  obdValueUnsupported: {
+    color: colors.text.muted,
+    fontStyle: 'italic',
+  },
+  obdNote: {
+    color: colors.text.muted,
+    fontSize: 10,
+    fontStyle: 'italic',
+    marginTop: spacing.sm,
+    textAlign: 'center',
+  },
   actionsRow: {
     flexDirection: 'row',
     gap: spacing.sm,
     marginTop: spacing.sm,
-  },
-  secondaryBtn: {
-    flex: 1,
-    backgroundColor: colors.background.secondary,
-    borderColor: colors.primary.navy,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  secondaryBtnText: {
-    color: colors.primary.navy,
-    fontWeight: '700',
-    fontSize: 14,
   },
   accentBtn: {
     flex: 1,
@@ -717,4 +749,4 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   btnDisabled: { opacity: 0.6 },
-});
+} as const);

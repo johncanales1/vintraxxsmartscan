@@ -34,7 +34,7 @@ export async function runHeartbeatWatchdog(): Promise<void> {
 
   const offlineAt = new Date();
   await prisma.gpsTerminal.updateMany({
-    where: { id: { in: stale.map((s) => s.id) } },
+    where: { id: { in: stale.map((s) => s.id) }, status: 'ONLINE' },
     data: { status: 'OFFLINE', disconnectedAt: offlineAt },
   });
 

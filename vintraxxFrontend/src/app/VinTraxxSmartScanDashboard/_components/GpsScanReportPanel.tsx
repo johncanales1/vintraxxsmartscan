@@ -7,9 +7,9 @@
  *   • Settled — COMPLETED / FAILED / TIMED_OUT — shows the diagnostic tiles.
  *
  * Settled-COMPLETED additionally offers:
- *   • Email PDF  — POST /scan-reports/:id/email
- *   • Generate AI Report — POST /scan-reports/:id/promote-ai then opens the
- *     existing scan-detail modal via `useScanDetail.openByScanId`.
+ *   • View Full Report — POST /scan-reports/:id/promote-ai then opens the
+ *     existing scan-detail modal via `useScanDetail.openByScanId`. The backend
+ *     also generates a PDF and emails it to the owner.
  *
  * The visual hierarchy mirrors the BLE Scan summary so the two reports
  * read identically: top KPI row (MIL / DTC count / mileage / distance with
@@ -21,7 +21,6 @@
 import { useState } from "react";
 import {
   RefreshCw,
-  Mail,
   Sparkles,
   AlertTriangle,
   CheckCircle2,
@@ -36,21 +35,11 @@ interface Props {
 }
 
 export function GpsScanReportPanel({ terminal }: Props) {
-  const { report, busy, scanning, error, runScan, emailReport, promoteToAi } =
+  const { report, busy, scanning, error, runScan, promoteToAi } =
     useGpsScanReport(terminal.id);
   const { openByScanId } = useScanDetail();
 
-  const [emailing, setEmailing] = useState(false);
-  const [emailMsg, setEmailMsg] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
-
-  const onEmail = async () => {
-    setEmailing(true);
-    setEmailMsg(null);
-    const res = await emailReport();
-    setEmailing(false);
-    setEmailMsg(res.ok ? (res.message ?? "Sent.") : (res.message ?? "Failed."));
-  };
 
   const onAi = async () => {
     if (!report) return;
@@ -97,39 +86,19 @@ export function GpsScanReportPanel({ terminal }: Props) {
             />
             {scanning ? "Scanning..." : report ? "Refresh" : "Run Full Scan"}
           </button>
-          {report?.status === "COMPLETED" && (
-            <>
-              <button
-                onClick={onEmail}
-                disabled={emailing}
-                className="inline-flex items-center gap-2 h-9 px-3 rounded-md border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-50 text-slate-800 text-sm font-semibold"
-              >
-                <Mail className="w-4 h-4" />
-                {emailing ? "Sending..." : "Email PDF"}
-              </button>
-              <button
-                onClick={onAi}
-                disabled={aiBusy}
-                className="inline-flex items-center gap-2 h-9 px-3 rounded-md bg-[#8B2332] hover:bg-[#a12d3e] disabled:opacity-50 text-white text-sm font-semibold"
-              >
-                <Sparkles className="w-4 h-4" />
-                {aiBusy
-                  ? "Working..."
-                  : report.promotedScanId
-                    ? "View AI Report"
-                    : "Generate AI Report"}
-              </button>
-            </>
+          {(report?.status === "COMPLETED" || report?.status === "PARTIAL") && (
+            <button
+              onClick={onAi}
+              disabled={aiBusy}
+              className="inline-flex items-center gap-2 h-9 px-3 rounded-md bg-[#8B2332] hover:bg-[#a12d3e] disabled:opacity-50 text-white text-sm font-semibold"
+            >
+              <Sparkles className="w-4 h-4" />
+              {aiBusy ? "Working..." : "View Full Report"}
+            </button>
           )}
         </div>
       </div>
 
-      {emailMsg && (
-        <div className="rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-900 flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4" />
-          {emailMsg}
-        </div>
-      )}
       {error && (
         <div className="rounded-md bg-rose-50 border border-rose-200 px-3 py-2 text-xs text-rose-900 flex items-center gap-2">
           <AlertTriangle className="w-4 h-4" />
@@ -165,11 +134,11 @@ function ReportBody({ report }: { report: GpsScanReport }) {
   return (
     <div className="space-y-4">
       <StatusBanner report={report} />
-      {report.status === "COMPLETED" && (
+      {(report.status === "COMPLETED" || report.status === "PARTIAL") && (
         <>
           <KpiRow report={report} />
           <DtcSection report={report} />
-          <ObdLiveGrid report={report} />
+          {report.status === "COMPLETED" && <ObdLiveGrid report={report} />}
         </>
       )}
     </div>
@@ -323,6 +292,13 @@ function DtcSection({ report }: { report: GpsScanReport }) {
 
 function ObdLiveGrid({ report }: { report: GpsScanReport }) {
   const rows: Array<{ label: string; value: string; unsupported?: boolean }> = [
+    { label: "VIN", value: report.vin ?? "—" },
+    { label: "MIL Status", value: report.milOn === true ? "ON" : report.milOn === false ? "OFF" : "—" },
+    { label: "DTC Count", value: report.dtcCount != null ? String(report.dtcCount) : "—" },
+    { label: "Stored DTC Codes", value: report.storedDtcCodes?.length > 0 ? report.storedDtcCodes.join(", ") : "—" },
+    { label: "Pending DTC Codes", value: report.pendingDtcCodes?.length > 0 ? report.pendingDtcCodes.join(", ") : "—" },
+    { label: "Permanent DTC Codes", value: report.permanentDtcCodes?.length > 0 ? report.permanentDtcCodes.join(", ") : "—" },
+    { label: "Distance with MIL On", value: formatMiles(report.distanceWithMilKm) },
     { label: "Engine RPM", value: report.rpm != null ? `${report.rpm} rpm` : "—" },
     {
       label: "Vehicle speed",
@@ -330,26 +306,33 @@ function ObdLiveGrid({ report }: { report: GpsScanReport }) {
         ? `${Math.round(Number(report.vehicleSpeedKmh) * 0.621371)} mph`
         : "—",
     },
-    { label: "Coolant", value: report.coolantTempC != null ? `${report.coolantTempC} °C` : "—" },
-    { label: "Intake air", value: report.intakeAirTempC != null ? `${report.intakeAirTempC} °C` : "—" },
-    { label: "Ambient temp", value: report.ambientTempC != null ? `${report.ambientTempC} °C` : "—" },
-    { label: "Engine load", value: report.engineLoadPct != null ? `${report.engineLoadPct}%` : "—" },
-    { label: "Throttle", value: report.throttlePct != null ? `${report.throttlePct}%` : "—" },
-    { label: "MAF", value: report.mafGps != null ? `${report.mafGps} g/s` : "—" },
-    { label: "Fuel level", value: report.fuelLevelPct != null ? `${Number(report.fuelLevelPct).toFixed(1)}%` : "—" },
+    { label: "Coolant Temp", value: report.coolantTempC != null ? `${report.coolantTempC} °C` : "—" },
+    { label: "Intake Air Temp", value: report.intakeAirTempC != null ? `${report.intakeAirTempC} °C` : "—" },
+    { label: "Ambient Temp", value: report.ambientTempC != null ? `${report.ambientTempC} °C` : "—" },
+    { label: "Engine Load", value: report.engineLoadPct != null ? `${report.engineLoadPct}%` : "—" },
+    { label: "Throttle Position", value: report.throttlePct != null ? `${report.throttlePct}%` : "—" },
+    { label: "MAF (Mass Air Flow)", value: report.mafGps != null ? `${report.mafGps} g/s` : "—" },
+    { label: "Fuel Level", value: report.fuelLevelPct != null ? `${Number(report.fuelLevelPct).toFixed(1)}%` : "—" },
     {
-      label: "Battery",
+      label: "Battery Voltage",
       value: report.batteryVoltageMv != null
         ? `${(report.batteryVoltageMv / 1000).toFixed(1)} V`
         : "—",
     },
+    { label: "Timing Advance", value: report.rawObdJson?.obdLive?.timingAdvanceDeg != null ? `${report.rawObdJson.obdLive.timingAdvanceDeg}°` : "—" },
+    { label: "Intake Manifold Pressure", value: report.intakeManifoldKpa != null ? `${report.intakeManifoldKpa} kPa` : "—" },
+    { label: "Long Term Fuel Trim", value: report.rawObdJson?.obdLive?.longTermFuelTrimPct != null ? `${report.rawObdJson.obdLive.longTermFuelTrimPct}%` : "—" },
     {
-      label: "Runtime since start",
+      label: "Runtime Since Start",
       value: report.runtimeSinceStartSec != null ? `${report.runtimeSinceStartSec} s` : "—",
     },
-    { label: "Fuel-system status", value: report.fuelSystemStatus ?? "—", unsupported: !report.fuelSystemStatus },
-    { label: "Secondary-air status", value: report.secondaryAirStatus ?? "—", unsupported: !report.secondaryAirStatus },
-    { label: "Distance since clear", value: formatMiles(report.distanceSinceClearKm), unsupported: report.distanceSinceClearKm == null },
+    { label: "Barometric Pressure", value: report.barometricKpa != null ? `${report.barometricKpa} kPa` : "—" },
+    { label: "Accelerator Position", value: report.acceleratorPct != null ? `${report.acceleratorPct}%` : "—" },
+    { label: "Fuel System Status", value: report.fuelSystemStatus ?? "N/A", unsupported: true },
+    { label: "Secondary Air Status", value: report.secondaryAirStatus ?? "N/A", unsupported: true },
+    { label: "Distance Since Clear", value: "N/A", unsupported: true },
+    { label: "Time Since Clear", value: "N/A", unsupported: true },
+    { label: "Warm-ups Since Clear", value: "N/A", unsupported: true },
   ];
 
   return (
@@ -371,6 +354,9 @@ function ObdLiveGrid({ report }: { report: GpsScanReport }) {
           </div>
         ))}
       </div>
+      <p className="text-[10px] text-slate-400 mt-3 italic">
+        GPS scanner supports live OBD telemetry; some BLE diagnostic fields may be unavailable unless supported by D450 firmware/protocol.
+      </p>
     </div>
   );
 }

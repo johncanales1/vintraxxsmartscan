@@ -1115,7 +1115,7 @@ export async function myEmailScanReport(
     if (!report || report.ownerUserId !== userId) {
       throw new AppError('Scan report not found', 404);
     }
-    if (report.status !== 'COMPLETED') {
+    if (report.status !== 'COMPLETED' && report.status !== 'PARTIAL') {
       throw new AppError('Scan is not yet complete', 409);
     }
 

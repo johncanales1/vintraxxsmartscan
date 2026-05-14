@@ -14,7 +14,7 @@ export type GpsTerminalStatus =
   | "NEVER_CONNECTED"
   | "ONLINE"
   | "OFFLINE"
-  | "SUSPENDED";
+  | "REVOKED";
 
 export interface GpsTerminal {
   id: string;
@@ -156,7 +156,7 @@ export interface GpsDtcEvent {
 
 // ── GPS Full Scan Report (D450 Refresh flow) ────────────────────────────────
 
-export type GpsScanReportStatus = "PENDING" | "COMPLETED" | "FAILED" | "TIMED_OUT";
+export type GpsScanReportStatus = "PENDING" | "COMPLETED" | "PARTIAL" | "FAILED" | "TIMED_OUT";
 
 /**
  * Aggregated D450 scan result. Mirrors the BLE Scan shape but stays raw —
@@ -210,7 +210,14 @@ export interface GpsScanReport {
   intakeManifoldKpa: number | null;
 
   protocol: string | null;
-  rawObdJson: Record<string, unknown> | null;
+  rawObdJson: {
+    obdLive?: {
+      timingAdvanceDeg?: number;
+      longTermFuelTrimPct?: number;
+      [key: string]: unknown;
+    };
+    [key: string]: unknown;
+  } | null;
 
   promotedScanId: string | null;
   createdAt: string;

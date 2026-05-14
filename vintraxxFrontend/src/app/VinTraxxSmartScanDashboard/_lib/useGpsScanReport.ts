@@ -106,7 +106,7 @@ export function useGpsScanReport(terminalId: string): UseGpsScanReportResult {
         setReport(next);
         if (next.status !== "PENDING") {
           setScanning(false);
-          if (next.status !== "COMPLETED") {
+          if (next.status !== "COMPLETED" && next.status !== "PARTIAL") {
             setError(next.errorText ?? `Scan ${next.status.toLowerCase()}`);
           }
           return next;
@@ -140,7 +140,7 @@ export function useGpsScanReport(terminalId: string): UseGpsScanReportResult {
 
   const emailReport = useCallback(
     async (email?: string): Promise<{ ok: boolean; message?: string }> => {
-      if (!report || report.status !== "COMPLETED") {
+      if (!report || (report.status !== "COMPLETED" && report.status !== "PARTIAL")) {
         return { ok: false, message: "Scan is not yet complete" };
       }
       const res = await gpsApi.emailGpsScanReport(
@@ -154,7 +154,7 @@ export function useGpsScanReport(terminalId: string): UseGpsScanReportResult {
   );
 
   const promoteToAi = useCallback(async () => {
-    if (!report || report.status !== "COMPLETED") {
+    if (!report || (report.status !== "COMPLETED" && report.status !== "PARTIAL")) {
       return { ok: false, message: "Scan is not yet complete" };
     }
     const res = await gpsApi.promoteGpsScanToAi(report.id);

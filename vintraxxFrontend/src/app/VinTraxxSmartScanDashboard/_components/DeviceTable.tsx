@@ -40,8 +40,8 @@ const STATUS_PILL: Record<GpsTerminal["status"], { label: string; classes: strin
     classes: "bg-slate-50 text-slate-500 border-slate-200",
     dot: "bg-slate-300",
   },
-  SUSPENDED: {
-    label: "Suspended",
+  REVOKED: {
+    label: "Revoked",
     classes: "bg-rose-50 text-rose-700 border-rose-200",
     dot: "bg-rose-500",
   },

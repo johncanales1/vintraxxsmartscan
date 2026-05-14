@@ -109,7 +109,7 @@ function StatusPill({ status }: { status: GpsTerminal["status"] }) {
     ONLINE: { dot: "bg-emerald-500", label: "Online" },
     OFFLINE: { dot: "bg-slate-400", label: "Offline" },
     NEVER_CONNECTED: { dot: "bg-slate-300", label: "Never connected" },
-    SUSPENDED: { dot: "bg-rose-500", label: "Suspended" },
+    REVOKED: { dot: "bg-rose-500", label: "Revoked" },
   };
   const s = map[status];
   return (

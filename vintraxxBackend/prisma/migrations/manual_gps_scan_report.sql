@@ -7,7 +7,21 @@
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'GpsScanReportStatus') THEN
-    CREATE TYPE "GpsScanReportStatus" AS ENUM ('PENDING', 'COMPLETED', 'FAILED', 'TIMED_OUT');
+    CREATE TYPE "GpsScanReportStatus" AS ENUM ('PENDING', 'COMPLETED', 'PARTIAL', 'FAILED', 'TIMED_OUT');
+  END IF;
+END
+$$;
+
+-- 1b. Add PARTIAL if the enum was created by an earlier run of this script
+--     without the PARTIAL value (idempotent: no-op if PARTIAL already exists).
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_enum
+    WHERE enumtypid = 'GpsScanReportStatus'::regtype
+      AND enumlabel = 'PARTIAL'
+  ) THEN
+    ALTER TYPE "GpsScanReportStatus" ADD VALUE 'PARTIAL' AFTER 'COMPLETED';
   END IF;
 END
 $$;

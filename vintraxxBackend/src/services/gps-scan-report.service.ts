@@ -125,6 +125,8 @@ interface PendingScan {
   timeoutAt: number;
   /** Cancels the OUTER 30 s timeout. */
   cancelTimeout: () => void;
+  /** Cancels the 8 s second-signal window timer, if one is armed. */
+  cancelSecondSignalTimer?: () => void;
   /** Resolved when the in-process orchestrator has flipped status away from PENDING. */
   done: Promise<void>;
 }
@@ -569,10 +571,12 @@ async function maybeCompleteScan(
   const entry = pending.get(scanReportId);
   if (!entry) return;
 
-  // If we already have a short-window timer scheduled, leave it alone. The
-  // first signal latched it; we just got the second update on the SAME
-  // signal type. Otherwise (only when arrived === the "first" type) we
-  // schedule a fresh 8 s timer that resolves with a partial-data complete.
+  // Cancel any existing second-signal timer before arming a new one.
+  // Without this, duplicate F2 or OBD packets would stack multiple
+  // overlapping 8 s timers all trying to complete the same scan.
+  entry.cancelSecondSignalTimer?.();
+  entry.cancelSecondSignalTimer = undefined;
+
   const handle = setTimeout(async () => {
     const fresh = await prisma.gpsScanReport.findUnique({ where: { id: scanReportId } });
     if (!fresh || fresh.status !== 'PENDING') return;
@@ -595,6 +599,7 @@ async function maybeCompleteScan(
     }
   }, SECOND_SIGNAL_WAIT_MS);
   handle.unref?.();
+  entry.cancelSecondSignalTimer = () => clearTimeout(handle);
 
   logger.info('Partial scan signal received', {
     scanReportId,
@@ -615,6 +620,7 @@ async function completeScan(scanReportId: string, status: 'COMPLETED' | 'PARTIAL
   });
 
   const entry = pending.get(scanReportId);
+  entry?.cancelSecondSignalTimer?.();
   entry?.cancelTimeout();
   pending.delete(scanReportId);
 
@@ -639,6 +645,7 @@ async function failScanReport(scanReportId: string, reason: string): Promise<voi
     },
   });
   const entry = pending.get(scanReportId);
+  entry?.cancelSecondSignalTimer?.();
   entry?.cancelTimeout();
   pending.delete(scanReportId);
 
@@ -685,7 +692,7 @@ export async function promoteToAi(
     include: { terminal: true },
   });
   if (!report) throw new AppError('Scan report not found', 404);
-  if (report.status !== 'COMPLETED') {
+  if (report.status !== 'COMPLETED' && report.status !== 'PARTIAL') {
     throw new AppError('Scan is not yet complete', 409);
   }
   if (report.promotedScanId) {

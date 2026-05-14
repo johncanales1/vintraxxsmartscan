@@ -8,6 +8,7 @@
  *   • Alerts     → /VinTraxxSmartScanDashboard/alerts
  *   • Trips      → /VinTraxxSmartScanDashboard/trips
  *   • DTCs       → /VinTraxxSmartScanDashboard/dtcs
+ *   • Reports    → /VinTraxxSmartScanDashboard/reports
  */
 
 "use client";
@@ -18,6 +19,7 @@ import {
   Activity,
   AlertTriangle,
   Cpu,
+  FileText,
   Map as MapIcon,
   RouteIcon,
   Wrench,
@@ -68,6 +70,12 @@ const TABS: TabDef[] = [
     label: "DTCs",
     icon: <Wrench className="w-4 h-4" />,
   },
+  {
+    href: `${ROOT}/reports`,
+    label: "Reports",
+    icon: <FileText className="w-4 h-4" />,
+    matchPrefix: `${ROOT}/reports`,
+  },
 ];
 
 /** Routes where the GPS Fleet tab bar should be visible. */
@@ -78,6 +86,7 @@ export const GPS_ROUTES = [
   `${ROOT}/alerts`,
   `${ROOT}/trips`,
   `${ROOT}/dtcs`,
+  `${ROOT}/reports`,
 ];
 
 export function isGpsRoute(pathname: string): boolean {

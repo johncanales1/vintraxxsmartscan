@@ -241,6 +241,9 @@ const GpsPanel: React.FC = () => {
   const onAlertsPress = (t: GpsTerminal) => {
     navigation.navigate('Alerts', { terminalId: t.id });
   };
+  const onScanPress = (t: GpsTerminal) => {
+    navigation.navigate('GpsScanReport', { terminalId: t.id });
+  };
 
   if (gpsTerminals.length === 0 && !loading) {
     return <GpsEmptyState />;
@@ -294,6 +297,7 @@ const GpsPanel: React.FC = () => {
           }
           onPress={() => onCardPress(t)}
           onAlertsPress={() => onAlertsPress(t)}
+          onScanPress={() => onScanPress(t)}
           onMorePress={() => setActionFor(t)}
         />
       ))}
@@ -402,8 +406,9 @@ const VehicleCard: React.FC<{
   unreadAlarmCount: number;
   onPress: () => void;
   onAlertsPress: () => void;
+  onScanPress: () => void;
   onMorePress: () => void;
-}> = ({ terminal: t, location, unreadAlarmCount, onPress, onAlertsPress, onMorePress }) => {
+}> = ({ terminal: t, location, unreadAlarmCount, onPress, onAlertsPress, onScanPress, onMorePress }) => {
   const online = t.status === 'ONLINE';
   const lastSeen = formatRelativeTime(t.lastHeartbeatAt);
   // Canonical device identifier is always populated; IMEI is metadata that
@@ -469,6 +474,13 @@ const VehicleCard: React.FC<{
           activeOpacity={0.85}
         >
           <Text style={styles.cardActionPrimaryText}>View Live</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.cardActionBtn, styles.cardActionScan]}
+          onPress={onScanPress}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.cardActionScanText}>Full Scan</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.cardActionBtn, styles.cardActionGhost]}
@@ -781,6 +793,14 @@ const styles = StyleSheet.create({
   },
   cardActionPrimary: { backgroundColor: colors.primary.navy },
   cardActionPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  cardActionScan: {
+    backgroundColor: colors.primary.red,
+  },
+  cardActionScanText: {
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',

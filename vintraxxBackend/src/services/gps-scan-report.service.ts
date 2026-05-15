@@ -40,7 +40,7 @@
  */
 
 import prisma from '../config/db';
-import { Prisma, type GpsScanReport, type GpsTerminal } from '@prisma/client';
+import { Prisma, type GpsScanReport, type GpsTerminal, type GpsObdSnapshot } from '@prisma/client';
 import logger from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
 import { emit as emitNotify } from '../realtime/notify';
@@ -75,6 +75,13 @@ const SCAN_DEBOUNCE_MS = 20_000;
  * complete as PARTIAL instead of COMPLETED.
  */
 const SECOND_SIGNAL_WAIT_MS = 8_000;
+
+/**
+ * Maximum age of a cached GpsObdSnapshot to consider it fresh enough for
+ * a scan report. The GPS terminal reports OBD data approximately every 30
+ * seconds, so 60 seconds gives us a 2-packet buffer.
+ */
+const CACHED_OBD_FRESHNESS_MS = 60_000;
 
 /**
  * Calculate scan timeout based on terminal's OBD interval settings.
@@ -228,6 +235,30 @@ export async function requestFullScan(
     },
   });
 
+  logger.info('GPS scan: started', {
+    scanReportId: report.id,
+    terminalId: terminal.id,
+    deviceIdentifier: terminal.deviceIdentifier,
+    requestedByUserId: input.requestedByUserId,
+    requestedByAdminId: input.requestedByAdminId,
+  });
+
+  // Check for fresh cached OBD data immediately after creating the report.
+  // If found, copy it into the report but do not complete until DTC arrives or timeout.
+  const cachedObd = await fetchFreshCachedObd(terminal.id);
+  if (cachedObd) {
+    logger.info('GPS scan: cached OBD attached at scan start', {
+      scanReportId: report.id,
+      terminalId: terminal.id,
+      cachedAgeMs: Date.now() - cachedObd.reportedAt.getTime(),
+    });
+    const data = buildScanReportUpdateFromCachedObd(cachedObd);
+    await prisma.gpsScanReport.update({
+      where: { id: report.id },
+      data,
+    });
+  }
+
   // Enqueue the OBD-enable + DTC-read commands. Both go via the existing
   // command service so the gateway picks them up exactly like any other
   // platform-initiated command. Errors here MUST flip the report to FAILED.
@@ -313,11 +344,37 @@ export async function onDtcArrived(
   terminalId: string,
   parsed: DecodedDtc,
 ): Promise<void> {
+  logger.info('GPS scan: searching pending scan for DTC attach', {
+    terminalId,
+    dtcCount: parsed.dtcCount,
+    milOn: parsed.milOn,
+  });
+
   const report = await prisma.gpsScanReport.findFirst({
-    where: { terminalId, status: 'PENDING' },
+    where: {
+      terminalId,
+      status: 'PENDING',
+      requestedAt: { gte: new Date(Date.now() - 300_000) }, // Within last 5 minutes
+    },
     orderBy: { requestedAt: 'desc' },
   });
-  if (!report) return;
+
+  if (!report) {
+    logger.info('GPS scan: no pending scan found for DTC attach', { terminalId });
+    return;
+  }
+
+  logger.info('GPS scan: found pending scan for DTC attach', {
+    scanReportId: report.id,
+    terminalId,
+  });
+
+  logger.info('GPS scan: DTC fields copied to scan report', {
+    scanReportId: report.id,
+    terminalId,
+    dtcCount: parsed.dtcCount,
+    milOn: parsed.milOn,
+  });
 
   await prisma.gpsScanReport.update({
     where: { id: report.id },
@@ -353,12 +410,18 @@ export async function onObdLiveArrived(
 
   // First try to find a PENDING scan
   let report = await prisma.gpsScanReport.findFirst({
-    where: { terminalId, status: 'PENDING' },
+    where: {
+      terminalId,
+      status: 'PENDING',
+      requestedAt: { gte: new Date(Date.now() - 300_000) }, // Within last 5 minutes
+    },
     orderBy: { requestedAt: 'desc' },
   });
 
-  // If no PENDING scan, check for a recent PARTIAL scan (late-arrival handling)
   if (!report) {
+    logger.info('GPS scan: no pending scan found for OBD attach', { terminalId });
+
+    // Check PARTIAL and COMPLETED recent scans for late arrival
     const recentPartial = await prisma.gpsScanReport.findFirst({
       where: {
         terminalId,
@@ -367,8 +430,8 @@ export async function onObdLiveArrived(
       },
       orderBy: { requestedAt: 'desc' },
     });
-    if (recentPartial) {
-      logger.info('Late-arrival: updating PARTIAL scan with OBD live data', {
+    if (recentPartial && !hasLiveObdData(recentPartial)) {
+      logger.info('GPS scan: late-arrival - upgrading PARTIAL to COMPLETED with OBD live data', {
         scanReportId: recentPartial.id,
         terminalId,
       });
@@ -384,18 +447,62 @@ export async function onObdLiveArrived(
     }
   }
 
-  if (!report) return;
+  // If no PENDING or PARTIAL scan, check for a recent COMPLETED scan (late-arrival handling)
+  // This handles the case where DTC data arrives first, scan completes, then OBD live data arrives later
+  if (!report) {
+    logger.info('GPS scan: late-arrival check for COMPLETED scan', {
+      terminalId,
+      timeWindowMs: 60_000,
+    });
+    const recentCompleted = await prisma.gpsScanReport.findFirst({
+      where: {
+        terminalId,
+        status: 'COMPLETED',
+        completedAt: { gt: new Date(Date.now() - 60_000) }, // Within last 60 seconds
+      },
+      orderBy: { requestedAt: 'desc' },
+    });
+    if (recentCompleted && !hasLiveObdData(recentCompleted)) {
+      logger.info('GPS scan: late-arrival - updating COMPLETED scan with OBD live data', {
+        scanReportId: recentCompleted.id,
+        terminalId,
+      });
+      report = recentCompleted;
+    } else {
+      logger.info('GPS scan: late-arrival - no recent COMPLETED scan found to update', {
+        terminalId,
+      });
+    }
+  }
+
+  if (!report) {
+    logger.info('GPS scan: no scan found to attach OBD data', { terminalId });
+    return;
+  }
+
+  logger.info('GPS scan: found pending scan for OBD attach', {
+    scanReportId: report.id,
+    terminalId,
+  });
 
   const data: Prisma.GpsScanReportUncheckedUpdateInput = {
     rpm: obd.rpm,
     coolantTempC: obd.coolantTempC,
     intakeAirTempC: obd.intakeAirTempC,
-    ambientTempC: obd.ambientTempC,
+    throttlePct: obd.throttlePct,
+    engineLoadPct: obd.engineLoadPct,
+    mafGps: obd.mafGps,
+    fuelRailPressureKpa: obd.fuelRailPressureKpa,
+    vehicleSpeedKmh: obd.vehicleSpeedKmh,
+    runtimeSinceStartSec: obd.runtimeSinceStartSec,
+    acceleratorPct: obd.acceleratorPct,
     intakeManifoldKpa: obd.intakeManifoldKpa,
     barometricKpa: obd.barometricKpa,
-    fuelRailPressureKpa: obd.fuelRailPressureKpa,
-    runtimeSinceStartSec: obd.runtimeSinceStartSec,
+    ambientTempC: obd.ambientTempC,
+    distanceWithMilKm: obd.distanceWithMilKm,
+    fuelLevelPct: obd.fuelLevelPct,
   };
+
   if (obd.vehicleSpeedKmh !== undefined) {
     data.vehicleSpeedKmh = new Prisma.Decimal(obd.vehicleSpeedKmh.toFixed(1));
   }
@@ -506,6 +613,105 @@ export async function sweepStaleScanReports(): Promise<number> {
 // ── Internal helpers ───────────────────────────────────────────────────────
 
 /**
+ * Detect whether a scan report has real live OBD telemetry data.
+ * VIN, vehicleYear/make/model, milOn, and dtcCount are metadata/DTC fields,
+ * NOT live OBD telemetry. This helper only checks actual sensor readings.
+ */
+function hasLiveObdData(
+  row: Pick<
+    GpsScanReport,
+    | 'rpm'
+    | 'coolantTempC'
+    | 'vehicleSpeedKmh'
+    | 'batteryVoltageMv'
+    | 'intakeAirTempC'
+    | 'ambientTempC'
+    | 'intakeManifoldKpa'
+    | 'barometricKpa'
+    | 'fuelRailPressureKpa'
+    | 'runtimeSinceStartSec'
+    | 'acceleratorPct'
+    | 'throttlePct'
+    | 'engineLoadPct'
+    | 'mafGps'
+    | 'fuelLevelPct'
+    | 'distanceWithMilKm'
+  >,
+): boolean {
+  return (
+    row.rpm !== null ||
+    row.coolantTempC !== null ||
+    row.vehicleSpeedKmh !== null ||
+    row.batteryVoltageMv !== null ||
+    row.intakeAirTempC !== null ||
+    row.ambientTempC !== null ||
+    row.intakeManifoldKpa !== null ||
+    row.barometricKpa !== null ||
+    row.fuelRailPressureKpa !== null ||
+    row.runtimeSinceStartSec !== null ||
+    row.acceleratorPct !== null ||
+    row.throttlePct !== null ||
+    row.engineLoadPct !== null ||
+    row.mafGps !== null ||
+    row.fuelLevelPct !== null ||
+    row.distanceWithMilKm !== null
+  );
+}
+
+/**
+ * Fetch the most recent GpsObdSnapshot for a terminal, if it's fresh enough.
+ * Returns null if no snapshot exists or if it's older than CACHED_OBD_FRESHNESS_MS.
+ */
+async function fetchFreshCachedObd(terminalId: string): Promise<GpsObdSnapshot | null> {
+  const cutoff = new Date(Date.now() - CACHED_OBD_FRESHNESS_MS);
+  const snapshot = await prisma.gpsObdSnapshot.findFirst({
+    where: {
+      terminalId,
+      reportedAt: { gt: cutoff },
+    },
+    orderBy: { reportedAt: 'desc' },
+  });
+  return snapshot;
+}
+
+/**
+ * Build a Prisma update object from cached OBD snapshot data.
+ * This is reused in both requestFullScan (initial backfill) and maybeCompleteScan (fallback).
+ */
+function buildScanReportUpdateFromCachedObd(cachedObd: GpsObdSnapshot): Prisma.GpsScanReportUncheckedUpdateInput {
+  const data: Prisma.GpsScanReportUncheckedUpdateInput = {
+    rpm: cachedObd.rpm,
+    coolantTempC: cachedObd.coolantTempC,
+    intakeAirTempC: cachedObd.intakeAirTempC,
+    throttlePct: cachedObd.throttlePct,
+    engineLoadPct: cachedObd.engineLoadPct,
+    mafGps: cachedObd.mafGps,
+    fuelRailPressureKpa: cachedObd.fuelPressureKpa,
+    batteryVoltageMv: cachedObd.batteryVoltageMv,
+    vehicleSpeedKmh: cachedObd.vehicleSpeedKmh,
+  };
+  if (cachedObd.extraPidsJson) {
+    const extra = cachedObd.extraPidsJson as Record<string, unknown>;
+    if (extra.fuelLevelPct !== undefined) {
+      data.fuelLevelPct = new Prisma.Decimal(Number(extra.fuelLevelPct).toFixed(1));
+    }
+    if (extra.acceleratorPct !== undefined) {
+      data.acceleratorPct = new Prisma.Decimal(Number(extra.acceleratorPct).toFixed(1));
+    }
+    if (extra.intakeManifoldKpa !== undefined) {
+      data.intakeManifoldKpa = extra.intakeManifoldKpa as number;
+    }
+    if (extra.barometricKpa !== undefined) {
+      data.barometricKpa = extra.barometricKpa as number;
+    }
+    if (extra.ambientTempC !== undefined) {
+      data.ambientTempC = extra.ambientTempC as number;
+    }
+  }
+  return data;
+}
+
+/**
  * Schedule the outer timeout. Cancelled by `maybeCompleteScan` when the
  * row transitions to COMPLETED or PARTIAL.
  */
@@ -545,8 +751,10 @@ function registerTimeout(report: GpsScanReport, timeoutMs: number): void {
 
 /**
  * Decide whether we have enough data to flip the row to COMPLETED or PARTIAL. Strategy:
- *  - If we have BOTH DTC and OBD live data: complete as COMPLETED
- *  - If we have ONLY DTC data: wait SECOND_SIGNAL_WAIT_MS, then complete as PARTIAL
+ *  - If we have BOTH DTC and OBD live data: complete immediately as COMPLETED
+ *  - If we have ONLY DTC data: wait SECOND_SIGNAL_WAIT_MS, then check for cached OBD data
+ *    - If cached OBD is fresh: use it and complete as COMPLETED
+ *    - If no cached OBD: complete as PARTIAL
  *  - If we have ONLY OBD live data: wait SECOND_SIGNAL_WAIT_MS, then complete as COMPLETED
  *    (OBD live data is sufficient for a useful report even without DTC)
  *  - On outer timeout: TIMED_OUT
@@ -559,23 +767,38 @@ async function maybeCompleteScan(
   if (!row || row.status !== 'PENDING') return;
 
   const hasDtc = row.dtcCount !== null;
-  const hasObd = row.rpm !== null || row.coolantTempC !== null || row.vin !== null;
+  const hasObd = hasLiveObdData(row);
+
+  // Log that VIN alone does not count as live OBD data
+  if (!hasObd && row.vin !== null) {
+    logger.info('GPS scan: VIN is metadata only and is not counted as live OBD', {
+      scanReportId,
+      terminalId: row.terminalId,
+      hasVin: true,
+      hasLiveObd: false,
+    });
+  }
 
   if (hasDtc && hasObd) {
     // Full data: complete immediately as COMPLETED
+    logger.info('GPS scan: completed with DTC + live OBD', {
+      scanReportId,
+      terminalId: row.terminalId,
+    });
     await completeScan(scanReportId, 'COMPLETED');
     return;
   }
 
   // Partial: arm/refresh the "wait briefly for the other signal" timer.
   const entry = pending.get(scanReportId);
-  if (!entry) return;
 
   // Cancel any existing second-signal timer before arming a new one.
   // Without this, duplicate F2 or OBD packets would stack multiple
   // overlapping 8 s timers all trying to complete the same scan.
-  entry.cancelSecondSignalTimer?.();
-  entry.cancelSecondSignalTimer = undefined;
+  if (entry) {
+    entry.cancelSecondSignalTimer?.();
+    entry.cancelSecondSignalTimer = undefined;
+  }
 
   const handle = setTimeout(async () => {
     const fresh = await prisma.gpsScanReport.findUnique({ where: { id: scanReportId } });
@@ -583,29 +806,71 @@ async function maybeCompleteScan(
 
     // Determine final status based on what we have
     const finalHasDtc = fresh.dtcCount !== null;
-    const finalHasObd = fresh.rpm !== null || fresh.coolantTempC !== null || fresh.vin !== null;
+    const finalHasObd = hasLiveObdData(fresh);
 
     if (finalHasDtc && finalHasObd) {
+      logger.info('GPS scan: completed with DTC + live OBD (after wait)', {
+        scanReportId,
+        terminalId: fresh.terminalId,
+      });
       await completeScan(scanReportId, 'COMPLETED');
     } else if (finalHasObd) {
       // OBD live data alone is sufficient for a useful report
+      logger.info('GPS scan: completed with live OBD only', {
+        scanReportId,
+        terminalId: fresh.terminalId,
+      });
       await completeScan(scanReportId, 'COMPLETED');
     } else if (finalHasDtc) {
-      // Only DTC data: mark as PARTIAL (no live OBD telemetry)
-      await completeScan(scanReportId, 'PARTIAL');
+      // Only DTC data: check for cached OBD before marking as PARTIAL
+      logger.info('GPS scan: checking for cached OBD data', {
+        scanReportId,
+        terminalId: fresh.terminalId,
+      });
+      const cachedObd = await fetchFreshCachedObd(fresh.terminalId);
+      if (cachedObd) {
+        logger.info('GPS scan: using cached OBD data before completing', {
+          scanReportId,
+          terminalId: fresh.terminalId,
+          cachedAgeMs: Date.now() - cachedObd.reportedAt.getTime(),
+        });
+        const data = buildScanReportUpdateFromCachedObd(cachedObd);
+        await prisma.gpsScanReport.update({
+          where: { id: scanReportId },
+          data,
+        });
+        await completeScan(scanReportId, 'COMPLETED');
+      } else {
+        logger.info('GPS scan: completed PARTIAL because no live OBD was available', {
+          scanReportId,
+          terminalId: fresh.terminalId,
+        });
+        await completeScan(scanReportId, 'PARTIAL');
+      }
     } else {
       // Should not happen, but fail-safe
+      logger.info('GPS scan: completing as PARTIAL (fail-safe)', {
+        scanReportId,
+        terminalId: fresh.terminalId,
+      });
       await completeScan(scanReportId, 'PARTIAL');
     }
   }, SECOND_SIGNAL_WAIT_MS);
   handle.unref?.();
-  entry.cancelSecondSignalTimer = () => clearTimeout(handle);
 
-  logger.info('Partial scan signal received', {
+  // Store timer reference if entry exists (backend process)
+  if (entry) {
+    entry.cancelSecondSignalTimer = () => clearTimeout(handle);
+  }
+
+  logger.info('GPS scan: DTC attached, waiting for live OBD', {
     scanReportId,
+    terminalId: row.terminalId,
     arrived,
     hasDtc,
     hasObd,
+    waitMs: SECOND_SIGNAL_WAIT_MS,
+    hasPendingEntry: !!entry,
   });
 }
 

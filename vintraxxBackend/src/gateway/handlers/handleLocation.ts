@@ -89,6 +89,18 @@ export async function handleLocation(
   // orchestrator. The orchestrator quietly no-ops when no scan is pending.
   await persistObdSnapshot(terminal, decoded);
 
+  // Notify scan report service if OBD data arrived
+  const obd = decoded.additional?.obd;
+  if (obd) {
+    session.log.info('GPS scan hook: calling onObdLiveArrived', {
+      terminalId: terminal.id,
+      hasRpm: obd.rpm !== null,
+      hasCoolantTemp: obd.coolantTempC !== null,
+      hasVin: obd.vin !== null,
+    });
+    void onObdLiveArrived(terminal.id, obd, decoded);
+  }
+
   const alarmTransitions = await processAlarmTransitions(terminal, decoded);
   await processTrips(terminal, [decoded], alarmTransitions.openedOverspeed);
 
@@ -178,6 +190,18 @@ export async function handleBatchLocation(
   // entry. We could iterate the whole batch but OBD live data is high
   // cardinality + low value if it's already minutes old.
   await persistObdSnapshot(terminal, latest);
+
+  // Notify scan report service if OBD data arrived
+  const obd = latest.additional?.obd;
+  if (obd) {
+    session.log.info('GPS scan hook: calling onObdLiveArrived', {
+      terminalId: terminal.id,
+      hasRpm: obd.rpm !== null,
+      hasCoolantTemp: obd.coolantTempC !== null,
+      hasVin: obd.vin !== null,
+    });
+    void onObdLiveArrived(terminal.id, obd, latest);
+  }
 
   // Diff alarm bits only against the LATEST entry — back-fill batches must
   // not generate a flap of open/close events for transient states the
@@ -499,10 +523,6 @@ async function persistObdSnapshot(
       err: (err as Error).message,
     });
   }
-
-  // Always notify the orchestrator (even if the snapshot insert failed — the
-  // in-memory orchestrator state doesn't depend on the row being persisted).
-  void onObdLiveArrived(terminal.id, obd, decoded);
 
   // Best-effort backfill of GpsTerminal.vehicleVin from a fresh OBD VIN read,
   // so subsequent reports (and the Full Scan Report row) get to use it.

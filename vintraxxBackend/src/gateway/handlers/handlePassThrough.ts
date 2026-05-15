@@ -199,6 +199,11 @@ async function handleDtcReport(
   // Always tell the scan orchestrator so a pending Refresh request resolves
   // even when the car is healthy (DTC count = 0). Pass through the actual
   // counts — the orchestrator wraps them into the GpsScanReport.
+  session.log.info('GPS scan hook: calling onDtcArrived', {
+    terminalId: terminal.id,
+    dtcCount: allCodes.length,
+    milOn: parsed.milOn,
+  });
   void scanOrchestratorOnDtc(terminal.id, parsed);
 
   // We deliberately do NOT persist a GpsDtcEvent for healthy reports. The

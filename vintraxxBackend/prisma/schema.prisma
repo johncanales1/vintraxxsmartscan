@@ -445,6 +445,14 @@ model GpsTerminal {
   tcpReplySec          Int?
   parameters           Json?
 
+  // 4G Always-Online feature state (JT/T 808 0x8300 text command)
+  fourGAlwaysOnlineDesired       Boolean   @default(false)
+  fourGAlwaysOnlineStatus        String?   // UNKNOWN, ENABLED, DISABLED, PENDING_ENABLE, PENDING_DISABLE, FAILED
+  fourGAlwaysOnlineLastCommandId String?
+  fourGAlwaysOnlineLastAckAt     DateTime?
+  fourGAlwaysOnlineLastError     String?
+  fourGAlwaysOnlineUpdatedAt     DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

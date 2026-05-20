@@ -41,6 +41,7 @@ import * as m8201 from '../codec/messages/m8201-location-query';
 import * as m8104 from '../codec/messages/m8104-query-params';
 import * as m8103 from '../codec/messages/m8103-set-params';
 import * as m8105 from '../codec/messages/m8105-terminal-control';
+import * as m8300 from '../codec/messages/m8300-text-distribution';
 import * as m8900 from '../codec/messages/m8900-pass-through-down';
 import * as commandService from '../../services/gps-command.service';
 
@@ -384,6 +385,13 @@ function buildBody(cmd: DispatchableRow): Buffer {
         throw new Error('terminal-control payload missing controlType');
       }
       return m8105.encode({ controlType: payload.controlType });
+    }
+    case MsgId.TEXT_DISTRIBUTION: {
+      const payload = cmd.payload as { kind: string; textPayload?: string };
+      if (typeof payload.textPayload !== 'string' || payload.textPayload.length === 0) {
+        throw new Error('text-distribution payload missing textPayload');
+      }
+      return m8300.encode({ textFlag: 0x01, text: payload.textPayload });
     }
     default:
       throw new Error(`Unsupported function code: 0x${cmd.functionCode.toString(16)}`);

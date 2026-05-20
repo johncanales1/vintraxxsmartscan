@@ -18,6 +18,7 @@ import * as gpsAdminService from '../services/gps-admin.service';
 import * as bulkDeleteService from '../services/gps-bulk-delete.service';
 import { promoteDtcEventToScan } from '../services/gps-dtc-promote.service';
 import * as scanReportService from '../services/gps-scan-report.service';
+import * as alwaysOnlineService from '../services/gps-4g-always-online.service';
 import { generateGpsScanReportPdf } from '../services/gps-scan-report-pdf.service';
 import { sendGpsScanReportEmail } from '../services/email.service';
 import { AppError } from '../middleware/errorHandler';
@@ -1365,6 +1366,67 @@ export async function adminBulkDeleteScanReports(
     const { ids } = req.body as { ids: string[] };
     const deleted = await bulkDeleteService.bulkDeleteScanReports(ids);
     res.json({ success: true, deleted });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ── Admin: 4G Always-Online toggle ──────────────────────────────────────────
+
+export async function adminEnable4gAlwaysOnline(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const adminId = req.admin!.adminId;
+    const terminalId = req.params.id as string;
+    const result = await alwaysOnlineService.enableAlwaysOnline({
+      terminalId,
+      adminId,
+    });
+    res.status(202).json({
+      success: true,
+      commandId: result.command.id,
+      reused: result.reused,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function adminDisable4gAlwaysOnline(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const adminId = req.admin!.adminId;
+    const terminalId = req.params.id as string;
+    const result = await alwaysOnlineService.disableAlwaysOnline({
+      terminalId,
+      adminId,
+    });
+    res.status(202).json({
+      success: true,
+      commandId: result.command.id,
+      reused: result.reused,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function adminGet4gAlwaysOnlineConfig(
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    res.json({
+      success: true,
+      disableConfigured: alwaysOnlineService.isDisableConfigured(),
+    });
   } catch (err) {
     next(err);
   }

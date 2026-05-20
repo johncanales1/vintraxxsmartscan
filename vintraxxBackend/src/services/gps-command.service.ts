@@ -26,6 +26,7 @@ import { emitCommandQueued } from '../realtime/notify-command';
 import { AppError } from '../middleware/errorHandler';
 import { MsgId } from '../gateway/codec/constants';
 import { SUPPORTED_CONTROL_TYPES } from '../gateway/codec/messages/m8105-terminal-control';
+import * as alwaysOnlineService from './gps-4g-always-online.service';
 
 // ── Public command kinds ────────────────────────────────────────────────────
 
@@ -40,7 +41,9 @@ export type CommandKind =
   | 'read-params'
   | 'set-params'
   | 'clear-dtcs'
-  | 'terminal-control';
+  | 'terminal-control'
+  | 'enable-4g-always-online'
+  | 'disable-4g-always-online';
 
 export interface SetParamsItem {
   /** JT/T 808 parameter id (e.g. 0x0001 = heartbeat interval). */
@@ -73,14 +76,18 @@ export interface EnqueueInput {
    * SUPPORTED_CONTROL_TYPES (3, 4, 5, 6, 7) per the m8105 codec.
    */
   controlType?: number;
+  /** Text payload for 0x8300 text-distribution commands (4G always-online). */
+  textPayload?: string;
 }
 
 const KIND_TO_FUNCTION_CODE: Record<CommandKind, number> = {
-  'locate':           MsgId.LOCATION_QUERY,        // 0x8201
-  'read-params':      MsgId.QUERY_TERMINAL_PARAMS, // 0x8104
-  'set-params':       MsgId.SET_TERMINAL_PARAMS,   // 0x8103
-  'clear-dtcs':       MsgId.DATA_PASSTHROUGH_DOWN, // 0x8900 (subtype 0xF6)
-  'terminal-control': MsgId.TERMINAL_CONTROL,      // 0x8105
+  'locate':                    MsgId.LOCATION_QUERY,        // 0x8201
+  'read-params':               MsgId.QUERY_TERMINAL_PARAMS, // 0x8104
+  'set-params':                MsgId.SET_TERMINAL_PARAMS,   // 0x8103
+  'clear-dtcs':                MsgId.DATA_PASSTHROUGH_DOWN, // 0x8900 (subtype 0xF6)
+  'terminal-control':          MsgId.TERMINAL_CONTROL,      // 0x8105
+  'enable-4g-always-online':   MsgId.TEXT_DISTRIBUTION,     // 0x8300
+  'disable-4g-always-online':  MsgId.TEXT_DISTRIBUTION,     // 0x8300
 };
 
 // ── Enqueue (REST side) ─────────────────────────────────────────────────────
@@ -162,6 +169,14 @@ export async function enqueueCommand(input: EnqueueInput): Promise<GpsCommand> {
       payload = { kind: 'terminal-control', controlType: input.controlType };
       break;
     }
+    case 'enable-4g-always-online':
+    case 'disable-4g-always-online': {
+      if (!input.textPayload || input.textPayload.length === 0) {
+        throw new AppError('`textPayload` is required for 4G always-online commands', 400);
+      }
+      payload = { kind: input.kind, textPayload: input.textPayload };
+      break;
+    }
     default:
       throw new AppError(`Unsupported command kind: ${input.kind}`, 400);
   }
@@ -233,6 +248,15 @@ export async function markAcked(args: {
         args.response ?? { result: args.result },
     },
   });
+  if (result.count === 1) {
+    // Fire 4G always-online state update if applicable.
+    void fire4gAlwaysOnlineAck(args.commandId, args.result).catch((err) =>
+      logger.warn('markAcked: 4G always-online callback failed', {
+        commandId: args.commandId,
+        err: (err as Error).message,
+      }),
+    );
+  }
   return result.count === 1;
 }
 
@@ -247,7 +271,57 @@ export async function markFailed(args: {
     where: { id: args.commandId, status: { in: allowed } },
     data: { status: 'FAILED', errorText: args.errorText, ackAt: new Date() },
   });
+  if (result.count === 1) {
+    // Fire 4G always-online failure callback if applicable.
+    void fire4gAlwaysOnlineFail(args.commandId, args.errorText).catch((err) =>
+      logger.warn('markFailed: 4G always-online callback failed', {
+        commandId: args.commandId,
+        err: (err as Error).message,
+      }),
+    );
+  }
   return result.count === 1;
+}
+
+// ── 4G Always-Online lifecycle hooks ────────────────────────────────────────
+
+async function fire4gAlwaysOnlineAck(commandId: string, result: number) {
+  const cmd = await prisma.gpsCommand.findUnique({
+    where: { id: commandId },
+    select: { id: true, terminalId: true, payload: true },
+  });
+  if (!cmd) return;
+  const payload = cmd.payload as { kind?: string } | null;
+  if (
+    payload?.kind !== 'enable-4g-always-online' &&
+    payload?.kind !== 'disable-4g-always-online'
+  ) return;
+
+  await alwaysOnlineService.onCommandAcked({
+    commandId,
+    kind: payload.kind as 'enable-4g-always-online' | 'disable-4g-always-online',
+    terminalId: cmd.terminalId,
+    result,
+  });
+}
+
+async function fire4gAlwaysOnlineFail(commandId: string, errorText: string) {
+  const cmd = await prisma.gpsCommand.findUnique({
+    where: { id: commandId },
+    select: { id: true, terminalId: true, payload: true },
+  });
+  if (!cmd) return;
+  const payload = cmd.payload as { kind?: string } | null;
+  if (
+    payload?.kind !== 'enable-4g-always-online' &&
+    payload?.kind !== 'disable-4g-always-online'
+  ) return;
+
+  await alwaysOnlineService.onCommandFailed({
+    commandId,
+    terminalId: cmd.terminalId,
+    errorText,
+  });
 }
 
 // ── Cron sweeps ─────────────────────────────────────────────────────────────

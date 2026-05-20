@@ -258,6 +258,22 @@ router.post(
   gpsCtrl.adminPromoteScanToAi,
 );
 
+// Admin: 4G Always-Online toggle (JT/T 808 0x8300 text command)
+router.post(
+  '/gps/terminals/:id/4g-always-online/enable',
+  validateRequest(terminalIdParamsSchema),
+  gpsCtrl.adminEnable4gAlwaysOnline,
+);
+router.post(
+  '/gps/terminals/:id/4g-always-online/disable',
+  validateRequest(terminalIdParamsSchema),
+  gpsCtrl.adminDisable4gAlwaysOnline,
+);
+router.get(
+  '/gps/4g-always-online/config',
+  gpsCtrl.adminGet4gAlwaysOnlineConfig,
+);
+
 // Admin: audit log read (powers Settings → Audit Log tab). Available to any
 // authenticated admin — auditing is collaborative, not super-admin-only.
 router.get(

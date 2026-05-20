@@ -39,6 +39,7 @@ import { useMultiSelect } from '@/lib/useMultiSelect';
 import {
   Search, Plus, RefreshCw, Radio, Eye, UserPlus, Unlink, Trash2, Pencil,
   ChevronLeft, ChevronRight, X as XIcon, CheckSquare, Square,
+  Loader2, AlertCircle, Signal,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -93,6 +94,14 @@ export default function GpsTerminalsSection({
   const [deleteTarget, setDeleteTarget] = useState<GpsTerminal | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
+
+  // 4G Always-Online: fetch whether disable command is configured once.
+  const [disableConfigured, setDisableConfigured] = useState(false);
+  useEffect(() => {
+    api.get4gAlwaysOnlineConfig()
+      .then((r) => setDisableConfigured(r.disableConfigured))
+      .catch(() => { /* best-effort */ });
+  }, []);
 
   // Resolve owner display name when an initialOwnerUserId is provided so
   // the chip label is recognisable. Fail silently — the chip will fall
@@ -331,6 +340,8 @@ export default function GpsTerminalsSection({
               onReassign={() => setReassignTarget(t)}
               onUnpair={() => setUnpairTarget(t)}
               onDelete={canDelete ? () => setDeleteTarget(t) : undefined}
+              disableConfigured={disableConfigured}
+              onTerminalUpdated={load}
             />
           ))}
         </div>
@@ -451,6 +462,8 @@ function TerminalCard({
   onReassign,
   onUnpair,
   onDelete,
+  disableConfigured,
+  onTerminalUpdated,
 }: {
   terminal: GpsTerminal;
   selectable: boolean;
@@ -462,8 +475,57 @@ function TerminalCard({
   onUnpair: () => void;
   /** `undefined` when the current admin isn't a super-admin — hides the button. */
   onDelete?: () => void;
+  disableConfigured: boolean;
+  onTerminalUpdated: () => void;
 }) {
   const ownerLabel = terminal.ownerUser?.fullName || terminal.ownerUser?.email || 'Unpaired';
+
+  // 4G Always-Online toggle state
+  const [toggling, setToggling] = useState(false);
+  const aoStatus = terminal.fourGAlwaysOnlineStatus;
+  const aoDesired = terminal.fourGAlwaysOnlineDesired;
+  const isPending = aoStatus === 'PENDING_ENABLE' || aoStatus === 'PENDING_DISABLE';
+  const isOn = aoStatus === 'ENABLED';
+  const isFailed = aoStatus === 'FAILED';
+
+  const handle4gToggle = async () => {
+    if (toggling || isPending) return;
+    setToggling(true);
+    try {
+      if (isOn || aoDesired) {
+        // Want to turn OFF
+        if (!disableConfigured) {
+          toast.error('Disable command not configured — the supplier has not confirmed the disable payload yet.');
+          return;
+        }
+        await api.disable4gAlwaysOnline(terminal.id);
+        toast.success('4G Always-Online disable command sent');
+      } else {
+        // Want to turn ON
+        await api.enable4gAlwaysOnline(terminal.id);
+        toast.success('4G Always-Online enable command sent');
+      }
+      onTerminalUpdated();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to toggle 4G Always-Online');
+    } finally {
+      setToggling(false);
+    }
+  };
+
+  // Determine toggle visual state
+  const toggleChecked = isOn || aoDesired;
+  const toggleDisabled = toggling || isPending;
+
+  // Tooltip
+  let aoTooltip =
+    '4G Always-Online keeps the terminal\u2019s cellular connection active after ACC/ignition off. ' +
+    'It does not force the vehicle ECU to keep producing live OBD data while the engine is off.';
+  if (isPending) aoTooltip = `Sending\u2026 (${aoStatus?.replace(/_/g, ' ').toLowerCase()})`;
+  if (isFailed) aoTooltip = `Failed: ${terminal.fourGAlwaysOnlineLastError || 'unknown error'}`;
+  if (toggleChecked && !disableConfigured && !isPending) {
+    aoTooltip += '\nDisable command not yet configured by supplier.';
+  }
 
   return (
     <div
@@ -547,6 +609,40 @@ function TerminalCard({
                 : '—'
           }
         />
+      </div>
+
+      {/* 4G Always-Online toggle */}
+      <div className="mt-3 flex items-center justify-between gap-2 px-1" title={aoTooltip}>
+        <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+          <Signal size={13} className={isOn ? 'text-emerald-500' : isFailed ? 'text-red-400' : ''} />
+          <span>4G Always-On</span>
+          {isPending && <Loader2 size={12} className="animate-spin text-blue-500" />}
+          {isFailed && <AlertCircle size={12} className="text-red-400" />}
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={toggleChecked}
+          disabled={toggleDisabled}
+          onClick={handle4gToggle}
+          className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 ${
+            toggleDisabled
+              ? 'cursor-not-allowed opacity-50'
+              : 'cursor-pointer'
+          } ${
+            toggleChecked
+              ? isFailed
+                ? 'bg-red-400'
+                : 'bg-emerald-500'
+              : 'bg-gray-300 dark:bg-gray-600'
+          }`}
+        >
+          <span
+            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+              toggleChecked ? 'translate-x-4' : 'translate-x-0'
+            }`}
+          />
+        </button>
       </div>
 
       <button

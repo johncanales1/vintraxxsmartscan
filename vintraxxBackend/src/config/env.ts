@@ -96,6 +96,13 @@ const envSchema = z.object({
    * this set when NODE_ENV === 'development', so you don't have to manage
    * those here.
    */
+  // 4G Always-Online device configuration commands (JT/T 808 0x8300 text).
+  // Enable is confirmed by supplier; disable is TBD — leave blank until confirmed.
+  GPS_4G_ALWAYS_ONLINE_ENABLE_COMMAND: z
+    .string()
+    .default('<HL&P:HOLLOO&7K:1>'),
+  GPS_4G_ALWAYS_ONLINE_DISABLE_COMMAND: optionalNonEmptyString,
+
   CORS_ALLOWED_ORIGINS: z
     .string()
     .default(

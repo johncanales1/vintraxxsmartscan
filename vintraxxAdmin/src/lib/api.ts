@@ -552,6 +552,22 @@ export const api = {
       body: JSON.stringify({ ids }),
     }),
 
+  // 4G Always-Online toggle
+  enable4gAlwaysOnline: (terminalId: string) =>
+    request<{ success: boolean; commandId: string; reused: boolean }>(
+      `/gps/terminals/${terminalId}/4g-always-online/enable`,
+      { method: 'POST' },
+    ),
+  disable4gAlwaysOnline: (terminalId: string) =>
+    request<{ success: boolean; commandId: string; reused: boolean }>(
+      `/gps/terminals/${terminalId}/4g-always-online/disable`,
+      { method: 'POST' },
+    ),
+  get4gAlwaysOnlineConfig: () =>
+    request<{ success: boolean; disableConfigured: boolean }>(
+      '/gps/4g-always-online/config',
+    ),
+
   // ── GPS Scan Reports ──────────────────────────────────────────────────────
 
   requestGpsScanReport: (terminalId: string) =>
@@ -880,6 +896,14 @@ export interface GpsTerminal {
   tcpReconnectSec: number | null;
   tcpReplySec: number | null;
   parameters: Record<string, unknown> | null;
+
+  // 4G Always-Online feature state
+  fourGAlwaysOnlineDesired: boolean;
+  fourGAlwaysOnlineStatus: string | null;
+  fourGAlwaysOnlineLastCommandId: string | null;
+  fourGAlwaysOnlineLastAckAt: string | null;
+  fourGAlwaysOnlineLastError: string | null;
+  fourGAlwaysOnlineUpdatedAt: string | null;
 
   createdAt: string;
   updatedAt: string;

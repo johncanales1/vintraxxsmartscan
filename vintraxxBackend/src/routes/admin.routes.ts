@@ -21,6 +21,9 @@ import {
   enqueueCommandBodySchema,
   listCommandsQuerySchema,
   commandIdParamsSchema,
+  scanReportIdParamsSchema,
+  listScanReportsQuerySchema,
+  emailScanReportSchema,
 } from '../schemas/gps.schema';
 import {
   adminTerminalLocationsQuerySchema,
@@ -87,6 +90,7 @@ router.post(
 // Scans
 router.get('/scans', adminCtrl.listScans);
 router.get('/scans/:id', adminCtrl.getScanDetail);
+router.get('/scans/:id/report', adminCtrl.getAdminScanReport);
 router.delete('/scans/:id', adminCtrl.deleteScan);
 
 // Inspections
@@ -227,6 +231,33 @@ router.get(
   gpsCtrl.adminGetCommand,
 );
 
+// Admin: GPS Full Scan Reports (Phase 5+)
+router.post(
+  '/gps/terminals/:id/scan',
+  validateRequest(terminalIdParamsSchema),
+  gpsCtrl.adminRequestScanReport,
+);
+router.get(
+  '/gps/terminals/:id/scan-reports',
+  validateRequest(listScanReportsQuerySchema),
+  gpsCtrl.adminListScanReports,
+);
+router.get(
+  '/gps/scan-reports/:id',
+  validateRequest(scanReportIdParamsSchema),
+  gpsCtrl.adminGetScanReport,
+);
+router.post(
+  '/gps/scan-reports/:id/email',
+  validateRequest(emailScanReportSchema),
+  gpsCtrl.adminEmailScanReport,
+);
+router.post(
+  '/gps/scan-reports/:id/promote-ai',
+  validateRequest(scanReportIdParamsSchema),
+  gpsCtrl.adminPromoteScanToAi,
+);
+
 // Admin: audit log read (powers Settings → Audit Log tab). Available to any
 // authenticated admin — auditing is collaborative, not super-admin-only.
 router.get(
@@ -293,6 +324,12 @@ router.post(
   requireSuperAdmin,
   validateRequest(adminBulkDeleteSchema),
   gpsCtrl.adminBulkDeleteTerminals,
+);
+router.post(
+  '/gps/scan-reports/bulk-delete',
+  requireSuperAdmin,
+  validateRequest(adminBulkDeleteSchema),
+  gpsCtrl.adminBulkDeleteScanReports,
 );
 
 export default router;

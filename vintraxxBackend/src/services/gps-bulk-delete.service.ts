@@ -80,3 +80,9 @@ export async function bulkDeleteTerminals(ids: string[]): Promise<BulkDeleteResu
   const r = await prisma.gpsTerminal.deleteMany({ where: { id: { in: ids } } });
   return { deleted: r.count };
 }
+
+export async function bulkDeleteScanReports(ids: string[]): Promise<BulkDeleteResult> {
+  if (ids.length === 0) return emptyResult();
+  const r = await prisma.gpsScanReport.deleteMany({ where: { id: { in: ids } } });
+  return { deleted: r.count };
+}

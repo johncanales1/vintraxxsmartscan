@@ -951,6 +951,7 @@ export interface PromoteScanResult {
 export async function promoteToAi(
   scanReportId: string,
   requesterUserId: string,
+  emailOverride?: string,
 ): Promise<PromoteScanResult> {
   const report = await prisma.gpsScanReport.findUnique({
     where: { id: scanReportId },
@@ -967,15 +968,19 @@ export async function promoteToAi(
     throw new AppError('Cannot run AI report without a VIN', 400);
   }
 
-  // We need the requester's email so the background pipeline can mail the
-  // resulting PDF. Failing fast here gives the user a meaningful 4xx rather
-  // than a silent "scan stuck in RECEIVED" hours later.
-  const user = await prisma.user.findUnique({
-    where: { id: requesterUserId },
-    select: { email: true },
-  });
-  if (!user?.email) {
-    throw new AppError('No email address on file for this account', 400);
+  // We need an email so the background pipeline can mail the resulting PDF.
+  // If an emailOverride is supplied (e.g. admin requesting the report) we
+  // use that directly; otherwise we look up the requester's profile email.
+  let recipientEmail = emailOverride;
+  if (!recipientEmail) {
+    const user = await prisma.user.findUnique({
+      where: { id: requesterUserId },
+      select: { email: true },
+    });
+    if (!user?.email) {
+      throw new AppError('No email address on file for this account', 400);
+    }
+    recipientEmail = user.email;
   }
 
   // Mirror the BLE scanner's rawPayload shape so the worker can re-use the
@@ -1032,7 +1037,7 @@ export async function promoteToAi(
   // Kick off the existing BLE background pipeline (decode VIN → AI → PDF →
   // email). Errors land in the Scan row's status; we deliberately don't
   // await — the user is polling the Scan row from the mobile/dashboard side.
-  void processScanInBackground(scan.id, requesterUserId, user.email).catch((err) => {
+  void processScanInBackground(scan.id, requesterUserId, recipientEmail).catch((err) => {
     logger.error('Background AI processing failed for promoted GPS scan', {
       scanId: scan.id,
       scanReportId: report.id,

@@ -14,6 +14,7 @@ import GpsTerminalsSection from '@/components/sections/GpsTerminalsSection';
 import GpsAlarmsSection from '@/components/sections/GpsAlarmsSection';
 import GpsFleetMapSection from '@/components/sections/GpsFleetMapSection';
 import GpsDtcsSection from '@/components/sections/GpsDtcsSection';
+import GpsScanReportsSection from '@/components/sections/GpsScanReportsSection';
 import GpsCommandsSection from '@/components/sections/GpsCommandsSection';
 import GpsAuditLogSection from '@/components/sections/GpsAuditLogSection';
 import RealtimePill from '@/components/RealtimePill';
@@ -30,7 +31,7 @@ import { toast } from 'sonner';
 
 type Tab =
   | 'overview' | 'dealers' | 'regular' | 'history' | 'schedule' | 'inspection' | 'settings'
-  | 'gps-terminals' | 'gps-alarms' | 'gps-fleet' | 'gps-dtcs' | 'gps-commands' | 'audit';
+  | 'gps-terminals' | 'gps-alarms' | 'gps-fleet' | 'gps-dtcs' | 'gps-scan-reports' | 'gps-commands' | 'audit';
 
 interface NavItem {
   id: Tab;
@@ -137,6 +138,7 @@ export default function Dashboard() {
           badge: gpsStats?.alarms.unacknowledged ?? 0,
         },
         { id: 'gps-dtcs', label: 'DTC Events', icon: <AlertTriangle size={20} /> },
+        { id: 'gps-scan-reports', label: 'Scan Reports', icon: <FileText size={20} /> },
         { id: 'gps-commands', label: 'Commands', icon: <Send size={20} /> },
       ],
     },
@@ -297,6 +299,7 @@ export default function Dashboard() {
           )}
           {tab === 'gps-fleet' && <GpsFleetMapSection />}
           {tab === 'gps-dtcs' && <GpsDtcsSection />}
+          {tab === 'gps-scan-reports' && <GpsScanReportsSection />}
           {tab === 'gps-commands' && <GpsCommandsSection />}
           {tab === 'audit' && <GpsAuditLogSection />}
         </div>

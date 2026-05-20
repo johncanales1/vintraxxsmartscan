@@ -32,7 +32,7 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 3001,
         HOSTNAME: '127.0.0.1',
-        NEXT_PUBLIC_API_BASE_URL: 'https://api.vintraxx.com/api/v1',
+        NEXT_PUBLIC_API_BASE_URL: '/api/v1',
         NEXT_PUBLIC_FRONTEND_URL: 'https://dev.vintraxx.com'
       },
       instances: 1,
@@ -57,7 +57,7 @@ module.exports = {
         // Was 0.0.0.0 which (somehow) only bound to the ENI interface IP
         // on this host, so nginx → admin returned 502.
         HOSTNAME: '127.0.0.1',
-        NEXT_PUBLIC_API_URL: 'https://api.vintraxx.com/api/v1/admin',
+        NEXT_PUBLIC_API_URL: '/api/v1/admin',
         NEXT_PUBLIC_ADMIN_URL: 'https://admin.vintraxx.com'
       },
       instances: 1,

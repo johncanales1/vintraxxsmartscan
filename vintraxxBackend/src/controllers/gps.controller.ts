@@ -1191,3 +1191,181 @@ export async function myPromoteScanToAi(
     next(err);
   }
 }
+
+// ── Admin: GPS Full Scan Reports ──────────────────────────────────────────────
+
+/**
+ * Admin "Run full scan" trigger — no ownership check. Passes the admin's id
+ * as `requestedByAdminId` so the audit trail reflects who initiated it.
+ */
+export async function adminRequestScanReport(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const adminId = req.admin!.adminId;
+    const terminalId = req.params.id as string;
+    const result = await scanReportService.requestFullScan({
+      terminalId,
+      requestedByAdminId: adminId,
+    });
+    res.status(201).json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Admin list of scan reports for a terminal (newest first). No ownership filter.
+ */
+export async function adminListScanReports(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const terminalId = req.params.id as string;
+    const limit = Number(req.query.limit ?? 20);
+    const reports = await scanReportService.listScanReports({ terminalId, limit });
+    res.json({ success: true, reports });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Admin read of a single GpsScanReport — no ownership guard.
+ */
+export async function adminGetScanReport(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const id = req.params.id as string;
+    const report = await scanReportService.getScanReport(id);
+    if (!report) throw new AppError('Scan report not found', 404);
+    res.json({ success: true, report });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Admin "Email PDF" — renders + emails the raw GPS scan PDF. Sends to the
+ * terminal owner or an override email address.
+ */
+export async function adminEmailScanReport(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const id = req.params.id as string;
+    const overrideEmail = (req.body as { email?: string } | undefined)?.email;
+
+    const report = await scanReportService.getScanReport(id);
+    if (!report) throw new AppError('Scan report not found', 404);
+    if (report.status !== 'COMPLETED' && report.status !== 'PARTIAL') {
+      throw new AppError('Scan report is not yet complete', 400);
+    }
+
+    const terminal = await prisma.gpsTerminal.findUnique({
+      where: { id: report.terminalId },
+    });
+    if (!terminal) throw new AppError('Terminal not found', 404);
+
+    const user = report.ownerUserId
+      ? await prisma.user.findUnique({
+          where: { id: report.ownerUserId },
+          select: { email: true, fullName: true },
+        })
+      : null;
+
+    const toEmail = overrideEmail || user?.email;
+    if (!toEmail) throw new AppError('No email address on file', 400);
+
+    const pdfPath = await generateGpsScanReportPdf({
+      report,
+      terminal,
+      ownerName: user?.fullName ?? null,
+      ownerEmail: toEmail,
+    });
+
+    const vehicleLabel =
+      [report.vehicleYear, report.vehicleMake, report.vehicleModel]
+        .filter(Boolean)
+        .join(' ') ||
+      terminal.nickname ||
+      `Device ${(terminal.deviceIdentifier ?? '').slice(-6)}`;
+
+    await sendGpsScanReportEmail({
+      toEmail,
+      pdfPath,
+      vehicleLabel,
+      vin: report.vin,
+      reportedAt: report.completedAt ?? report.requestedAt,
+      dtcCount: report.dtcCount ?? 0,
+      milOn: report.milOn === true,
+    });
+
+    res.json({ success: true, sentTo: toEmail, pdfPath });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Admin "Generate AI Report" — promote a COMPLETED GpsScanReport into the
+ * BLE Scan pipeline. Uses the terminal ownerUserId for the Scan row but
+ * emails the resulting PDF to the admin who initiated the action.
+ */
+export async function adminPromoteScanToAi(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const id = req.params.id as string;
+    const adminId = req.admin!.adminId;
+
+    const report = await scanReportService.getScanReport(id);
+    if (!report) throw new AppError('Scan report not found', 404);
+    if (report.status !== 'COMPLETED' && report.status !== 'PARTIAL') {
+      throw new AppError('Scan report is not yet complete', 400);
+    }
+    if (!report.ownerUserId) {
+      throw new AppError('Terminal has no owner — cannot promote to AI', 400);
+    }
+
+    // Look up the admin's email so the PDF goes to them, not the vehicle owner.
+    const admin = await prisma.admin.findUnique({
+      where: { id: adminId },
+      select: { email: true },
+    });
+    const adminEmail = admin?.email ?? undefined;
+
+    const result = await scanReportService.promoteToAi(id, report.ownerUserId, adminEmail);
+    res.status(202).json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Admin bulk-delete scan reports (super-admin only).
+ */
+export async function adminBulkDeleteScanReports(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { ids } = req.body as { ids: string[] };
+    const deleted = await bulkDeleteService.bulkDeleteScanReports(ids);
+    res.json({ success: true, deleted });
+  } catch (err) {
+    next(err);
+  }
+}

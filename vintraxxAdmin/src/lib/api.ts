@@ -546,6 +546,45 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ ids }),
     }),
+  bulkDeleteGpsScanReports: (ids: string[]) =>
+    request<{ success: boolean; deleted: number }>('/gps/scan-reports/bulk-delete', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    }),
+
+  // ── GPS Scan Reports ──────────────────────────────────────────────────────
+
+  requestGpsScanReport: (terminalId: string) =>
+    request<{ success: boolean; scanReportId: string; reused: boolean }>(
+      `/gps/terminals/${terminalId}/scan`,
+      { method: 'POST', body: JSON.stringify({}) },
+    ),
+
+  getGpsScanReport: (id: string) =>
+    request<{ success: boolean; report: GpsScanReport }>(`/gps/scan-reports/${id}`),
+
+  listGpsScanReports: (terminalId: string, opts: { limit?: number } = {}) =>
+    request<{ success: boolean; reports: GpsScanReport[] }>(
+      `/gps/terminals/${terminalId}/scan-reports?${buildQuery(opts)}`,
+    ),
+
+  emailGpsScanReport: (id: string, body: { email?: string } = {}) =>
+    request<{ success: boolean; sentTo: string; pdfPath: string }>(
+      `/gps/scan-reports/${id}/email`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+
+  promoteGpsScanToAi: (id: string) =>
+    request<{ success: boolean; scanId: string; reused: boolean }>(
+      `/gps/scan-reports/${id}/promote-ai`,
+      { method: 'POST', body: JSON.stringify({}) },
+    ),
+
+  /** Poll the AI-generated full report for a promoted scan. */
+  getAdminScanFullReport: (scanId: string) =>
+    request<{ success: boolean; status: 'processing' | 'completed' | 'failed'; data?: AdminFullReportData; error?: string }>(
+      `/scans/${scanId}/report`,
+    ),
 };
 
 /**
@@ -1061,6 +1100,110 @@ export interface GpsDtcEvent {
     imei: string | null;
     nickname: string | null;
   };
+}
+
+// ── GPS Scan Report types ────────────────────────────────────────────────────
+
+export type GpsScanReportStatus = 'PENDING' | 'COMPLETED' | 'PARTIAL' | 'FAILED' | 'TIMED_OUT';
+
+export interface GpsScanReport {
+  id: string;
+  terminalId: string;
+  ownerUserId: string | null;
+  requestedByAdminId: string | null;
+  requestedByUserId: string | null;
+  status: GpsScanReportStatus;
+  requestedAt: string;
+  completedAt: string | null;
+  errorText: string | null;
+
+  vin: string | null;
+  vehicleYear: number | null;
+  vehicleMake: string | null;
+  vehicleModel: string | null;
+  mileageKm: string | number | null;
+
+  milOn: boolean | null;
+  dtcCount: number | null;
+  storedDtcCodes: string[];
+  pendingDtcCodes: string[];
+  permanentDtcCodes: string[];
+
+  fuelSystemStatus: string | null;
+  secondaryAirStatus: string | null;
+  distanceWithMilKm: string | number | null;
+  distanceSinceClearKm: string | number | null;
+  warmupsSinceClear: number | null;
+  runtimeSinceStartSec: number | null;
+
+  rpm: number | null;
+  vehicleSpeedKmh: string | number | null;
+  coolantTempC: number | null;
+  intakeAirTempC: number | null;
+  throttlePct: string | number | null;
+  engineLoadPct: string | number | null;
+  mafGps: string | number | null;
+  fuelLevelPct: string | number | null;
+  fuelRailPressureKpa: number | null;
+  batteryVoltageMv: number | null;
+  ambientTempC: number | null;
+  barometricKpa: number | null;
+  acceleratorPct: string | number | null;
+  intakeManifoldKpa: number | null;
+
+  protocol: string | null;
+  rawObdJson: {
+    obdLive?: {
+      timingAdvanceDeg?: number;
+      longTermFuelTrimPct?: number;
+      [key: string]: unknown;
+    };
+    [key: string]: unknown;
+  } | null;
+
+  promotedScanId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Admin Full Report (AI-analysed) ──────────────────────────────────────────
+
+export interface AdminFullReportData {
+  scanId: string;
+  vehicle: {
+    vin: string;
+    year: number | null;
+    make: string | null;
+    model: string | null;
+    mileage: number | null;
+  };
+  healthScore: number;
+  overallStatus: 'healthy' | 'attention_needed' | 'critical';
+  dtcAnalysis: Array<{
+    code: string;
+    description: string;
+    severity: 'critical' | 'moderate' | 'minor' | 'info';
+    category: string;
+    possibleCauses: string[];
+    repairEstimate: { low: number; high: number };
+    urgency: 'immediate' | 'soon' | 'monitor';
+  }>;
+  repairRecommendations: Array<{
+    title: string;
+    description: string;
+    priority: 'high' | 'medium' | 'low';
+    estimatedCost: { labor: number; parts: number; total: number };
+  }>;
+  emissionsAnalysis: {
+    status: 'pass' | 'fail' | 'incomplete';
+    summary: string;
+  };
+  totalEstimatedRepairCost: number;
+  additionalRepairs?: unknown[];
+  additionalRepairsTotalCost?: number;
+  grandTotalCost?: number;
+  aiSummary: string;
+  stockNumber?: string;
 }
 
 export type GpsTripStatus = 'OPEN' | 'CLOSED';

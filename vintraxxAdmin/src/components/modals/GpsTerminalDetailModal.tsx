@@ -18,6 +18,7 @@ import {
   GpsDtcEvent,
   GpsTrip,
   GpsCommand,
+  GpsScanReport,
 } from '@/lib/api';
 import { gpsAdminWs } from '@/lib/gpsAdminWs';
 import {
@@ -36,7 +37,8 @@ import {
 import {
   X, MapPin, Activity, AlertTriangle, Bell, Route, Send,
   Hash, Cpu, Calendar, RefreshCw, Smartphone, Car, Globe,
-  CheckCircle, ExternalLink, Zap,
+  CheckCircle, ExternalLink, Zap, FileText, Play, Mail, Sparkles,
+  WifiOff, Clock, XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import BulkBar from '../shared/BulkBar';
@@ -47,7 +49,7 @@ interface Props {
   onMutated?: () => void;
 }
 
-type Tab = 'overview' | 'track' | 'obd' | 'alarms' | 'dtcs' | 'trips' | 'commands';
+type Tab = 'overview' | 'track' | 'obd' | 'alarms' | 'dtcs' | 'scan' | 'trips' | 'commands';
 
 export default function GpsTerminalDetailModal({ terminalId, onClose, onMutated }: Props) {
   const [terminal, setTerminal] = useState<GpsTerminalDetail | null>(null);
@@ -252,6 +254,7 @@ export default function GpsTerminalDetailModal({ terminalId, onClose, onMutated 
     { id: 'obd', label: 'OBD', icon: <Cpu size={14} /> },
     { id: 'alarms', label: 'Alarms', icon: <Bell size={14} /> },
     { id: 'dtcs', label: 'DTC', icon: <AlertTriangle size={14} /> },
+    { id: 'scan', label: 'Scan', icon: <FileText size={14} /> },
     { id: 'trips', label: 'Trips', icon: <Route size={14} /> },
     { id: 'commands', label: 'Commands', icon: <Send size={14} /> },
   ];
@@ -342,6 +345,8 @@ export default function GpsTerminalDetailModal({ terminalId, onClose, onMutated 
             />
           ) : tab === 'dtcs' ? (
             <DtcsPane events={dtcs} onReload={reloadDtcs} onMutated={onMutated} />
+          ) : tab === 'scan' ? (
+            <ScanReportsPane terminal={terminal} />
           ) : tab === 'trips' ? (
             <TripsPane trips={trips} onReload={reloadTrips} onMutated={onMutated} />
           ) : tab === 'commands' ? (
@@ -1190,6 +1195,295 @@ function Empty({ icon, text, onReload }: { icon: React.ReactNode; text: string; 
         <RefreshCw size={14} />
         Refresh
       </button>
+    </div>
+  );
+}
+
+// ─── ScanReportsPane ─────────────────────────────────────────────────────────
+
+function ScanReportsPane({ terminal }: { terminal: GpsTerminalDetail }) {
+  const [report, setReport] = useState<GpsScanReport | null>(null);
+  const [reports, setReports] = useState<GpsScanReport[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [scanning, setScanning] = useState(false);
+  const [emailing, setEmailing] = useState(false);
+  const [promoting, setPromoting] = useState(false);
+
+  const isOnline = terminal.status === 'ONLINE';
+
+  const loadReports = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.listGpsScanReports(terminal.id, { limit: 10 });
+      setReports(res.reports);
+      if (res.reports.length > 0) setReport(res.reports[0]);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to load scan reports');
+    } finally {
+      setLoading(false);
+    }
+  }, [terminal.id]);
+
+  useEffect(() => {
+    loadReports();
+  }, [loadReports]);
+
+  const pollUntilSettled = useCallback(async (id: string) => {
+    const MAX = 25;
+    for (let i = 0; i < MAX; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      try {
+        const res = await api.getGpsScanReport(id);
+        setReport(res.report);
+        if (res.report.status !== 'PENDING') return res.report;
+      } catch { break; }
+    }
+    return null;
+  }, []);
+
+  const handleRunScan = async () => {
+    setScanning(true);
+    try {
+      const res = await api.requestGpsScanReport(terminal.id);
+      toast.success(res.reused ? 'Scan already in progress' : 'Scan initiated');
+      const detail = await api.getGpsScanReport(res.scanReportId);
+      setReport(detail.report);
+      await pollUntilSettled(res.scanReportId);
+      loadReports();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to start scan');
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const handleEmail = async () => {
+    if (!report) return;
+    setEmailing(true);
+    try {
+      const res = await api.emailGpsScanReport(report.id);
+      toast.success(`Report emailed to ${res.sentTo}`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to email report');
+    } finally {
+      setEmailing(false);
+    }
+  };
+
+  const handlePromote = async () => {
+    if (!report) return;
+    setPromoting(true);
+    try {
+      const res = await api.promoteGpsScanToAi(report.id);
+      toast.success(res.reused ? 'Existing AI report reused' : 'AI analysis started');
+      loadReports();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to promote to AI');
+    } finally {
+      setPromoting(false);
+    }
+  };
+
+  if (loading) return <Loading />;
+
+  const toNum = (v: string | number | null | undefined): number => {
+    if (v === null || v === undefined) return 0;
+    if (typeof v === 'number') return v;
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const kmToMi = (km: string | number | null | undefined) => {
+    const val = toNum(km);
+    return val > 0 ? `${(val * 0.621371).toLocaleString(undefined, { maximumFractionDigits: 0 })} mi` : '—';
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Actions */}
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={handleRunScan}
+          disabled={scanning || !isOnline}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium transition-all"
+        >
+          {scanning ? <RefreshCw size={14} className="animate-spin" /> : <Play size={14} />}
+          {scanning ? 'Scanning...' : report ? 'Refresh Scan' : 'Run Full Scan'}
+        </button>
+        {!isOnline && (
+          <span className="inline-flex items-center gap-1 px-3 py-2 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 rounded-lg">
+            <WifiOff size={12} /> Device must be online to scan
+          </span>
+        )}
+        {report && (report.status === 'COMPLETED' || report.status === 'PARTIAL') && (
+          <>
+            <button
+              onClick={handleEmail}
+              disabled={emailing}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 text-gray-700 dark:text-gray-200 text-sm font-medium transition-all"
+            >
+              <Mail size={14} />
+              {emailing ? 'Sending...' : 'Email PDF'}
+            </button>
+            <button
+              onClick={handlePromote}
+              disabled={promoting || !!report.promotedScanId}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-sm font-medium transition-all"
+            >
+              <Sparkles size={14} />
+              {promoting ? 'Working...' : report.promotedScanId ? 'AI Report Generated' : 'Generate AI Report'}
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Report Content */}
+      {report ? (
+        <div className="space-y-4">
+          {/* Status */}
+          <div className="flex items-center gap-3">
+            <ScanStatusBadge status={report.status} />
+            <span className="text-xs text-gray-500 dark:text-gray-400">{fmtRelative(report.requestedAt)}</span>
+            {report.errorText && <span className="text-xs text-red-600 dark:text-red-400">{report.errorText}</span>}
+          </div>
+
+          {report.status === 'PENDING' && (
+            <div className="flex items-center gap-3 py-6 justify-center">
+              <div className="w-5 h-5 border-3 border-blue-500 border-t-transparent rounded-full animate-spin" />
+              <span className="text-sm text-gray-600 dark:text-gray-300">Waiting for vehicle response...</span>
+            </div>
+          )}
+
+          {(report.status === 'COMPLETED' || report.status === 'PARTIAL') && (
+            <>
+              {/* KPI Row */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <ScanKpi label="Odometer" value={kmToMi(report.mileageKm)} />
+                <ScanKpi label="MIL" value={report.milOn === true ? 'ON' : report.milOn === false ? 'OFF' : '—'} highlight={report.milOn === true} />
+                <ScanKpi label="DTC Count" value={String(report.dtcCount ?? 0)} highlight={(report.dtcCount ?? 0) > 0} />
+                <ScanKpi label="Protocol" value={report.protocol || '—'} />
+              </div>
+
+              {/* DTCs */}
+              {(report.storedDtcCodes.length > 0 || report.pendingDtcCodes.length > 0 || report.permanentDtcCodes.length > 0) && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Diagnostic Trouble Codes</p>
+                  {report.storedDtcCodes.length > 0 && <ScanDtcRow label="Stored" codes={report.storedDtcCodes} color="red" />}
+                  {report.pendingDtcCodes.length > 0 && <ScanDtcRow label="Pending" codes={report.pendingDtcCodes} color="amber" />}
+                  {report.permanentDtcCodes.length > 0 && <ScanDtcRow label="Permanent" codes={report.permanentDtcCodes} color="purple" />}
+                </div>
+              )}
+
+              {/* OBD Live */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">OBD Live Data</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {report.rpm != null && <ScanObdCell label="RPM" value={`${report.rpm}`} />}
+                  {report.vehicleSpeedKmh != null && <ScanObdCell label="Speed" value={`${toNum(report.vehicleSpeedKmh)} km/h`} />}
+                  {report.coolantTempC != null && <ScanObdCell label="Coolant" value={`${report.coolantTempC}°C`} />}
+                  {report.intakeAirTempC != null && <ScanObdCell label="Intake Air" value={`${report.intakeAirTempC}°C`} />}
+                  {report.throttlePct != null && <ScanObdCell label="Throttle" value={`${toNum(report.throttlePct)}%`} />}
+                  {report.engineLoadPct != null && <ScanObdCell label="Engine Load" value={`${toNum(report.engineLoadPct)}%`} />}
+                  {report.mafGps != null && <ScanObdCell label="MAF" value={`${toNum(report.mafGps)} g/s`} />}
+                  {report.fuelLevelPct != null && <ScanObdCell label="Fuel Level" value={`${toNum(report.fuelLevelPct)}%`} />}
+                  {report.batteryVoltageMv != null && <ScanObdCell label="Battery" value={`${(report.batteryVoltageMv / 1000).toFixed(1)}V`} />}
+                  {report.ambientTempC != null && <ScanObdCell label="Ambient" value={`${report.ambientTempC}°C`} />}
+                  {report.barometricKpa != null && <ScanObdCell label="Barometric" value={`${report.barometricKpa} kPa`} />}
+                  {report.fuelRailPressureKpa != null && <ScanObdCell label="Fuel Rail" value={`${report.fuelRailPressureKpa} kPa`} />}
+                  {report.intakeManifoldKpa != null && <ScanObdCell label="Manifold" value={`${report.intakeManifoldKpa} kPa`} />}
+                  {toNum(report.distanceWithMilKm) > 0 && <ScanObdCell label="Dist w/ MIL" value={kmToMi(report.distanceWithMilKm)} />}
+                  {toNum(report.distanceSinceClearKm) > 0 && <ScanObdCell label="Dist Since Clear" value={kmToMi(report.distanceSinceClearKm)} />}
+                  {report.warmupsSinceClear != null && <ScanObdCell label="Warm-ups" value={`${report.warmupsSinceClear}`} />}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      ) : (
+        <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+          <FileText size={32} className="mx-auto mb-2 opacity-40" />
+          <p className="text-sm">No scan reports yet. {isOnline ? 'Click "Run Full Scan" to start.' : 'Connect the device to run a scan.'}</p>
+        </div>
+      )}
+
+      {/* Previous reports list */}
+      {reports.length > 1 && (
+        <div>
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Previous Reports</p>
+          <div className="space-y-1">
+            {reports.slice(1).map((r) => (
+              <button
+                key={r.id}
+                onClick={() => setReport(r)}
+                className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-all flex items-center gap-2 ${
+                  report?.id === r.id
+                    ? 'bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30'
+                    : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+              >
+                <ScanStatusBadge status={r.status} />
+                <span className="font-mono text-gray-600 dark:text-gray-300">{fmtRelative(r.requestedAt)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ScanStatusBadge({ status }: { status: string }) {
+  const cfg: Record<string, { bg: string; text: string; icon: React.ReactNode }> = {
+    PENDING: { bg: 'bg-blue-100 dark:bg-blue-500/20', text: 'text-blue-700 dark:text-blue-300', icon: <Clock size={10} /> },
+    COMPLETED: { bg: 'bg-green-100 dark:bg-green-500/20', text: 'text-green-700 dark:text-green-300', icon: <CheckCircle size={10} /> },
+    PARTIAL: { bg: 'bg-amber-100 dark:bg-amber-500/20', text: 'text-amber-700 dark:text-amber-300', icon: <AlertTriangle size={10} /> },
+    FAILED: { bg: 'bg-red-100 dark:bg-red-500/20', text: 'text-red-700 dark:text-red-300', icon: <XCircle size={10} /> },
+    TIMED_OUT: { bg: 'bg-gray-100 dark:bg-gray-500/20', text: 'text-gray-700 dark:text-gray-400', icon: <Clock size={10} /> },
+  };
+  const c = cfg[status] ?? cfg.PENDING;
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded-md ${c.bg} ${c.text}`}>
+      {c.icon} {status}
+    </span>
+  );
+}
+
+function ScanKpi({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+  return (
+    <div className={`px-3 py-2.5 rounded-lg border ${
+      highlight
+        ? 'border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10'
+        : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800'
+    }`}>
+      <p className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</p>
+      <p className={`text-sm font-bold mt-0.5 ${highlight ? 'text-red-700 dark:text-red-300' : 'text-gray-900 dark:text-white'}`}>{value}</p>
+    </div>
+  );
+}
+
+function ScanDtcRow({ label, codes, color }: { label: string; codes: string[]; color: string }) {
+  const colors: Record<string, string> = {
+    red: 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400',
+    amber: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400',
+    purple: 'bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400',
+  };
+  return (
+    <div className="flex items-start gap-2">
+      <span className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400 pt-1 w-16 flex-shrink-0">{label}</span>
+      <div className="flex flex-wrap gap-1">
+        {codes.map((c) => (
+          <span key={c} className={`px-2 py-0.5 rounded-md text-[11px] font-mono font-medium ${colors[color]}`}>{c}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ScanObdCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="px-2.5 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600">
+      <p className="text-[9px] uppercase tracking-wide text-gray-400">{label}</p>
+      <p className="text-xs font-semibold text-gray-900 dark:text-white mt-0.5">{value}</p>
     </div>
   );
 }

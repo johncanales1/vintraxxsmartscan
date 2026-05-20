@@ -23,6 +23,14 @@ const fallbackApiBase =
 export const API_BASE: string =
   process.env.NEXT_PUBLIC_API_BASE_URL || fallbackApiBase;
 
+export function toApiUrl(path: string): URL {
+  const base =
+    typeof window !== "undefined" && API_BASE.startsWith("/")
+      ? window.location.origin
+      : undefined;
+  return new URL(`${API_BASE}${path}`, base);
+}
+
 /**
  * WebSocket base URL (no trailing slash, no path). The GPS WS client will
  * append `/ws?token=<jwt>` to this.
@@ -31,6 +39,7 @@ export const API_BASE: string =
  *   API_BASE  http://localhost:4000/api/v1   →  WS_BASE  ws://localhost:4000
  *   API_BASE  https://api.vintraxx.com/api/v1 →  WS_BASE  wss://api.vintraxx.com
  */
-export const WS_BASE: string = API_BASE
-  .replace(/\/api\/v1\/?$/, "")
-  .replace(/^http/, "ws");
+export const WS_BASE: string =
+  typeof window !== "undefined" && API_BASE.startsWith("/")
+    ? window.location.origin.replace(/^http/, "ws")
+    : API_BASE.replace(/\/api\/v1\/?$/, "").replace(/^http/, "ws");

@@ -33,7 +33,7 @@ import type {
   RequestScanReportResponse,
   ScanReportEmailResponse,
 } from "./types";
-import { API_BASE } from "@/lib/api-config";
+import { API_BASE, toApiUrl } from "@/lib/api-config";
 import { gpsWs } from "./gpsWs";
 
 /**
@@ -87,7 +87,7 @@ async function request<T>(
     return { success: false, message: "Not authenticated" };
   }
 
-  const url = new URL(`${API_BASE}${path}`);
+  const url = toApiUrl(path);
   if (opts.query) {
     for (const [k, v] of Object.entries(opts.query)) {
       if (v === undefined || v === null) continue;

@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import * as adminService from '../services/admin.service';
+import { assembleFullReport } from '../services/report.service';
+import prisma from '../config/db';
 import logger from '../utils/logger';
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -249,6 +251,68 @@ export async function sendEmail(req: Request, res: Response, next: NextFunction)
     }
     next(err);
   }
+}
+
+// ── Admin Full Report (AI-analysed FullReportData) ────────────────────────────
+
+/**
+ * GET /admin/scans/:id/report — returns the assembled FullReportData for an
+ * AI-promoted scan. Same shape as the user-facing GET /scan/report/:scanId but
+ * with no ownership guard. Used by the Admin "Full Report" modal to display
+ * the AI analysis after promotion.
+ */
+export async function getAdminScanReport(req: Request, res: Response, next: NextFunction) {
+  try {
+    const scanId = req.params.id as string;
+
+    const scan = await prisma.scan.findUnique({
+      where: { id: scanId },
+      include: { fullReport: true, user: true },
+    }) as any;
+
+    if (!scan) {
+      res.status(404).json({ success: false, error: 'Scan not found' });
+      return;
+    }
+
+    if (scan.status === 'FAILED') {
+      res.json({ success: true, status: 'failed', error: scan.errorMessage });
+      return;
+    }
+
+    if (scan.status !== 'COMPLETED' || !scan.fullReport) {
+      res.json({ success: true, status: 'processing' });
+      return;
+    }
+
+    const fr = scan.fullReport;
+    const aiOutput = fr.aiRawResponse as any;
+    const additionalRepairsData = fr.additionalRepairsData as any[] | null;
+
+    const reportData = assembleFullReport({
+      scanId: scan.id,
+      reportId: fr.id,
+      vin: scan.vin,
+      year: scan.vehicleYear,
+      make: scan.vehicleMake,
+      model: scan.vehicleModel,
+      mileage: scan.mileage,
+      milOn: scan.milOn,
+      distanceSinceCleared: scan.distanceSinceCleared,
+      userEmail: scan.user?.email ?? '',
+      userFullName: scan.user?.fullName ?? undefined,
+      scannerOwnerName: scan.userFullName ?? undefined,
+      vehicleOwnerName: scan.vehicleOwnerName ?? undefined,
+      aiOutput,
+      stockNumber: scan.stockNumber ?? undefined,
+      additionalRepairs: additionalRepairsData ?? undefined,
+      additionalRepairsTotalCost: fr.additionalRepairsCost ?? 0,
+      dealerLogoUrl: scan.user?.isDealer ? scan.user.logoUrl ?? undefined : undefined,
+      dealerQrCodeUrl: scan.user?.isDealer ? scan.user.qrCodeUrl ?? undefined : undefined,
+    });
+
+    res.json({ success: true, status: 'completed', data: reportData });
+  } catch (err) { next(err); }
 }
 
 // ── Backup ────────────────────────────────────────────────────────────────────

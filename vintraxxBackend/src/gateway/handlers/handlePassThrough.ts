@@ -40,6 +40,7 @@ import {
   closeWithVendorSummary,
   type TripLocationPoint,
 } from '../../services/gps-trip.service';
+import { updateSleepEvent } from '../../services/gps-command.service';
 import { emit as emitNotify } from '../../realtime/notify';
 import type { Session } from '../session/Session';
 
@@ -99,7 +100,7 @@ export async function handlePassThrough(
       await handleDtcReport(terminal, decoded.parsed as DecodedDtc | null, session);
       break;
     case PassThroughSubtype.SLEEP_ENTRY:
-      handleSleepEntry(terminal, decoded.parsed as DecodedSleepEntry | null, session);
+      handleSleepEntry(terminal, decoded.parsed as DecodedSleepEntry | null, session, decoded.rawBody);
       break;
     case PassThroughSubtype.SLEEP_WAKE:
       handleSleepWake(terminal, decoded.parsed as DecodedSleepWake | null, session);
@@ -257,10 +258,39 @@ function handleSleepEntry(
   terminal: GpsTerminal,
   parsed: DecodedSleepEntry | null,
   session: Session,
+  rawBody: Buffer,
 ): void {
-  session.log.info('Device entered sleep mode (0xF3)', {
+  const sleepAt = parsed?.reportedAt ?? new Date();
+  const rawHex = rawBody.toString('hex');
+
+  session.log.info('GPS terminal sleep notification (0xF3)', {
     terminalId: terminal.id,
-    reportedAt: parsed?.reportedAt?.toISOString() ?? null,
+    deviceIdentifier: session.canonicalDeviceId,
+    reportedAt: sleepAt.toISOString(),
+    rawHex,
+  });
+
+  // Correlate with any recent 4G always-online command.
+  void updateSleepEvent({
+    terminalId: terminal.id,
+    sleepAt,
+    rawHex,
+  }).then((commandId) => {
+    if (commandId) {
+      session.log.warn('GPS terminal sleep after 4G always-online command', {
+        terminalId: terminal.id,
+        deviceIdentifier: session.canonicalDeviceId,
+        recentCommandId: commandId,
+        sleepAt: sleepAt.toISOString(),
+        rawHex,
+        note: 'Command was accepted by terminal (0x0001 ACK), but device still entered sleep mode. Review vendor 0x6006 response.',
+      });
+    }
+  }).catch((err) => {
+    session.log.warn('handleSleepEntry: sleep event correlation failed', {
+      terminalId: terminal.id,
+      err: (err as Error).message,
+    });
   });
 }
 

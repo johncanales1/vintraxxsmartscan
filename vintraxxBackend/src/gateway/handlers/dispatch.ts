@@ -27,8 +27,10 @@ import { handleLocation, handleBatchLocation } from './handleLocation';
 import { handlePassThrough } from './handlePassThrough';
 import { handleVersionInfo } from './handleVersionInfo';
 import * as m0205 from '../codec/messages/m0205-version-info';
+import iconv from 'iconv-lite';
 import prisma from '../../config/db';
 import { Prisma } from '@prisma/client';
+import * as commandService from '../../services/gps-command.service';
 import type { Session } from '../session/Session';
 import type { DecodedFrame } from '../codec';
 
@@ -175,6 +177,15 @@ export async function dispatchFrame(session: Session, frame: DecodedFrame): Prom
       return;
     }
 
+    case MsgId.TEXT_REPLY: {
+      // 0x6006 — device's text reply to a platform 0x8300 SMS command.
+      // Capture everything without guessing business meaning; the full
+      // raw + decoded data is what lets the supplier confirm the format.
+      await handle6006TextReply(session, body, header.msgSerial, frame.rawUnescaped);
+      // 0x6006 does not require a platform general response (spec §1.7).
+      return;
+    }
+
     default: {
       // Phase 1+ handlers will land here. For now just log + tell the device
       // we don't support it so it stops retrying.
@@ -186,4 +197,152 @@ export async function dispatchFrame(session: Session, frame: DecodedFrame): Prom
       return;
     }
   }
+}
+
+// ── 0x6006 — Device text reply ───────────────────────────────────────────────
+
+/**
+ * Full handler for 0x6006 (Text Message Reply).
+ *
+ * Captures the raw body + full frame bytes, attempts multi-encoding decode
+ * (ASCII, UTF-8, GBK), correlates with the most-recent 4G always-online
+ * command, updates the command record, and emits structured logs.
+ *
+ * We do NOT infer business success/failure from the text: the supplier must
+ * first confirm the exact 0x6006 body format and pass/fail strings.
+ */
+async function handle6006TextReply(
+  session: Session,
+  body: Buffer,
+  msgSerial: number,
+  rawUnescaped: Buffer,
+): Promise<void> {
+  const receivedAt = new Date();
+  const terminalId = session.terminalId ?? 'unknown';
+  const deviceIdentifier = session.canonicalDeviceId ?? 'unknown';
+
+  // ── Multi-encoding decode ────────────────────────────────────────────────
+
+  const bodyHex = body.toString('hex');
+  const fullFrameHex = rawUnescaped.toString('hex');
+
+  let decodedTextAscii: string | null = null;
+  let decodedTextUtf8: string | null = null;
+  let decodedTextGbk: string | null = null;
+  let printableTextExtract = '';
+  let parseError: string | null = null;
+  let parseStatus = 'UNKNOWN';
+
+  try {
+    // ASCII (printable range 0x20–0x7E + common controls)
+    const asciiStr = body.toString('ascii').replace(/\0/g, '');
+    const isPrintableAscii = /^[\x20-\x7E\t\r\n]*$/.test(asciiStr);
+    if (isPrintableAscii && asciiStr.trim().length > 0) {
+      decodedTextAscii = asciiStr.trim();
+      parseStatus = 'ASCII_OK';
+    }
+
+    // UTF-8
+    try {
+      const utf8Str = body.toString('utf8').replace(/\0/g, '').trim();
+      if (utf8Str.length > 0) {
+        decodedTextUtf8 = utf8Str;
+        if (parseStatus === 'UNKNOWN') parseStatus = 'UTF8_OK';
+      }
+    } catch {
+      // fall through
+    }
+
+    // GBK via iconv-lite
+    try {
+      const gbkStr = iconv.decode(body, 'gbk').replace(/\0/g, '').trim();
+      if (gbkStr.length > 0) {
+        decodedTextGbk = gbkStr;
+        if (parseStatus === 'UNKNOWN') parseStatus = 'GBK_OK';
+      }
+    } catch {
+      // iconv-lite may not have the charset — ignore
+    }
+
+    // Printable extract: strip non-printable bytes, keep runs of printable chars
+    printableTextExtract = body
+      .toString('latin1')
+      .replace(/[^\x20-\x7E]/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+
+    if (parseStatus === 'UNKNOWN') {
+      parseStatus = printableTextExtract.length > 0 ? 'NON_PRINTABLE_PARTIAL' : 'NON_PRINTABLE';
+    }
+  } catch (err) {
+    parseError = (err as Error).message;
+    parseStatus = 'DECODE_ERROR';
+  }
+
+  const bestText = decodedTextAscii ?? decodedTextUtf8 ?? decodedTextGbk ?? printableTextExtract;
+
+  // ── Structured log ───────────────────────────────────────────────────────
+
+  session.log.info('GPS command vendor response (0x6006)', {
+    terminalId,
+    deviceIdentifier,
+    messageId: '0x6006',
+    serial: msgSerial,
+    receivedAt: receivedAt.toISOString(),
+    bodyLength: body.length,
+    rawBodyHex: bodyHex,
+    rawFullFrameHex: fullFrameHex,
+    decodedTextAscii,
+    decodedTextUtf8,
+    decodedTextGbk,
+    printableTextExtract,
+    parseStatus,
+    parseError,
+  });
+
+  // ── Command correlation ──────────────────────────────────────────────────
+
+  if (!session.terminalId) return;
+
+  const latestCmd = await commandService.findLatest4gAlwaysOnlineCommand({
+    terminalId: session.terminalId,
+    withinMs: 5 * 60_000,
+  });
+
+  if (!latestCmd) {
+    session.log.info('0x6006 received but no recent 4G always-online command found to correlate', {
+      terminalId,
+      deviceIdentifier,
+    });
+    return;
+  }
+
+  const ok = await commandService.markVendorResponseReceived({
+    commandId: latestCmd.id,
+    messageId: '0x6006',
+    rawHex: bodyHex,
+    decodedText: bestText,
+    parseStatus,
+    responseJson: {
+      serial: msgSerial,
+      receivedAt: receivedAt.toISOString(),
+      bodyLength: body.length,
+      decodedTextAscii,
+      decodedTextUtf8,
+      decodedTextGbk,
+      printableTextExtract,
+      parseError,
+    } as Prisma.InputJsonValue,
+  });
+
+  session.log.info('GPS command vendor response correlated', {
+    commandId: latestCmd.id,
+    terminalId,
+    deviceIdentifier,
+    messageId: '0x6006',
+    bodyLength: body.length,
+    decodedText: bestText,
+    parseStatus,
+    correlated: ok,
+  });
 }

@@ -39,7 +39,7 @@ import { useMultiSelect } from '@/lib/useMultiSelect';
 import {
   Search, Plus, RefreshCw, Radio, Eye, UserPlus, Unlink, Trash2, Pencil,
   ChevronLeft, ChevronRight, X as XIcon, CheckSquare, Square,
-  Loader2, AlertCircle, Signal,
+  Loader2, AlertCircle, Signal, Info,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -124,8 +124,8 @@ export default function GpsTerminalsSection({
     };
   }, [ownerUserId]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent?: boolean) => {
+    if (!silent) setLoading(true);
     try {
       const res = await api.listGpsTerminals(page, 30, {
         filter: filter === 'all' ? undefined : filter,
@@ -136,7 +136,7 @@ export default function GpsTerminalsSection({
       setTotalPages(res.totalPages);
       setTotal(res.total);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to load terminals');
+      if (!silent) toast.error(err.message || 'Failed to load terminals');
     } finally {
       setLoading(false);
     }
@@ -255,7 +255,7 @@ export default function GpsTerminalsSection({
               {sel.allSelected(visibleIds) ? <CheckSquare size={18} /> : <Square size={18} />}
             </button>
           )}
-          <button onClick={load} className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
+          <button onClick={() => load()} className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
             <RefreshCw size={18} />
           </button>
           <button
@@ -476,34 +476,50 @@ function TerminalCard({
   /** `undefined` when the current admin isn't a super-admin — hides the button. */
   onDelete?: () => void;
   disableConfigured: boolean;
-  onTerminalUpdated: () => void;
+  onTerminalUpdated: (silent?: boolean) => void;
 }) {
   const ownerLabel = terminal.ownerUser?.fullName || terminal.ownerUser?.email || 'Unpaired';
 
   // 4G Always-Online toggle state
   const [toggling, setToggling] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
+  const [detailCmd, setDetailCmd] = useState<import('@/lib/api').GpsCommand | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
   const aoStatus = terminal.fourGAlwaysOnlineStatus;
   const aoDesired = terminal.fourGAlwaysOnlineDesired;
-  const isPending = aoStatus === 'PENDING_ENABLE' || aoStatus === 'PENDING_DISABLE';
-  const isOn = aoStatus === 'ENABLED';
-  const isFailed = aoStatus === 'FAILED';
+
+  const isPending   = aoStatus === 'PENDING_ENABLE' || aoStatus === 'PENDING_DISABLE';
+  const isJt808Acked = aoStatus === 'JT808_ACKED';
+  const isResponseReceived = aoStatus === 'RESPONSE_RECEIVED';
+  const isVendorTimeout = aoStatus === 'VENDOR_RESPONSE_TIMEOUT';
+  const isSleptAfterCmd = aoStatus === 'SLEPT_AFTER_COMMAND';
+  const isOn     = false; // ENABLED is never set — status tracked via two-layer flow only
+  const isFailed = aoStatus === 'FAILED' || aoStatus === 'JT808_ACK_TIMEOUT';
+  const isInFlight = isPending || isJt808Acked;
+
+  // Auto-poll while any in-flight state is active (silent to avoid skeleton flash)
+  useEffect(() => {
+    if (!isInFlight) return;
+    const id = setInterval(() => onTerminalUpdated(true), 2000);
+    return () => clearInterval(id);
+  }, [isInFlight, onTerminalUpdated]);
 
   const handle4gToggle = async () => {
-    if (toggling || isPending) return;
+    if (toggling || isInFlight) return;
+    if (aoDesired && !disableConfigured) return;
     setToggling(true);
     try {
-      if (isOn || aoDesired) {
-        // Want to turn OFF
-        if (!disableConfigured) {
-          toast.error('Disable command not configured — the supplier has not confirmed the disable payload yet.');
-          return;
-        }
+      if (aoDesired) {
         await api.disable4gAlwaysOnline(terminal.id);
         toast.success('4G Always-Online disable command sent');
       } else {
-        // Want to turn ON
         await api.enable4gAlwaysOnline(terminal.id);
-        toast.success('4G Always-Online enable command sent');
+        if (terminal.status !== 'ONLINE') {
+          toast.info('Terminal is offline — ON command queued, will send when terminal reconnects');
+        } else {
+          toast.success('4G Always-Online ON command sent');
+        }
       }
       onTerminalUpdated();
     } catch (err: any) {
@@ -513,18 +529,52 @@ function TerminalCard({
     }
   };
 
-  // Determine toggle visual state
-  const toggleChecked = isOn || aoDesired;
-  const toggleDisabled = toggling || isPending;
+  const handleResendOn = async () => {
+    if (resending || isPending) return;
+    setResending(true);
+    try {
+      await api.enable4gAlwaysOnline(terminal.id, true);
+      if (terminal.status !== 'ONLINE') {
+        toast.info('Terminal is offline — ON command queued, will send when terminal reconnects');
+      } else {
+        toast.success('ON command sent — waiting for JT808 ACK and vendor response');
+      }
+      onTerminalUpdated();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to resend ON command');
+    } finally {
+      setResending(false);
+    }
+  };
 
-  // Tooltip
+  const handleShowDetail = async () => {
+    if (!terminal.fourGAlwaysOnlineLastCommandId) return;
+    setShowDetail(true);
+    setLoadingDetail(true);
+    try {
+      const r = await api.getGpsCommand(terminal.fourGAlwaysOnlineLastCommandId);
+      setDetailCmd(r.command);
+    } catch {
+      setDetailCmd(null);
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
+  const toggleChecked = isOn || aoDesired;
+  const toggleDisabled = toggling || isInFlight || (toggleChecked && !disableConfigured);
+
   let aoTooltip =
-    '4G Always-Online keeps the terminal\u2019s cellular connection active after ACC/ignition off. ' +
+    '4G Always-Online keeps the terminal’s cellular connection active after ACC/ignition off. ' +
     'It does not force the vehicle ECU to keep producing live OBD data while the engine is off.';
-  if (isPending) aoTooltip = `Sending\u2026 (${aoStatus?.replace(/_/g, ' ').toLowerCase()})`;
-  if (isFailed) aoTooltip = `Failed: ${terminal.fourGAlwaysOnlineLastError || 'unknown error'}`;
-  if (toggleChecked && !disableConfigured && !isPending) {
-    aoTooltip += '\nDisable command not yet configured by supplier.';
+  if (isInFlight)       aoTooltip = `Sending… (${aoStatus?.replace(/_/g, ' ').toLowerCase()})`;
+  if (isJt808Acked)     aoTooltip = 'JT808 transport ACK received. Awaiting vendor 0x6006 response…';
+  if (isResponseReceived) aoTooltip = 'Vendor response received. Awaiting supplier confirmation of meaning.';
+  if (isVendorTimeout)  aoTooltip = 'Vendor 0x6006 response not received within timeout.';
+  if (isSleptAfterCmd)  aoTooltip = terminal.fourGAlwaysOnlineLastError || 'Device entered sleep after command.';
+  if (isFailed)         aoTooltip = `Failed: ${terminal.fourGAlwaysOnlineLastError || 'unknown error'}`;
+  if (toggleChecked && !disableConfigured && !isInFlight) {
+    aoTooltip = 'Disable command is not configured. Waiting for supplier confirmation.';
   }
 
   return (
@@ -614,36 +664,78 @@ function TerminalCard({
       {/* 4G Always-Online toggle */}
       <div className="mt-3 flex items-center justify-between gap-2 px-1" title={aoTooltip}>
         <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-          <Signal size={13} className={isOn ? 'text-emerald-500' : isFailed ? 'text-red-400' : ''} />
+          <Signal size={13} className={
+            isOn ? 'text-emerald-500' :
+            isFailed ? 'text-red-400' :
+            isSleptAfterCmd ? 'text-orange-400' :
+            isResponseReceived ? 'text-yellow-500' : ''
+          } />
           <span>4G Always-On</span>
-          {isPending && <Loader2 size={12} className="animate-spin text-blue-500" />}
-          {isFailed && <AlertCircle size={12} className="text-red-400" />}
+          {isInFlight && <Loader2 size={12} className="animate-spin text-blue-500" />}
+          {isJt808Acked && !isInFlight && <Loader2 size={12} className="animate-spin text-yellow-500" />}
+          {(isFailed || isVendorTimeout) && <AlertCircle size={12} className="text-red-400" />}
+          {isSleptAfterCmd && <AlertCircle size={12} className="text-orange-400" />}
+          {isResponseReceived && <span className="text-[9px] font-medium text-yellow-600 dark:text-yellow-400 uppercase tracking-wide">Pending confirm</span>}
+          {/* Info button: show when there is a command to inspect */}
+          {terminal.fourGAlwaysOnlineLastCommandId && (
+            <button
+              type="button"
+              onClick={handleShowDetail}
+              className="ml-0.5 text-gray-400 hover:text-blue-500 transition-colors"
+              title="View command detail"
+            >
+              <Info size={11} />
+            </button>
+          )}
         </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={toggleChecked}
-          disabled={toggleDisabled}
-          onClick={handle4gToggle}
-          className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 ${
-            toggleDisabled
-              ? 'cursor-not-allowed opacity-50'
-              : 'cursor-pointer'
-          } ${
-            toggleChecked
-              ? isFailed
-                ? 'bg-red-400'
-                : 'bg-emerald-500'
-              : 'bg-gray-300 dark:bg-gray-600'
-          }`}
-        >
-          <span
-            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-              toggleChecked ? 'translate-x-4' : 'translate-x-0'
+        <div className="flex items-center gap-2">
+          {/* Resend / Test ON Command — available even when switch is already ON */}
+          {(aoDesired || !!terminal.fourGAlwaysOnlineLastCommandId) && (
+            <button
+              type="button"
+              onClick={handleResendOn}
+              disabled={resending || isPending}
+              className="text-[10px] text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap transition-colors"
+              title="Force-send the ON command to capture fresh two-layer diagnostic data (0x8300 outbound → 0x0001 JT808 ACK → 0x6006 vendor response → 0xF3 sleep correlation)"
+            >
+              {resending ? 'Sending…' : 'Test ON'}
+            </button>
+          )}
+          {/* Toggle — OFF side disabled until supplier confirms disable command */}
+          <button
+            type="button"
+            role="switch"
+            aria-checked={toggleChecked}
+            disabled={toggleDisabled}
+            onClick={handle4gToggle}
+            className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 ${
+              toggleDisabled
+                ? 'cursor-not-allowed opacity-50'
+                : 'cursor-pointer'
+            } ${
+              toggleChecked
+                ? isFailed ? 'bg-red-400' : isSleptAfterCmd ? 'bg-orange-400' : 'bg-emerald-500'
+                : 'bg-gray-300 dark:bg-gray-600'
             }`}
-          />
-        </button>
+          >
+            <span
+              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                toggleChecked ? 'translate-x-4' : 'translate-x-0'
+              }`}
+            />
+          </button>
+        </div>
       </div>
+
+      {/* 4G Command Detail Drawer */}
+      {showDetail && (
+        <FourGCommandDetailDrawer
+          cmd={detailCmd}
+          loading={loadingDetail}
+          aoStatus={aoStatus}
+          onClose={() => setShowDetail(false)}
+        />
+      )}
 
       <button
         onClick={onView}
@@ -660,6 +752,173 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
     <div className="flex items-center justify-between gap-2">
       <span className="text-gray-500 dark:text-gray-400 flex-shrink-0">{label}</span>
       <span className={`text-gray-900 dark:text-gray-200 truncate text-right ${mono ? 'font-mono' : ''}`}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+// ── 4G Command Detail Drawer ─────────────────────────────────────────────────
+
+function statusBadge(s: string | undefined | null) {
+  if (!s) return null;
+  const map: Record<string, string> = {
+    QUEUED:                    'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
+    SENT:                      'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+    JT808_ACKED:               'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300',
+    VENDOR_RESPONSE_RECEIVED:  'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
+    ACKED:                     'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+    VENDOR_RESPONSE_TIMEOUT:   'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+    JT808_ACK_TIMEOUT:         'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+    FAILED:                    'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+    EXPIRED:                   'bg-gray-100 text-gray-500',
+  };
+  return (
+    <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold ${map[s] ?? 'bg-gray-100 text-gray-600'}`}>
+      {s.replace(/_/g, ' ')}
+    </span>
+  );
+}
+
+function FourGCommandDetailDrawer({
+  cmd,
+  loading,
+  aoStatus,
+  onClose,
+}: {
+  cmd: import('@/lib/api').GpsCommand | null;
+  loading: boolean;
+  aoStatus: string | null;
+  onClose: () => void;
+}) {
+  const fmt = (v: string | null | undefined) => v ? new Date(v).toLocaleString() : '—';
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+            4G Always-Online Command Detail
+          </h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+            <XIcon size={16} />
+          </button>
+        </div>
+
+        {loading && (
+          <div className="flex justify-center py-8">
+            <Loader2 size={22} className="animate-spin text-blue-500" />
+          </div>
+        )}
+
+        {!loading && !cmd && (
+          <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-6">
+            Could not load command detail.
+          </p>
+        )}
+
+        {!loading && cmd && (
+          <div className="space-y-4 text-xs">
+            {/* Status */}
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500 dark:text-gray-400">Command status</span>
+              {statusBadge(cmd.status)}
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500 dark:text-gray-400">Terminal status</span>
+              {statusBadge(aoStatus)}
+            </div>
+
+            {/* Lifecycle timestamps */}
+            <div className="border-t border-gray-100 dark:border-gray-700 pt-3 space-y-2">
+              <p className="text-[10px] uppercase tracking-wider text-gray-400 font-medium mb-1">Lifecycle</p>
+              <TwoCol label="Enqueued" value={fmt(cmd.createdAt)} />
+              <TwoCol label="Sent at" value={fmt(cmd.sentAt)} />
+              <TwoCol label="JT808 ACK (0x0001)" value={cmd.jt808AckAt ? `${fmt(cmd.jt808AckAt)} — result=${cmd.jt808AckResult ?? '?'}` : '—'} />
+              <TwoCol label="Vendor reply (0x6006)" value={fmt(cmd.vendorResponseAt)} />
+              {cmd.sleepEventAt && (
+                <TwoCol
+                  label="Device slept after cmd"
+                  value={fmt(cmd.sleepEventAt)}
+                  warn
+                />
+              )}
+            </div>
+
+            {/* Payload */}
+            <div className="border-t border-gray-100 dark:border-gray-700 pt-3 space-y-2">
+              <p className="text-[10px] uppercase tracking-wider text-gray-400 font-medium mb-1">Command</p>
+              <TwoCol label="Kind" value={String(cmd.payload?.kind ?? '—')} mono />
+              <TwoCol label="Text payload" value={String(cmd.payload?.textPayload ?? '—')} mono />
+              <TwoCol label="Transport" value="JT/T 808 0x8300 Text Distribution" />
+            </div>
+
+            {/* Vendor response */}
+            {(cmd.vendorResponseAt || cmd.vendorResponseRawHex) && (
+              <div className="border-t border-gray-100 dark:border-gray-700 pt-3 space-y-2">
+                <p className="text-[10px] uppercase tracking-wider text-gray-400 font-medium mb-1">
+                  Vendor 0x6006 Response
+                </p>
+                <TwoCol label="Parse status" value={cmd.vendorResponseParseStatus ?? '—'} mono />
+                {cmd.vendorResponseDecodedText && (
+                  <div>
+                    <p className="text-gray-400 mb-0.5">Decoded text</p>
+                    <pre className="bg-gray-50 dark:bg-gray-800 rounded p-2 text-[10px] font-mono whitespace-pre-wrap break-all">
+                      {cmd.vendorResponseDecodedText}
+                    </pre>
+                  </div>
+                )}
+                {cmd.vendorResponseRawHex && (
+                  <div>
+                    <p className="text-gray-400 mb-0.5">Raw hex (body)</p>
+                    <pre className="bg-gray-50 dark:bg-gray-800 rounded p-2 text-[10px] font-mono whitespace-pre-wrap break-all">
+                      {cmd.vendorResponseRawHex}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Sleep note */}
+            {cmd.sleepEventNote && (
+              <div className="border-t border-orange-100 dark:border-orange-900/40 pt-3">
+                <p className="text-[10px] uppercase tracking-wider text-orange-500 font-medium mb-1">Sleep After Command</p>
+                <p className="text-orange-700 dark:text-orange-300 text-[11px] leading-relaxed">
+                  {cmd.sleepEventNote}
+                </p>
+              </div>
+            )}
+
+            {/* Error */}
+            {cmd.errorText && (
+              <div className="border-t border-red-100 dark:border-red-900/40 pt-3">
+                <p className="text-[10px] uppercase tracking-wider text-red-500 font-medium mb-1">Error</p>
+                <p className="text-red-600 dark:text-red-400 text-[11px]">{cmd.errorText}</p>
+              </div>
+            )}
+
+            <p className="text-[10px] text-gray-400 italic border-t border-gray-100 dark:border-gray-700 pt-3">
+              TODO: Supplier must confirm the 0x6006 body format and success/failure codes for &lt;HL&amp;P:HOLLOO&amp;7K:1&gt;.
+              Until confirmed, status RESPONSE_RECEIVED does not imply the device applied the setting.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TwoCol({ label, value, mono, warn }: { label: string; value: string; mono?: boolean; warn?: boolean }) {
+  return (
+    <div className="flex items-start justify-between gap-2">
+      <span className="text-gray-400 flex-shrink-0 min-w-0">{label}</span>
+      <span className={`text-right truncate ${mono ? 'font-mono' : ''} ${warn ? 'text-orange-500 dark:text-orange-400' : 'text-gray-700 dark:text-gray-300'}`}>
         {value}
       </span>
     </div>

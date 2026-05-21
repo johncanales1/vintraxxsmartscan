@@ -21,6 +21,7 @@ import { runDailyRollupForYesterday } from '../services/gps-daily-rollup.service
 import {
   timeoutSentCommands,
   expireStaleQueuedCommands,
+  timeoutVendorResponseCommands,
 } from '../services/gps-command.service';
 import { sweepStaleScanReports } from '../services/gps-scan-report.service';
 import { runOtpCleanup, runPasswordResetCleanup } from './authCleanup';
@@ -33,6 +34,11 @@ const COMMAND_SENT_TIMEOUT_MS = 60_000;
 // 1 hour — QUEUED commands whose terminal never came online get expired.
 // Operators can re-issue manually if they still want the action.
 const COMMAND_QUEUE_MAX_MS = 60 * 60_000;
+
+// 5 minutes — JT808_ACKED 4G always-online commands waiting for 0x6006 vendor
+// response. Long enough to survive a brief cellular gap; short enough to give
+// useful feedback quickly.
+const VENDOR_RESPONSE_TIMEOUT_MS = 5 * 60_000;
 
 const tasks: cron.ScheduledTask[] = [];
 
@@ -81,16 +87,23 @@ export function startCronJobs(): void {
   // Every minute: timeout SENT commands that haven't been ACKED. Belt &
   // braces — the gateway has its own per-command timer; this catches rows
   // orphaned by gateway crashes.
-  //
-  // LOW #3: staggered to fire at :30 of every minute (6-field cron syntax,
-  // supported by node-cron) so it doesn't overlap with the heartbeat
-  // watchdog above (which runs at :00). Different tables, but separating
-  // them keeps the log timeline readable and avoids contending for the
-  // same DB connection slot every minute on the dot.
   tasks.push(
     cron.schedule('30 * * * * *', () => {
       void timeoutSentCommands(COMMAND_SENT_TIMEOUT_MS).catch((err) => {
         logger.error('timeoutSentCommands crashed', {
+          err: (err as Error).message,
+        });
+      });
+    }),
+  );
+
+  // Every 5 minutes: timeout JT808_ACKED 4G always-online commands waiting
+  // for a 0x6006 vendor text response. These are at layer-2 — the 0x0001
+  // transport ACK was received but the vendor response never arrived.
+  tasks.push(
+    cron.schedule('*/5 * * * *', () => {
+      void timeoutVendorResponseCommands(VENDOR_RESPONSE_TIMEOUT_MS).catch((err) => {
+        logger.error('timeoutVendorResponseCommands crashed', {
           err: (err as Error).message,
         });
       });

@@ -3,12 +3,19 @@
  *
  * State machine (mirrors GpsCommandStatus enum):
  *
- *   QUEUED ──(gateway picks up + writes to socket)──> SENT
- *                                                     │
- *                                                     ├─ device 0x0001 ack ──> ACKED
- *                                                     ├─ command timeout    ─> FAILED
- *                                                     └─ socket error       ─> FAILED
- *   QUEUED ──(no live session for too long)─────────> EXPIRED
+ *   Standard commands (locate, set-params, …):
+ *   QUEUED ──(gateway dispatches)──> SENT
+ *     ├─ 0x0001 ACK (result=0)   ──> ACKED
+ *     ├─ command timeout          ─> FAILED
+ *     └─ socket error             ─> FAILED
+ *   QUEUED ──(no live session)   ──> EXPIRED
+ *
+ *   Vendor-specific commands (4G always-online 0x8300):
+ *   QUEUED ──(gateway dispatches)──> SENT
+ *     ├─ 0x0001 ACK               ──> JT808_ACKED      (layer-1 transport ACK)
+ *     │    ├─ 0x6006 text reply   ──> VENDOR_RESPONSE_RECEIVED  (layer-2 result)
+ *     │    └─ timeout             ──> VENDOR_RESPONSE_TIMEOUT
+ *     └─ 0x0001 timeout           ──> JT808_ACK_TIMEOUT
  *
  * Only the REST process calls `enqueueCommand`. Only the gateway process
  * calls `markSent / markAcked / markFailed`. The cron (in the backend
@@ -239,18 +246,33 @@ export async function markAcked(args: {
   result: number;
   response?: Prisma.InputJsonValue;
 }): Promise<boolean> {
+  // For 4G always-online commands the JT/T 808 0x0001 is only layer-1
+  // (transport delivery confirmation). Detect the kind before writing so we
+  // use JT808_ACKED instead of ACKED and record the jt808Ack* fields.
+  const cmd = await prisma.gpsCommand.findUnique({
+    where: { id: args.commandId },
+    select: { payload: true, status: true },
+  });
+  if (!cmd || cmd.status !== 'SENT') return false;
+
+  const payload = cmd.payload as { kind?: string } | null;
+  const is4g =
+    payload?.kind === 'enable-4g-always-online' ||
+    payload?.kind === 'disable-4g-always-online';
+
+  const now = new Date();
   const result = await prisma.gpsCommand.updateMany({
     where: { id: args.commandId, status: 'SENT' },
     data: {
-      status: 'ACKED',
-      ackAt: new Date(),
-      response:
-        args.response ?? { result: args.result },
+      status: is4g ? 'JT808_ACKED' : 'ACKED',
+      ackAt: now,
+      jt808AckAt: is4g ? now : undefined,
+      jt808AckResult: is4g ? args.result : undefined,
+      response: args.response ?? { result: args.result },
     },
   });
   if (result.count === 1) {
-    // Fire 4G always-online state update if applicable.
-    void fire4gAlwaysOnlineAck(args.commandId, args.result).catch((err) =>
+    void fire4gAlwaysOnlineJt808Ack(args.commandId, args.result, is4g).catch((err) =>
       logger.warn('markAcked: 4G always-online callback failed', {
         commandId: args.commandId,
         err: (err as Error).message,
@@ -260,11 +282,146 @@ export async function markAcked(args: {
   return result.count === 1;
 }
 
+/**
+ * Mark a 4G command as having received the vendor 0x6006 text response.
+ * Moves JT808_ACKED → VENDOR_RESPONSE_RECEIVED.
+ */
+export async function markVendorResponseReceived(args: {
+  commandId: string;
+  messageId: string;
+  rawHex: string;
+  decodedText: string;
+  parseStatus: string;
+  responseJson?: Prisma.InputJsonValue;
+}): Promise<boolean> {
+  const now = new Date();
+  const result = await prisma.gpsCommand.updateMany({
+    where: { id: args.commandId, status: 'JT808_ACKED' },
+    data: {
+      status: 'VENDOR_RESPONSE_RECEIVED',
+      vendorResponseAt: now,
+      vendorResponseMessageId: args.messageId,
+      vendorResponseRawHex: args.rawHex,
+      vendorResponseDecodedText: args.decodedText,
+      vendorResponseParseStatus: args.parseStatus,
+      vendorResponseJson: args.responseJson ?? Prisma.JsonNull,
+    },
+  });
+  if (result.count === 1) {
+    void fire4gAlwaysOnlineVendorResponse(args.commandId, {
+      rawHex: args.rawHex,
+      decodedText: args.decodedText,
+      parseStatus: args.parseStatus,
+    }).catch((err) =>
+      logger.warn('markVendorResponseReceived: 4G callback failed', {
+        commandId: args.commandId,
+        err: (err as Error).message,
+      }),
+    );
+  }
+  return result.count === 1;
+}
+
+/**
+ * Mark a JT808_ACKED command as VENDOR_RESPONSE_TIMEOUT when the 0x6006 does
+ * not arrive within the allotted window. Called by the cron sweeper.
+ */
+export async function markVendorResponseTimeout(args: {
+  commandId: string;
+}): Promise<boolean> {
+  const result = await prisma.gpsCommand.updateMany({
+    where: { id: args.commandId, status: 'JT808_ACKED' },
+    data: {
+      status: 'VENDOR_RESPONSE_TIMEOUT',
+      errorText: 'timeout: 0x6006 vendor response not received within window',
+    },
+  });
+  if (result.count === 1) {
+    void fire4gAlwaysOnlineVendorTimeout(args.commandId).catch((err) =>
+      logger.warn('markVendorResponseTimeout: 4G callback failed', {
+        commandId: args.commandId,
+        err: (err as Error).message,
+      }),
+    );
+  }
+  return result.count === 1;
+}
+
+/**
+ * Record a 0xF3 sleep event against the most-recent 4G always-online command
+ * for the given terminal. No-ops if no recent command is found.
+ */
+export async function updateSleepEvent(args: {
+  terminalId: string;
+  sleepAt: Date;
+  rawHex: string;
+}): Promise<string | null> {
+  const cmd = await findLatest4gAlwaysOnlineCommand({
+    terminalId: args.terminalId,
+    withinMs: 10 * 60_000,
+  });
+  if (!cmd) return null;
+
+  const secondsSinceCommand = cmd.sentAt
+    ? Math.round((args.sleepAt.getTime() - cmd.sentAt.getTime()) / 1000)
+    : null;
+  const note =
+    `Device entered sleep mode ${secondsSinceCommand != null ? secondsSinceCommand + 's' : ''} after command was sent. ` +
+    `Command was accepted by terminal (0x0001 ACK), but device still entered sleep. ` +
+    `Review vendor 0x6006 response to understand sleep behaviour.`;
+
+  await prisma.gpsCommand.updateMany({
+    where: { id: cmd.id },
+    data: { sleepEventAt: args.sleepAt, sleepEventNote: note },
+  });
+
+  void fire4gAlwaysOnlineSleepEvent(cmd.id, {
+    terminalId: args.terminalId,
+    sleepAt: args.sleepAt,
+    secondsSinceCommand,
+  }).catch((err) =>
+    logger.warn('updateSleepEvent: 4G sleep callback failed', {
+      commandId: cmd.id,
+      err: (err as Error).message,
+    }),
+  );
+
+  return cmd.id;
+}
+
+/**
+ * Find the most-recently-sent 4G always-online command for a terminal within
+ * the given time window. Returns the row or null.
+ */
+export async function findLatest4gAlwaysOnlineCommand(args: {
+  terminalId: string;
+  withinMs: number;
+}) {
+  const cutoff = new Date(Date.now() - args.withinMs);
+  return prisma.gpsCommand.findFirst({
+    where: {
+      terminalId: args.terminalId,
+      functionCode: 0x8300,
+      status: { in: ['SENT', 'JT808_ACKED', 'VENDOR_RESPONSE_RECEIVED', 'VENDOR_RESPONSE_TIMEOUT'] },
+      sentAt: { gte: cutoff },
+    },
+    orderBy: { sentAt: 'desc' },
+    select: {
+      id: true,
+      status: true,
+      sentAt: true,
+      jt808AckAt: true,
+      jt808AckResult: true,
+      payload: true,
+    },
+  });
+}
+
 export async function markFailed(args: {
   commandId: string;
   errorText: string;
   /** Allowed previous statuses — defaults to ['QUEUED','SENT']. */
-  fromStatus?: ('QUEUED' | 'SENT')[];
+  fromStatus?: ('QUEUED' | 'SENT' | 'JT808_ACKED')[];
 }): Promise<boolean> {
   const allowed = args.fromStatus ?? ['QUEUED', 'SENT'];
   const result = await prisma.gpsCommand.updateMany({
@@ -285,7 +442,12 @@ export async function markFailed(args: {
 
 // ── 4G Always-Online lifecycle hooks ────────────────────────────────────────
 
-async function fire4gAlwaysOnlineAck(commandId: string, result: number) {
+async function fire4gAlwaysOnlineJt808Ack(
+  commandId: string,
+  result: number,
+  is4g: boolean,
+) {
+  if (!is4g) return;
   const cmd = await prisma.gpsCommand.findUnique({
     where: { id: commandId },
     select: { id: true, terminalId: true, payload: true },
@@ -297,11 +459,76 @@ async function fire4gAlwaysOnlineAck(commandId: string, result: number) {
     payload?.kind !== 'disable-4g-always-online'
   ) return;
 
-  await alwaysOnlineService.onCommandAcked({
+  await alwaysOnlineService.onCommandJt808Acked({
     commandId,
     kind: payload.kind as 'enable-4g-always-online' | 'disable-4g-always-online',
     terminalId: cmd.terminalId,
     result,
+  });
+}
+
+async function fire4gAlwaysOnlineVendorResponse(
+  commandId: string,
+  response: { rawHex: string; decodedText: string; parseStatus: string },
+) {
+  const cmd = await prisma.gpsCommand.findUnique({
+    where: { id: commandId },
+    select: { id: true, terminalId: true, payload: true },
+  });
+  if (!cmd) return;
+  const payload = cmd.payload as { kind?: string } | null;
+  if (
+    payload?.kind !== 'enable-4g-always-online' &&
+    payload?.kind !== 'disable-4g-always-online'
+  ) return;
+
+  await alwaysOnlineService.onVendorResponseReceived({
+    commandId,
+    kind: payload.kind as 'enable-4g-always-online' | 'disable-4g-always-online',
+    terminalId: cmd.terminalId,
+    ...response,
+  });
+}
+
+async function fire4gAlwaysOnlineVendorTimeout(commandId: string) {
+  const cmd = await prisma.gpsCommand.findUnique({
+    where: { id: commandId },
+    select: { id: true, terminalId: true, payload: true },
+  });
+  if (!cmd) return;
+  const payload = cmd.payload as { kind?: string } | null;
+  if (
+    payload?.kind !== 'enable-4g-always-online' &&
+    payload?.kind !== 'disable-4g-always-online'
+  ) return;
+
+  await alwaysOnlineService.onVendorResponseTimeout({
+    commandId,
+    terminalId: cmd.terminalId,
+  });
+}
+
+async function fire4gAlwaysOnlineSleepEvent(
+  commandId: string,
+  args: { terminalId: string; sleepAt: Date; secondsSinceCommand: number | null },
+) {
+  const cmd = await prisma.gpsCommand.findUnique({
+    where: { id: commandId },
+    select: { id: true, terminalId: true, payload: true },
+  });
+  if (!cmd) return;
+  const payload = cmd.payload as { kind?: string } | null;
+  if (
+    payload?.kind !== 'enable-4g-always-online' &&
+    payload?.kind !== 'disable-4g-always-online'
+  ) return;
+
+  await alwaysOnlineService.onSleepAfterCommand({
+    commandId,
+    kind: payload.kind as 'enable-4g-always-online' | 'disable-4g-always-online',
+    terminalId: cmd.terminalId,
+    sleepAt: args.sleepAt,
+    secondsSinceCommand: args.secondsSinceCommand,
   });
 }
 
@@ -326,23 +553,54 @@ async function fire4gAlwaysOnlineFail(commandId: string, errorText: string) {
 
 // ── Cron sweeps ─────────────────────────────────────────────────────────────
 
-/** SENT commands that haven't been ACKED within `ms` get marked FAILED. */
+/** SENT commands that haven't been ACKED within `ms` get marked FAILED (JT808_ACK_TIMEOUT for 4G commands). */
 export async function timeoutSentCommands(ms: number): Promise<number> {
   const cutoff = new Date(Date.now() - ms);
   const stale = await prisma.gpsCommand.findMany({
     where: { status: 'SENT', sentAt: { lt: cutoff } },
+    select: { id: true, payload: true },
+  });
+  let n = 0;
+  for (const row of stale) {
+    const payload = row.payload as { kind?: string } | null;
+    const is4g =
+      payload?.kind === 'enable-4g-always-online' ||
+      payload?.kind === 'disable-4g-always-online';
+    if (is4g) {
+      const res = await prisma.gpsCommand.updateMany({
+        where: { id: row.id, status: 'SENT' },
+        data: { status: 'JT808_ACK_TIMEOUT', errorText: 'timeout: 0x0001 ACK not received within window' },
+      });
+      if (res.count === 1) {
+        n++;
+        void fire4gAlwaysOnlineFail(row.id, 'timeout: 0x0001 ACK not received within window');
+      }
+    } else {
+      const ok = await markFailed({
+        commandId: row.id,
+        errorText: 'timeout: no 0x0001 ack within window',
+        fromStatus: ['SENT'],
+      });
+      if (ok) n++;
+    }
+  }
+  if (n > 0) logger.info('timeoutSentCommands: timed out N commands', { count: n });
+  return n;
+}
+
+/** JT808_ACKED 4G commands that haven't received a 0x6006 vendor response within `ms`. */
+export async function timeoutVendorResponseCommands(ms: number): Promise<number> {
+  const cutoff = new Date(Date.now() - ms);
+  const stale = await prisma.gpsCommand.findMany({
+    where: { status: 'JT808_ACKED', jt808AckAt: { lt: cutoff } },
     select: { id: true },
   });
   let n = 0;
   for (const row of stale) {
-    const ok = await markFailed({
-      commandId: row.id,
-      errorText: 'timeout: no 0x0001 ack within window',
-      fromStatus: ['SENT'],
-    });
+    const ok = await markVendorResponseTimeout({ commandId: row.id });
     if (ok) n++;
   }
-  if (n > 0) logger.info('timeoutSentCommands: timed out N commands', { count: n });
+  if (n > 0) logger.info('timeoutVendorResponseCommands: timed out N commands', { count: n });
   return n;
 }
 
@@ -365,7 +623,7 @@ interface ListOptions {
   page: number;
   limit: number;
   terminalId?: string;
-  status?: 'QUEUED' | 'SENT' | 'ACKED' | 'FAILED' | 'EXPIRED';
+  status?: 'QUEUED' | 'SENT' | 'ACKED' | 'FAILED' | 'EXPIRED' | 'JT808_ACKED' | 'VENDOR_RESPONSE_RECEIVED' | 'JT808_ACK_TIMEOUT' | 'VENDOR_RESPONSE_TIMEOUT';
   adminId?: string;
   since?: Date;
   until?: Date;
@@ -424,12 +682,22 @@ export async function getCommandDetail(commandId: string) {
       adminId: true,
       userId: true,
       functionCode: true,
+      payload: true,
       status: true,
       response: true,
       errorText: true,
       serialNumber: true,
       sentAt: true,
       ackAt: true,
+      jt808AckAt: true,
+      jt808AckResult: true,
+      vendorResponseAt: true,
+      vendorResponseMessageId: true,
+      vendorResponseRawHex: true,
+      vendorResponseDecodedText: true,
+      vendorResponseParseStatus: true,
+      sleepEventAt: true,
+      sleepEventNote: true,
       createdAt: true,
       terminal: {
         select: {

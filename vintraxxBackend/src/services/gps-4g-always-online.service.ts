@@ -6,10 +6,21 @@
  * enable command. The disable command is configurable via env and defaults
  * to unconfigured (supplier has not yet confirmed it).
  *
- * State flow:
- *   toggle ON  → PENDING_ENABLE  → (ACK 0x00) → ENABLED
- *   toggle OFF → PENDING_DISABLE → (ACK 0x00) → DISABLED
- *                                → (ACK !0x00 or timeout) → FAILED
+ * Two-layer state flow:
+ *
+ *   toggle ON  → PENDING_ENABLE
+ *              → (0x0001 result=0) → JT808_ACKED          (layer-1: transport ACK)
+ *              → (0x6006 received) → RESPONSE_RECEIVED     (layer-2: vendor text reply)
+ *              → (0x6006 timeout)  → VENDOR_RESPONSE_TIMEOUT
+ *              → (0x0001 timeout)  → FAILED
+ *
+ *   toggle OFF → PENDING_DISABLE  (same two-layer flow)
+ *
+ *   0xF3 sleep after command → SLEPT_AFTER_COMMAND (stored alongside current status)
+ *
+ * TODO: Supplier must confirm the 0x6006 body format and success/failure
+ * codes/text for <HL&P:HOLLOO&7K:1>. Until confirmed, we only capture,
+ * decode, and display 0x6006. We do NOT infer final success from unknown text.
  */
 
 import prisma from '../config/db';
@@ -187,62 +198,154 @@ export function isDisableConfigured(): boolean {
   return !!env.GPS_4G_ALWAYS_ONLINE_DISABLE_COMMAND;
 }
 
-// ── Lifecycle callbacks (called from gps-command.service markAcked/markFailed) ──
+// ── Lifecycle callbacks ──────────────────────────────────────────────────────
 
 /**
- * Called when a 4G always-online command is successfully acked by the terminal
- * (0x0001 result = 0x00).
+ * Layer-1: Called when the terminal sends 0x0001 (JT/T 808 transport ACK).
+ * result=0 means the message was delivered — NOT that the setting was applied.
+ * Moves terminal status to JT808_ACKED and waits for the 0x6006 vendor reply.
  */
-export async function onCommandAcked(args: {
+export async function onCommandJt808Acked(args: {
   commandId: string;
   kind: 'enable-4g-always-online' | 'disable-4g-always-online';
   terminalId: string;
   result: number;
 }) {
   const now = new Date();
+  const resultMeaning = resultCodeToString(args.result);
 
   if (args.result === 0) {
-    // Success
-    const isEnable = args.kind === 'enable-4g-always-online';
     await prisma.gpsTerminal.update({
       where: { id: args.terminalId },
       data: {
-        fourGAlwaysOnlineStatus: isEnable ? 'ENABLED' : 'DISABLED',
-        fourGAlwaysOnlineDesired: isEnable,
+        fourGAlwaysOnlineStatus: 'JT808_ACKED',
         fourGAlwaysOnlineLastAckAt: now,
         fourGAlwaysOnlineLastError: null,
         fourGAlwaysOnlineUpdatedAt: now,
       },
     });
-
-    logger.info('4G always-online: command acked successfully', {
-      terminalId: args.terminalId,
+    logger.info('GPS command JT808 ACK received', {
       commandId: args.commandId,
+      terminalId: args.terminalId,
+      responseId: '0x0001',
       kind: args.kind,
       result: args.result,
-      newStatus: isEnable ? 'ENABLED' : 'DISABLED',
+      resultMeaning,
+      note: '0x0001 confirms message delivery only. Awaiting 0x6006 vendor response.',
     });
   } else {
-    // Non-zero result — device rejected
     const reason = resultCodeToString(args.result);
     await prisma.gpsTerminal.update({
       where: { id: args.terminalId },
       data: {
         fourGAlwaysOnlineStatus: 'FAILED',
         fourGAlwaysOnlineLastAckAt: now,
-        fourGAlwaysOnlineLastError: `Device rejected: ${reason} (result=${args.result})`,
+        fourGAlwaysOnlineLastError: `Transport rejected: ${reason} (result=${args.result})`,
         fourGAlwaysOnlineUpdatedAt: now,
       },
     });
-
-    logger.warn('4G always-online: command rejected by device', {
-      terminalId: args.terminalId,
+    logger.warn('GPS command JT808 ACK: rejected at transport layer', {
       commandId: args.commandId,
+      terminalId: args.terminalId,
+      responseId: '0x0001',
       kind: args.kind,
       result: args.result,
-      reason,
+      resultMeaning,
     });
   }
+}
+
+/**
+ * Layer-2: Called when the device sends 0x6006 text reply.
+ *
+ * TODO: Supplier must confirm the exact 0x6006 body format and the
+ * success/failure text pattern for <HL&P:HOLLOO&7K:1>. Until confirmed,
+ * status is set to RESPONSE_RECEIVED — we do NOT infer ENABLED/DISABLED.
+ */
+export async function onVendorResponseReceived(args: {
+  commandId: string;
+  kind: 'enable-4g-always-online' | 'disable-4g-always-online';
+  terminalId: string;
+  rawHex: string;
+  decodedText: string;
+  parseStatus: string;
+}) {
+  await prisma.gpsTerminal.update({
+    where: { id: args.terminalId },
+    data: {
+      fourGAlwaysOnlineStatus: 'RESPONSE_RECEIVED',
+      fourGAlwaysOnlineLastError: null,
+      fourGAlwaysOnlineUpdatedAt: new Date(),
+    },
+  });
+  logger.info('GPS command vendor response received (0x6006)', {
+    commandId: args.commandId,
+    terminalId: args.terminalId,
+    messageId: '0x6006',
+    kind: args.kind,
+    bodyLength: Math.floor(args.rawHex.length / 2),
+    rawHex: args.rawHex,
+    decodedText: args.decodedText,
+    parseStatus: args.parseStatus,
+    note: 'TODO: Supplier must confirm success/failure text. Status RESPONSE_RECEIVED pending confirmation.',
+  });
+}
+
+/**
+ * Called when 0x6006 vendor response was not received within the timeout
+ * window after 0x0001 ACK.
+ */
+export async function onVendorResponseTimeout(args: {
+  commandId: string;
+  terminalId: string;
+}) {
+  await prisma.gpsTerminal.update({
+    where: { id: args.terminalId },
+    data: {
+      fourGAlwaysOnlineStatus: 'VENDOR_RESPONSE_TIMEOUT',
+      fourGAlwaysOnlineLastError: 'Vendor 0x6006 response not received within timeout window',
+      fourGAlwaysOnlineUpdatedAt: new Date(),
+    },
+  });
+  logger.warn('4G always-online: vendor response timeout', {
+    commandId: args.commandId,
+    terminalId: args.terminalId,
+    note: '0x0001 ACK received but device did not send 0x6006 within timeout.',
+  });
+}
+
+/**
+ * Called when 0xF3 sleep entry arrives after a 4G always-online command.
+ * The command was delivered (0x0001) but the device still slept.
+ */
+export async function onSleepAfterCommand(args: {
+  commandId: string;
+  kind: 'enable-4g-always-online' | 'disable-4g-always-online';
+  terminalId: string;
+  sleepAt: Date;
+  secondsSinceCommand: number | null;
+}) {
+  await prisma.gpsTerminal.update({
+    where: { id: args.terminalId },
+    data: {
+      fourGAlwaysOnlineStatus: 'SLEPT_AFTER_COMMAND',
+      fourGAlwaysOnlineLastError:
+        `Device entered sleep mode ${
+          args.secondsSinceCommand != null ? args.secondsSinceCommand + 's' : ''
+        } after command was sent. ` +
+        `0x0001 ACK was received but device still entered sleep. ` +
+        `Review vendor 0x6006 response to understand sleep behaviour.`,
+      fourGAlwaysOnlineUpdatedAt: new Date(),
+    },
+  });
+  logger.warn('GPS terminal sleep notification after 4G always-online command', {
+    commandId: args.commandId,
+    terminalId: args.terminalId,
+    kind: args.kind,
+    sleepAt: args.sleepAt.toISOString(),
+    secondsSinceCommand: args.secondsSinceCommand,
+    note: 'Command was accepted by terminal (0x0001 ACK), but device still entered sleep mode.',
+  });
 }
 
 /**
@@ -261,7 +364,6 @@ export async function onCommandFailed(args: {
       fourGAlwaysOnlineUpdatedAt: new Date(),
     },
   });
-
   logger.warn('4G always-online: command failed', {
     terminalId: args.terminalId,
     commandId: args.commandId,

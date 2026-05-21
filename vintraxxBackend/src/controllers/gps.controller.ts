@@ -1381,9 +1381,11 @@ export async function adminEnable4gAlwaysOnline(
   try {
     const adminId = req.admin!.adminId;
     const terminalId = req.params.id as string;
+    const force = req.query.force === 'true';
     const result = await alwaysOnlineService.enableAlwaysOnline({
       terminalId,
       adminId,
+      force,
     });
     res.status(202).json({
       success: true,

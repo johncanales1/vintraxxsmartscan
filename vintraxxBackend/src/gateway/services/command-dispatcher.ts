@@ -292,10 +292,16 @@ async function dispatchOne(commandId: string): Promise<void> {
   // Write. Errors here transition SENT→FAILED.
   try {
     session.socket.write(rawFrame);
-    session.log.info('command-dispatcher: sent command', {
+    const payload = cmd.payload as { kind?: string; textPayload?: string } | null;
+    session.log.info('GPS command sent', {
       commandId: cmd.id,
-      msgSerial,
+      terminalId: cmd.terminalId,
+      deviceIdentifier: session.canonicalDeviceId,
+      kind: payload?.kind ?? 'unknown',
       functionCode: `0x${cmd.functionCode.toString(16).padStart(4, '0')}`,
+      payloadText: payload?.textPayload ?? null,
+      msgSerial,
+      rawHex: rawFrame.toString('hex'),
     });
   } catch (err) {
     // Tear down the pending callback we installed pre-write — clearTimeout
@@ -430,6 +436,23 @@ function installPending(
     msgSerial,
     sentAt: new Date(),
     resolve: (result: number) => {
+      const resultMeaning =
+        result === 0 ? 'success' :
+        result === 1 ? 'failure' :
+        result === 2 ? 'message incorrect' :
+        result === 3 ? 'not supported' :
+        result === 4 ? 'executing previous operation' :
+        `unknown (0x${result.toString(16).padStart(2, '0')})`;
+      session.log.info('GPS command JT808 ACK (0x0001)', {
+        commandId,
+        terminalId: session.terminalId,
+        deviceIdentifier: session.canonicalDeviceId,
+        responseId: '0x0001',
+        responseSerial: msgSerial,
+        result,
+        resultMeaning,
+        functionCode: `0x${functionCode.toString(16).padStart(4, '0')}`,
+      });
       void commandService
         .markAcked({ commandId, result })
         .catch((err) =>

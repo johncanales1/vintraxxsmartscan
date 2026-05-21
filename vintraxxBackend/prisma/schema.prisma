@@ -374,6 +374,16 @@ enum GpsCommandStatus {
   ACKED
   FAILED
   EXPIRED
+  /// JT/T 808 0x0001 received (result=0); awaiting vendor 0x6006 text response.
+  /// Only used for vendor-specific commands (e.g. 4G always-online 0x8300).
+  JT808_ACKED
+  /// Vendor 0x6006 text response received and decoded; final success/failure
+  /// not yet determined (supplier must confirm the response text format).
+  VENDOR_RESPONSE_RECEIVED
+  /// 0x0001 not received within the JT/T 808 ACK timeout window.
+  JT808_ACK_TIMEOUT
+  /// 0x0001 received but vendor 0x6006 response not received within timeout.
+  VENDOR_RESPONSE_TIMEOUT
 }
 
 enum GpsTripStatus {
@@ -672,6 +682,24 @@ model GpsCommand {
   sentAt    DateTime?
   ackAt     DateTime?
   createdAt DateTime  @default(now())
+
+  // ── Two-layer result (JT/T 808 ACK + vendor text response) ─────────────────
+  // Only populated for vendor-specific commands (e.g. 4G always-online 0x8300).
+  // Layer 1: JT/T 808 0x0001 general response
+  jt808AckAt     DateTime?
+  jt808AckResult Int?
+  // Layer 2: vendor 0x6006 text reply
+  vendorResponseAt          DateTime?
+  vendorResponseMessageId   String?   // "0x6006"
+  vendorResponseRawHex      String?   // hex of full 0x6006 body
+  vendorResponseDecodedText String?   // best-effort ASCII/UTF-8 decode
+  vendorResponseJson        Json?     // structured parse (if format is known)
+  // "ASCII_OK" | "UTF8_OK" | "NON_PRINTABLE" | "DECODE_ERROR"
+  vendorResponseParseStatus String?
+
+  // Sleep correlation: 0xF3 sleep entry that arrived after this command
+  sleepEventAt   DateTime?
+  sleepEventNote String?
 
   @@index([terminalId, createdAt])
   @@index([status])

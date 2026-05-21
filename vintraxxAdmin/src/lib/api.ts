@@ -553,9 +553,9 @@ export const api = {
     }),
 
   // 4G Always-Online toggle
-  enable4gAlwaysOnline: (terminalId: string) =>
+  enable4gAlwaysOnline: (terminalId: string, force?: boolean) =>
     request<{ success: boolean; commandId: string; reused: boolean }>(
-      `/gps/terminals/${terminalId}/4g-always-online/enable`,
+      `/gps/terminals/${terminalId}/4g-always-online/enable${force ? '?force=true' : ''}`,
       { method: 'POST' },
     ),
   disable4gAlwaysOnline: (terminalId: string) =>
@@ -1275,7 +1275,17 @@ export interface GpsTrip {
  * hasn't yet picked up the row), and `EXPIRED` is set by the cron when a
  * QUEUED row sits too long without a live session to dispatch it on.
  */
-export type GpsCommandStatus = 'QUEUED' | 'SENT' | 'ACKED' | 'FAILED' | 'EXPIRED';
+export type GpsCommandStatus =
+  | 'QUEUED'
+  | 'SENT'
+  | 'ACKED'
+  | 'FAILED'
+  | 'EXPIRED'
+  // Two-layer statuses for vendor-specific commands (e.g. 4G always-online)
+  | 'JT808_ACKED'              // 0x0001 received; awaiting 0x6006 vendor response
+  | 'VENDOR_RESPONSE_RECEIVED' // 0x6006 received; supplier confirmation pending
+  | 'JT808_ACK_TIMEOUT'        // 0x0001 not received within timeout
+  | 'VENDOR_RESPONSE_TIMEOUT'; // 0x6006 not received within timeout after 0x0001
 
 export interface GpsCommand {
   id: string;
@@ -1290,6 +1300,16 @@ export interface GpsCommand {
   sentAt: string | null;
   ackAt: string | null;
   errorText: string | null;
+  // Two-layer result fields (vendor-specific commands)
+  jt808AckAt: string | null;
+  jt808AckResult: number | null;
+  vendorResponseAt: string | null;
+  vendorResponseMessageId: string | null;
+  vendorResponseRawHex: string | null;
+  vendorResponseDecodedText: string | null;
+  vendorResponseParseStatus: string | null;
+  sleepEventAt: string | null;
+  sleepEventNote: string | null;
   terminal?: {
     id: string;
     deviceIdentifier: string;

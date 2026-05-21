@@ -16,9 +16,14 @@ npm ci
 echo "🔨 Building Next.js application..."
 npm run build
 
+# Copy static assets into standalone output (required for Next.js standalone builds)
+echo "📁 Copying static assets to standalone directory..."
+cp -r .next/static .next/standalone/.next/static
+cp -r public .next/standalone/public
+
 # Restart PM2 process
 echo "🔄 Restarting PM2 process..."
-pm2 restart vintraxxAdmin || PORT=3003 pm2 start npm --name "vintraxxAdmin" -- start
+pm2 restart vintraxx-admin || HOSTNAME=127.0.0.1 PORT=3002 pm2 start .next/standalone/server.js --name "vintraxx-admin"
 
 # Save PM2 configuration
 echo "💾 Saving PM2 configuration..."

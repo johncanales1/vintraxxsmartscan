@@ -607,12 +607,46 @@ export async function timeoutVendorResponseCommands(ms: number): Promise<number>
 /** QUEUED commands older than `ms` get marked EXPIRED. */
 export async function expireStaleQueuedCommands(ms: number): Promise<number> {
   const cutoff = new Date(Date.now() - ms);
+
+  // First, find 4G always-online commands that will expire so we can update terminal status
+  const fourGCommands = await prisma.gpsCommand.findMany({
+    where: {
+      status: 'QUEUED',
+      createdAt: { lt: cutoff },
+      payload: {
+        path: ['kind'],
+        string_contains: '4g-always-online',
+      },
+    },
+    select: { id: true, terminalId: true, payload: true },
+  });
+
+  // Update terminal status for each 4G command that's expiring
+  for (const cmd of fourGCommands) {
+    try {
+      await alwaysOnlineService.onCommandFailed({
+        commandId: cmd.id,
+        terminalId: cmd.terminalId,
+        errorText: 'expired: no live session in window',
+      });
+    } catch (err) {
+      logger.warn('expireStaleQueuedCommands: failed to update terminal 4G status', {
+        commandId: cmd.id,
+        terminalId: cmd.terminalId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   const result = await prisma.gpsCommand.updateMany({
     where: { status: 'QUEUED', createdAt: { lt: cutoff } },
     data: { status: 'EXPIRED', errorText: 'expired: no live session in window' },
   });
   if (result.count > 0) {
-    logger.info('expireStaleQueuedCommands: expired N commands', { count: result.count });
+    logger.info('expireStaleQueuedCommands: expired N commands', {
+      count: result.count,
+      fourGCommandsUpdated: fourGCommands.length,
+    });
   }
   return result.count;
 }

@@ -360,7 +360,46 @@ export async function onDtcArrived(
   });
 
   if (!report) {
-    logger.info('GPS scan: no pending scan found for DTC attach', { terminalId });
+    logger.info('GPS scan: no pending scan found for DTC attach — checking late-arrival', { terminalId });
+
+    // Late-arrival handling: F2 often arrives 15-30s after the scan was already
+    // COMPLETED by periodic OBD live data. Update the scan with the DTC codes.
+    const recentCompleted = await prisma.gpsScanReport.findFirst({
+      where: {
+        terminalId,
+        status: { in: ['COMPLETED', 'PARTIAL'] },
+        completedAt: { gt: new Date(Date.now() - 60_000) }, // Within last 60 seconds
+      },
+      orderBy: { requestedAt: 'desc' },
+    });
+
+    if (recentCompleted && recentCompleted.dtcCount === null) {
+      logger.info('GPS scan: late-arrival — updating COMPLETED/PARTIAL scan with DTC data', {
+        scanReportId: recentCompleted.id,
+        terminalId,
+        dtcCount: parsed.dtcCount,
+        milOn: parsed.milOn,
+      });
+
+      await prisma.gpsScanReport.update({
+        where: { id: recentCompleted.id },
+        data: {
+          milOn: parsed.milOn,
+          dtcCount: parsed.dtcCount,
+          storedDtcCodes: parsed.storedDtcCodes,
+          pendingDtcCodes: parsed.pendingDtcCodes,
+          permanentDtcCodes: parsed.permanentDtcCodes,
+          protocol: parsed.protocol ?? 'OBD-II',
+          // Upgrade PARTIAL → COMPLETED now that we have DTC data
+          ...(recentCompleted.status === 'PARTIAL'
+            ? { status: 'COMPLETED', errorText: null }
+            : {}),
+        },
+      });
+      return;
+    }
+
+    logger.info('GPS scan: no recent scan found for DTC late-arrival', { terminalId });
     return;
   }
 
@@ -815,8 +854,17 @@ async function maybeCompleteScan(
       });
       await completeScan(scanReportId, 'COMPLETED');
     } else if (finalHasObd) {
-      // OBD live data alone is sufficient for a useful report
-      logger.info('GPS scan: completed with live OBD only', {
+      // If MIL is on, we KNOW the device should be sending an F2 DTC packet.
+      // Don't complete yet — let the outer timeout give F2 time to arrive.
+      if (fresh.milOn === true) {
+        logger.info('GPS scan: MIL is on, deferring completion to wait for F2 DTC packet', {
+          scanReportId,
+          terminalId: fresh.terminalId,
+        });
+        return; // Let the outer timeout handle eventual completion
+      }
+      // OBD live data alone is sufficient when no DTCs are expected
+      logger.info('GPS scan: completed with live OBD only (no DTCs expected)', {
         scanReportId,
         terminalId: fresh.terminalId,
       });

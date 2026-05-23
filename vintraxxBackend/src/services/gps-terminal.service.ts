@@ -342,20 +342,57 @@ export async function getMyTerminalDetail(userId: string, terminalId: string) {
 
 /**
  * Latest known location for a terminal owned by the user. Used for the
- * "where is my car right now" widget.
+ * "where is my car right now" widget. Returns enriched data matching the
+ * admin `adminGetLatestLocation` shape for parity between admin and
+ * dealer-facing map popups.
+ *
+ * Returns:
+ *   • `location`        — most recent GpsLocation row
+ *   • `obd`             — most recent GpsObdSnapshot row
+ *   • `stockNumber`     — best-effort from most recent Scan matching the VIN
+ *   • `lastTripEndedAt` — most recent CLOSED trip end timestamp
  */
 export async function getLatestLocation(userId: string, terminalId: string) {
   // Cheap ownership check — one row, indexed.
   const terminal = await prisma.gpsTerminal.findFirst({
     where: { id: terminalId, ownerUserId: userId },
-    select: { id: true },
+    select: { id: true, vehicleVin: true },
   });
   if (!terminal) throw new AppError('Terminal not found', 404);
 
-  return prisma.gpsLocation.findFirst({
-    where: { terminalId },
-    orderBy: { reportedAt: 'desc' },
-  });
+  const [location, obd, lastClosedTrip, latestScan] = await Promise.all([
+    prisma.gpsLocation.findFirst({
+      where: { terminalId },
+      orderBy: { reportedAt: 'desc' },
+    }),
+    prisma.gpsObdSnapshot.findFirst({
+      where: { terminalId },
+      orderBy: { reportedAt: 'desc' },
+    }),
+    prisma.gpsTrip.findFirst({
+      where: { terminalId, status: 'CLOSED', endAt: { not: null } },
+      orderBy: { endAt: 'desc' },
+      select: { endAt: true },
+    }),
+    // Stock number lookup: only worth running when the terminal has a VIN.
+    terminal.vehicleVin
+      ? prisma.scan.findFirst({
+          where: {
+            vin: { equals: terminal.vehicleVin, mode: 'insensitive' },
+            stockNumber: { not: null },
+          },
+          orderBy: { receivedAt: 'desc' },
+          select: { stockNumber: true },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  return {
+    location,
+    obd,
+    stockNumber: latestScan?.stockNumber ?? null,
+    lastTripEndedAt: lastClosedTrip?.endAt?.toISOString() ?? null,
+  };
 }
 
 interface LocationHistoryOptions {

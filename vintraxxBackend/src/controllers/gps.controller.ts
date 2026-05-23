@@ -227,11 +227,11 @@ export async function myTerminalDetail(req: Request, res: Response, next: NextFu
 
 export async function myLatestLocation(req: Request, res: Response, next: NextFunction) {
   try {
-    const location = await terminalService.getLatestLocation(
+    const result = await terminalService.getLatestLocation(
       req.user!.userId,
       req.params.id as string,
     );
-    res.json({ success: true, location });
+    res.json({ success: true, ...result });
   } catch (err) {
     next(err);
   }

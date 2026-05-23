@@ -99,6 +99,8 @@ interface Props {
    * as a standalone card suitable for inline use inside a modal pane.
    */
   compact?: boolean;
+  /** Optional close handler — renders an X button in the top-right corner. */
+  onClose?: () => void;
 }
 
 export default function TerminalInfoCard({
@@ -108,6 +110,7 @@ export default function TerminalInfoCard({
   stockNumber = null,
   lastTripEndedAt = null,
   compact = false,
+  onClose,
 }: Props) {
   const isOnline = terminal.status === 'ONLINE';
   const lat = toNumber(location?.latitude ?? null);

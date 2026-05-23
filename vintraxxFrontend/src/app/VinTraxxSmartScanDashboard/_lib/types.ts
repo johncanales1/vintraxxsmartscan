@@ -84,6 +84,40 @@ export interface GpsLocation {
   cellId: number | null;
 }
 
+// ── OBD Snapshot ─────────────────────────────────────────────────────────────
+
+/**
+ * Mirrors the Prisma `GpsObdSnapshot` columns. Contains OBD-II data
+ * reported by the D450/similar GPS tracker.
+ */
+export interface GpsObdSnapshot {
+  id: string;
+  terminalId: string;
+  reportedAt: string;
+  serverReceivedAt?: string;
+  vin: string | null;
+  rpm: number | null;
+  /** Vehicle-bus speed reported by the OBD ECU (PID 0x0D). Km/h. */
+  vehicleSpeedKmh: number | string | null;
+  coolantTempC: number | null;
+  intakeAirTempC: number | null;
+  throttlePct: number | string | null;
+  enginePowerKw: number | string | null;
+  engineLoadPct: number | string | null;
+  fuelPressureKpa: number | null;
+  fuelRateLph: number | string | null;
+  fuelConsumedL: number | string | null;
+  /** External system voltage (Control-Module Voltage, PID 0x42), mV. */
+  batteryVoltageMv: number | null;
+  odometerKm: number | string | null;
+  mafGps: number | string | null;
+  o2Voltage: number | string | null;
+  milOn: boolean | null;
+  milDistanceKm: number | string | null;
+  /** Vendor-specific PIDs not natively decoded — key is hex ("0x21"). */
+  extraPidsJson: Record<string, unknown> | null;
+}
+
 // ── Alarms ──────────────────────────────────────────────────────────────────
 
 export type GpsAlarmSeverity = "INFO" | "WARNING" | "CRITICAL";

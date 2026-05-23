@@ -22,6 +22,7 @@ import type {
   GpsAlarm,
   GpsDtcEvent,
   GpsLocation,
+  GpsObdSnapshot,
   GpsScanReport,
   GpsTerminal,
   GpsTerminalDailyStat,
@@ -177,7 +178,12 @@ export const gpsApi = {
     });
   },
   getLatestLocation(id: string, signal?: AbortSignal) {
-    return request<{ location: GpsLocation | null }>(
+    return request<{
+      location: GpsLocation | null;
+      obd: GpsObdSnapshot | null;
+      stockNumber: string | null;
+      lastTripEndedAt: string | null;
+    }>(
       `/gps/terminals/${id}/latest`,
       { signal },
     );

@@ -33,7 +33,9 @@ module.exports = {
         PORT: 3001,
         HOSTNAME: '127.0.0.1',
         NEXT_PUBLIC_API_BASE_URL: '/api/v1',
-        NEXT_PUBLIC_FRONTEND_URL: 'https://dev.vintraxx.com'
+        NEXT_PUBLIC_FRONTEND_URL: 'https://dev.vintraxx.com',
+        NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: 'REMOVED_GOOGLE_API_KEY',
+        NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID: 'fe1f6d7f58347f26a1b23125'
       },
       instances: 1,
       autorestart: true,
@@ -58,7 +60,9 @@ module.exports = {
         // on this host, so nginx → admin returned 502.
         HOSTNAME: '127.0.0.1',
         NEXT_PUBLIC_API_URL: '/api/v1/admin',
-        NEXT_PUBLIC_ADMIN_URL: 'https://admin.vintraxx.com'
+        NEXT_PUBLIC_ADMIN_URL: 'https://admin.vintraxx.com',
+        NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: 'REMOVED_GOOGLE_API_KEY',
+        NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID: 'fe1f6d7f58347f26a1b23125'
       },
       instances: 1,
       autorestart: true,

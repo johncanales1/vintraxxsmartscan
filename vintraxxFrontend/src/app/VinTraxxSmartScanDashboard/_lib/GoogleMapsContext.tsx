@@ -25,12 +25,11 @@ const ctx = createContext<GoogleMapsContextValue>({
   apiKeyConfigured: false,
 });
 
-// MarkerClusterer is loaded by @react-google-maps/api when the corresponding
-// component mounts; we pre-load the visualization library for any future
-// heatmap usage. Keep this list stable to avoid script reloads.
-const LIBRARIES: ("places" | "geometry" | "drawing" | "visualization")[] = [
-  "geometry",
-];
+// Keep this list stable to avoid script reloads. "marker" loads
+// google.maps.marker.AdvancedMarkerElement (the non-deprecated replacement
+// for google.maps.Marker). The Libraries type from @react-google-maps/api
+// hasn't added "marker" yet, so we widen with `as any`.
+const LIBRARIES = ["geometry", "marker"] as any;
 
 export function GoogleMapsProvider({ children }: { children: ReactNode }) {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";

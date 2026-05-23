@@ -7,6 +7,9 @@
  * refcount-aware. Multiple consumers of the same terminal share one
  * server-side subscription; the channel is only torn down when the last
  * consumer unmounts.
+ *
+ * Also returns OBD snapshot, stockNumber, and lastTripEndedAt for rich
+ * map popup rendering.
  */
 
 "use client";
@@ -14,10 +17,13 @@
 import { useEffect, useState } from "react";
 import { gpsApi } from "./gpsApi";
 import { gpsWs } from "./gpsWs";
-import type { GpsLocation } from "./types";
+import type { GpsLocation, GpsObdSnapshot } from "./types";
 
 export function useGpsLatest(terminalId: string | null | undefined) {
   const [location, setLocation] = useState<GpsLocation | null>(null);
+  const [obd, setObd] = useState<GpsObdSnapshot | null>(null);
+  const [stockNumber, setStockNumber] = useState<string | null>(null);
+  const [lastTripEndedAt, setLastTripEndedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -32,6 +38,9 @@ export function useGpsLatest(terminalId: string | null | undefined) {
       if (cancelled) return;
       if (res.success && res.data) {
         setLocation(res.data.location);
+        setObd(res.data.obd);
+        setStockNumber(res.data.stockNumber);
+        setLastTripEndedAt(res.data.lastTripEndedAt);
       }
       setLoading(false);
     })();
@@ -80,5 +89,5 @@ export function useGpsLatest(terminalId: string | null | undefined) {
     };
   }, [terminalId]);
 
-  return { location, loading };
+  return { location, obd, stockNumber, lastTripEndedAt, loading };
 }

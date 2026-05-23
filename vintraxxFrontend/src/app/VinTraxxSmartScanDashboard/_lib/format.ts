@@ -88,3 +88,60 @@ export function vehicleLabel(t: {
   if (t.vehicleVin) return t.vehicleVin;
   return t.deviceIdentifier ?? t.imei ?? "—";
 }
+
+/**
+ * Safe number coercion. Returns null for non-finite values, undefined,
+ * or unparsable strings. Handles Decimal serialised as string from Prisma.
+ */
+export function toNumber(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v === "string") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+/** Format millivolts as "X.X V". Returns "—" for null/undefined. */
+export function fmtVolts(mv: number | null | undefined): string {
+  if (mv === null || mv === undefined) return "—";
+  return `${(mv / 1000).toFixed(1)} V`;
+}
+
+/** Format percentage as "X%". Returns "—" for null/undefined. */
+export function fmtPct(p: number | string | null | undefined): string {
+  const n = toNumber(p);
+  if (n === null) return "—";
+  return `${Math.round(n)}%`;
+}
+
+/**
+ * Canonical short label for a terminal. Prefers deviceIdentifier,
+ * falls back to IMEI, then em-dash.
+ */
+export function terminalLabel(t: {
+  deviceIdentifier?: string | null;
+  imei?: string | null;
+}): string {
+  return t.deviceIdentifier ?? t.imei ?? "—";
+}
+
+/**
+ * Tailwind classes for status dot (online/offline indicator).
+ * Green for ONLINE, gray for OFFLINE/other statuses.
+ */
+export function statusDotClasses(status: string): string {
+  switch (status) {
+    case "ONLINE":
+      return "bg-emerald-500 ring-2 ring-emerald-200";
+    case "OFFLINE":
+      return "bg-gray-400 ring-2 ring-gray-200";
+    case "NEVER_CONNECTED":
+      return "bg-amber-400 ring-2 ring-amber-200";
+    case "REVOKED":
+      return "bg-red-500 ring-2 ring-red-200";
+    default:
+      return "bg-gray-400";
+  }
+}

@@ -151,7 +151,7 @@ function SubTabNav({ sub, setSub }: { sub: SubTab; setSub: (s: SubTab) => void }
 }
 
 function LiveTab({ terminal }: { terminal: GpsTerminal }) {
-  const { location, loading } = useGpsLatest(terminal.id);
+  const { location, obd, stockNumber, lastTripEndedAt, loading } = useGpsLatest(terminal.id);
   const [locating, setLocating] = useState(false);
   const [locateMsg, setLocateMsg] = useState<string | null>(null);
 
@@ -196,6 +196,11 @@ function LiveTab({ terminal }: { terminal: GpsTerminal }) {
                   caption: `${formatRelativeOrAbsolute(location.reportedAt)}`,
                   color:
                     terminal.status === "ONLINE" ? "online" : "offline",
+                  terminal,
+                  location,
+                  obd,
+                  stockNumber,
+                  lastTripEndedAt,
                 },
               ]
             : []

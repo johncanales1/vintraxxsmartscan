@@ -21,8 +21,14 @@
  * component shows a friendly message rather than crashing.
  */
 
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { GoogleMap, MarkerF, InfoWindowF, useLoadScript, type Libraries } from '@react-google-maps/api';
+import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from 'react';
+import { GoogleMap, InfoWindowF, useLoadScript, type Libraries } from '@react-google-maps/api';
+// Side-effect import: filters one inherent Google Maps warning that fires
+// when a `mapId` is present AND the user picks the Satellite/Hybrid map
+// type. See the module header for the full rationale. Must be imported
+// before useLoadScript runs so the patch is in place when the API loads.
+import '@/lib/suppressMapsWarnings';
+import { AdvancedMarkerWrapper } from '@/components/shared/AdvancedMarkerWrapper';
 import { api, GpsTerminal, GpsLocation, GpsObdSnapshot } from '@/lib/api';
 import { gpsAdminWs } from '@/lib/gpsAdminWs';
 import {
@@ -58,13 +64,11 @@ const MAP_CONTAINER_STYLE = { width: '100%', height: '100%' };
 const DEFAULT_CENTER = { lat: 39.0, lng: -97.0 };
 const DEFAULT_ZOOM = 4;
 
-// We use the classic `google.maps.Marker` (via <MarkerF/>) which does NOT
-// require a Map ID and works on the default raster map. AdvancedMarker is
-// avoided intentionally so operators don't need to provision a vector Map
-// ID in Google Cloud Console. Empty libraries array is pinned outside the
-// component so the reference stays stable across renders (otherwise
-// useLoadScript warns about identity changes).
-const GMAPS_LIBRARIES: Libraries = [];
+// "marker" loads google.maps.marker.AdvancedMarkerElement. The Libraries
+// type from @react-google-maps/api hasn't added "marker" yet, so we widen
+// with `as any`. Array is pinned outside the component so the reference
+// stays stable across renders (useLoadScript warns about identity changes).
+const GMAPS_LIBRARIES = ['marker'] as any;
 
 export default function GpsFleetMapSection() {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
@@ -305,8 +309,16 @@ export default function GpsFleetMapSection() {
               center={DEFAULT_CENTER}
               zoom={DEFAULT_ZOOM}
               options={{
-                // No `mapId` — using classic raster map + classic Marker, so
-                // a vector Map ID is unnecessary and Google does not warn.
+                // mapId is REQUIRED for google.maps.marker.AdvancedMarkerElement
+                // to render. Without it the API throws
+                //   "The map is initialized without a valid Map ID, which will
+                //    prevent use of Advanced Markers."
+                // The trade-off is that Google fires an informational console
+                // warning when the user picks the Satellite / Hybrid map type
+                // because cloud-console map styles can't apply to satellite
+                // imagery — that warning is suppressed in
+                // src/lib/suppressMapsWarnings.ts which runs on app boot.
+                mapId: process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID || undefined,
                 disableDefaultUI: false,
                 streetViewControl: false,
                 fullscreenControl: true,
@@ -320,37 +332,28 @@ export default function GpsFleetMapSection() {
                 mapRef.current = null;
               }}
             >
-              {/* Classic <MarkerF/> — google.maps.Marker. We deliberately
-                  avoid AdvancedMarkerElement here because it requires a
-                  vector-mode Map ID provisioned in Google Cloud Console.
-                  google.maps.Marker is logged as deprecated by Google but
-                  remains fully supported and renders without a Map ID.
-
-                  Marker color is driven by terminal.status so an offline
-                  vehicle's last-known position renders gray and visually
-                  distinguishes "parked / scanner asleep" from "live".
-                  When the icon definition can't be built (Maps JS not
-                  fully initialised on first paint) we fall back to the
-                  default red marker by passing `undefined`. */}
+              {/* AdvancedMarkerElement — non-deprecated replacement for
+                  google.maps.Marker. Marker color is driven by terminal.status
+                  so an offline vehicle's last-known position renders gray and
+                  visually distinguishes "parked / scanner asleep" from "live". */}
               {located.map(({ entry, lat, lng }) => {
-                const icon = buildMarkerIcon(entry.terminal.status);
                 const isSelected = selectedId === entry.terminal.id;
                 return (
-                  <MarkerF
-                    key={entry.terminal.id}
-                    position={{ lat, lng }}
-                    icon={icon}
-                    title={vehicleLabel({
-                      vehicleYear: entry.terminal.vehicleYear,
-                      vehicleMake: entry.terminal.vehicleMake,
-                      vehicleModel: entry.terminal.vehicleModel,
-                      vehicleVin: entry.terminal.vehicleVin,
-                      nickname: entry.terminal.nickname,
-                      deviceIdentifier: entry.terminal.deviceIdentifier,
-                      imei: entry.terminal.imei,
-                    })}
-                    onClick={() => setSelectedId(entry.terminal.id)}
-                  >
+                  <Fragment key={entry.terminal.id}>
+                    <AdvancedMarkerWrapper
+                      position={{ lat, lng }}
+                      title={vehicleLabel({
+                        vehicleYear: entry.terminal.vehicleYear,
+                        vehicleMake: entry.terminal.vehicleMake,
+                        vehicleModel: entry.terminal.vehicleModel,
+                        vehicleVin: entry.terminal.vehicleVin,
+                        nickname: entry.terminal.nickname,
+                        deviceIdentifier: entry.terminal.deviceIdentifier,
+                        imei: entry.terminal.imei,
+                      })}
+                      fillColor={getStatusColor(entry.terminal.status)}
+                      onClick={() => setSelectedId(entry.terminal.id)}
+                    />
                     {isSelected && (
                       <InfoWindowF
                         position={{ lat, lng }}
@@ -369,10 +372,11 @@ export default function GpsFleetMapSection() {
                           stockNumber={entry.stockNumber}
                           lastTripEndedAt={entry.lastTripEndedAt}
                           compact
+                          onClose={() => setSelectedId(null)}
                         />
                       </InfoWindowF>
                     )}
-                  </MarkerF>
+                  </Fragment>
                 );
               })}
             </GoogleMap>
@@ -435,36 +439,15 @@ export default function GpsFleetMapSection() {
   );
 }
 
-/**
- * Build a Google-Maps marker icon definition coloured by terminal status.
- * Returning `undefined` lets the marker fall back to the default red pin
- * \u2014 we use that path only when the Maps JS module isn't initialised yet
- * (first paint, before useLoadScript resolves) so the marker still
- * renders rather than blowing up on `new google.maps.Point`.
- */
-function buildMarkerIcon(status: GpsTerminal['status']): google.maps.Symbol | undefined {
-  if (typeof google === 'undefined' || !google.maps) return undefined;
-  const fill =
-    status === 'ONLINE'
-      ? '#dc2626' // red \u2014 live
-      : status === 'NEVER_CONNECTED'
-        ? '#f59e0b' // amber \u2014 never connected
-        : status === 'SUSPENDED'
-          ? '#8b5cf6' // violet
-          : '#94a3b8'; // gray \u2014 OFFLINE (last-known position)
-
-  // Map-pin path. Same shape as the public dashboard's DeviceMapPanel so
-  // the admin + dealer maps stay visually consistent.
-  return {
-    path:
-      'M12 2C7.589 2 4 5.589 4 10c0 5.518 6.875 11.418 7.166 11.665a1.25 1.25 0 0 0 1.668 0C13.125 21.418 20 15.518 20 10c0-4.411-3.589-8-8-8zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6z',
-    fillColor: fill,
-    fillOpacity: 1,
-    strokeWeight: 1.5,
-    strokeColor: '#ffffff',
-    scale: 1.5,
-    anchor: new google.maps.Point(12, 22),
-  };
+/** Return the pin fill color for a terminal status. */
+function getStatusColor(status: GpsTerminal['status']): string {
+  return status === 'ONLINE'
+    ? '#dc2626' // red — live
+    : status === 'NEVER_CONNECTED'
+      ? '#f59e0b' // amber — never connected
+      : status === 'SUSPENDED'
+        ? '#8b5cf6' // violet
+        : '#94a3b8'; // gray — OFFLINE (last-known position)
 }
 
 function ApiKeyMissing({ reason }: { reason: string }) {

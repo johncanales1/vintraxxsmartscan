@@ -1,10 +1,13 @@
 /**
- * /VinTraxxSmartScanDashboard/map \u2014 fleet-wide live map.
+ * /VinTraxxSmartScanDashboard/map — fleet-wide live map.
  *
  * For each terminal we pull the latest location once on mount, then layer WS
  * `location.update` events on top via individual `useGpsLatest` subscriptions.
  * To keep the WS subscription count bounded, we ONLY subscribe to terminals
- * that are currently online \u2014 offline ones get a static last-known marker.
+ * that are currently online — offline ones get a static last-known marker.
+ *
+ * Also fetches OBD snapshot, stockNumber, and lastTripEndedAt for rich
+ * InfoWindow popups matching the admin dashboard.
  */
 
 "use client";
@@ -15,17 +18,22 @@ import { useGpsTerminals } from "../_lib/useGpsTerminals";
 import { gpsApi } from "../_lib/gpsApi";
 import { gpsWs } from "../_lib/gpsWs";
 import { DeviceMapPanel } from "../_components/DeviceMapPanel";
-import type { GpsLocation } from "../_lib/types";
+import type { GpsLocation, GpsObdSnapshot } from "../_lib/types";
 import { vehicleLabel, formatRelativeOrAbsolute } from "../_lib/format";
+
+interface LatestData {
+  location: GpsLocation | null;
+  obd: GpsObdSnapshot | null;
+  stockNumber: string | null;
+  lastTripEndedAt: string | null;
+}
 
 export default function MapPage() {
   const router = useRouter();
   const { terminals, loading } = useGpsTerminals();
-  const [locations, setLocations] = useState<Record<string, GpsLocation | null>>(
-    {},
-  );
+  const [latestData, setLatestData] = useState<Record<string, LatestData>>({});
 
-  // Seed: fetch latest for every terminal in parallel.
+  // Seed: fetch latest for every terminal in parallel (includes OBD, stockNumber, lastTripEndedAt).
   useEffect(() => {
     if (terminals.length === 0) return;
     let cancelled = false;
@@ -35,13 +43,16 @@ export default function MapPage() {
         terminals.map((t) =>
           gpsApi
             .getLatestLocation(t.id, controller.signal)
-            .then((res) => ({ id: t.id, loc: res.data?.location ?? null })),
+            .then((res) => ({
+              id: t.id,
+              data: res.data ?? { location: null, obd: null, stockNumber: null, lastTripEndedAt: null },
+            })),
         ),
       );
       if (cancelled) return;
-      const next: Record<string, GpsLocation | null> = {};
-      for (const { id, loc } of results) next[id] = loc;
-      setLocations(next);
+      const next: Record<string, LatestData> = {};
+      for (const { id, data } of results) next[id] = data;
+      setLatestData(next);
     })();
     return () => {
       cancelled = true;
@@ -55,34 +66,47 @@ export default function MapPage() {
     const online = terminals.filter((t) => t.status === "ONLINE");
     for (const t of online) gpsWs.subscribeTerminal(t.id);
     const offLoc = gpsWs.on("location.update", (e) => {
-      setLocations((prev) => ({
-        ...prev,
-        [e.terminalId]: {
-          id: `ws-${e.terminalId}-${e.data.reportedAt}`,
-          terminalId: e.terminalId,
-          alarmBits: e.data.alarmBits,
-          statusBits: e.data.statusBits,
-          latitude: e.data.latitude,
-          longitude: e.data.longitude,
-          altitudeM: e.data.altitudeM,
-          speedKmh: e.data.speedKmh,
-          heading: e.data.heading,
-          reportedAt: e.data.reportedAt,
-          serverReceivedAt: new Date().toISOString(),
-          accOn: e.data.accOn,
-          gpsFix: e.data.gpsFix,
-          satelliteCount: null,
-          signalStrength: null,
-          odometerKm: null,
-          fuelLevelPct: null,
-          externalVoltageMv: null,
-          batteryVoltageMv: null,
-          mcc: null,
-          mnc: null,
-          lac: null,
-          cellId: null,
-        },
-      }));
+      setLatestData((prev) => {
+        const existing = prev[e.terminalId] ?? {
+          location: null,
+          obd: null,
+          stockNumber: null,
+          lastTripEndedAt: null,
+        };
+        return {
+          ...prev,
+          [e.terminalId]: {
+            ...existing,
+            location: {
+              ...(existing.location ?? {
+                satelliteCount: null,
+                signalStrength: null,
+                odometerKm: null,
+                fuelLevelPct: null,
+                externalVoltageMv: null,
+                batteryVoltageMv: null,
+                mcc: null,
+                mnc: null,
+                lac: null,
+                cellId: null,
+              }),
+              id: `ws-${e.terminalId}-${e.data.reportedAt}`,
+              terminalId: e.terminalId,
+              alarmBits: e.data.alarmBits,
+              statusBits: e.data.statusBits,
+              latitude: e.data.latitude,
+              longitude: e.data.longitude,
+              altitudeM: e.data.altitudeM,
+              speedKmh: e.data.speedKmh,
+              heading: e.data.heading,
+              reportedAt: e.data.reportedAt,
+              serverReceivedAt: new Date().toISOString(),
+              accOn: e.data.accOn,
+              gpsFix: e.data.gpsFix,
+            },
+          },
+        };
+      });
     });
     return () => {
       offLoc();
@@ -92,19 +116,25 @@ export default function MapPage() {
 
   const points = terminals
     .map((t) => {
-      const loc = locations[t.id];
+      const data = latestData[t.id];
+      const loc = data?.location;
       if (!loc) return null;
       return {
         id: t.id,
         lat: loc.latitude,
         lng: loc.longitude,
         label: vehicleLabel(t),
-        caption: `${t.status === "ONLINE" ? "Online" : "Offline"} \u2022 ${formatRelativeOrAbsolute(loc.reportedAt)}`,
+        caption: `${t.status === "ONLINE" ? "Online" : "Offline"} • ${formatRelativeOrAbsolute(loc.reportedAt)}`,
         color: (t.status === "ONLINE"
           ? "online"
           : t.status === "OFFLINE"
             ? "offline"
             : "primary") as "online" | "offline" | "primary",
+        terminal: t,
+        location: loc,
+        obd: data?.obd ?? null,
+        stockNumber: data?.stockNumber ?? null,
+        lastTripEndedAt: data?.lastTripEndedAt ?? null,
       };
     })
     .filter((p): p is NonNullable<typeof p> => p !== null);
@@ -135,7 +165,7 @@ export default function MapPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {terminals.map((t) => {
-                  const loc = locations[t.id];
+                  const loc = latestData[t.id]?.location;
                   return (
                     <tr
                       key={t.id}

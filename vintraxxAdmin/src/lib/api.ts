@@ -300,6 +300,19 @@ export const api = {
       success: boolean;
       location: GpsLocation | null;
       obd: GpsObdSnapshot | null;
+      /**
+       * Best-effort: most recent `Scan.stockNumber` matching the terminal's
+       * VIN. Null when the terminal has no VIN, or no Scan history with a
+       * stockNumber. Surfaced in the Fleet Map "parked vehicle" popup.
+       */
+      stockNumber: string | null;
+      /**
+       * Most recent CLOSED `GpsTrip.endAt`. Falls back to a sensible
+       * "Ignition off since" hint when `disconnectedAt` isn't populated
+       * (rare, but happens for terminals that have never disconnected
+       * cleanly).
+       */
+      lastTripEndedAt: string | null;
     }>(`/gps/terminals/${id}/latest`),
 
   getGpsLocations: (

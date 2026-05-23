@@ -22,8 +22,8 @@
  */
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { GoogleMap, MarkerF, useLoadScript, type Libraries } from '@react-google-maps/api';
-import { api, GpsTerminal, GpsLocation } from '@/lib/api';
+import { GoogleMap, MarkerF, InfoWindowF, useLoadScript, type Libraries } from '@react-google-maps/api';
+import { api, GpsTerminal, GpsLocation, GpsObdSnapshot } from '@/lib/api';
 import { gpsAdminWs } from '@/lib/gpsAdminWs';
 import {
   fmtRelative,
@@ -36,10 +36,19 @@ import {
   RefreshCw, MapPin, Locate, AlertCircle, Search,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import TerminalInfoCard from '@/components/shared/TerminalInfoCard';
 
 interface FleetEntry {
   terminal: GpsTerminal;
   location: GpsLocation | null;
+  /**
+   * Additional payload fetched from `getGpsTerminalLatest` so the
+   * <TerminalInfoCard/> rendered in the InfoWindow has everything it
+   * needs without a second request when the marker is clicked.
+   */
+  obd: GpsObdSnapshot | null;
+  stockNumber: string | null;
+  lastTripEndedAt: string | null;
 }
 
 const MAP_CONTAINER_STYLE = { width: '100%', height: '100%' };
@@ -79,16 +88,31 @@ export default function GpsFleetMapSection() {
   const fittedRef = useRef(false);
 
   // ── Load: terminals + latest locations in parallel ──────────────────────
+  // Strategy update (May 2026): we now render BOTH online AND offline
+  // terminals on the map. Offline terminals use their last-known position
+  // (red → gray marker) so the operator can answer "where did this
+  // vehicle finally come to rest?" even though the device is asleep with
+  // the ignition. Revoked / never-connected entries are skipped
+  // server-side or filtered out below (they have no useful coordinates).
   const load = useCallback(async () => {
     setLoading(true);
     // Allow the next effect to re-fit bounds on this fresh data set.
     fittedRef.current = false;
     try {
-      const tRes = await api.listGpsTerminals(1, 200, { filter: 'online' });
+      const tRes = await api.listGpsTerminals(1, 200);
+      // Drop REVOKED rows entirely — they're an admin tombstone and
+      // shouldn't appear on a live fleet view.
+      const visible = tRes.terminals.filter((t) => t.status !== 'REVOKED');
       const settled = await Promise.allSettled(
-        tRes.terminals.map(async (t) => {
+        visible.map(async (t) => {
           const r = await api.getGpsTerminalLatest(t.id);
-          return { terminal: t, location: r.location } as FleetEntry;
+          return {
+            terminal: t,
+            location: r.location,
+            obd: r.obd,
+            stockNumber: r.stockNumber,
+            lastTripEndedAt: r.lastTripEndedAt,
+          } as FleetEntry;
         }),
       );
       const next: Record<string, FleetEntry> = {};
@@ -138,7 +162,11 @@ export default function GpsFleetMapSection() {
         return {
           ...prev,
           [e.terminalId]: {
-            terminal: cur.terminal,
+            ...cur,
+            // A live frame implies the terminal is up. Reflect that on the
+            // local copy so the marker color flips green/red within the
+            // same render rather than waiting for the next list refetch.
+            terminal: { ...cur.terminal, status: 'ONLINE' as const },
             location: {
               ...((cur.location ?? {}) as GpsLocation),
               id: cur.location?.id ?? `live:${d.reportedAt}`,
@@ -205,6 +233,15 @@ export default function GpsFleetMapSection() {
     });
   }, [located, search]);
 
+  // Quick online/offline tally for the toolbar + sidebar header. Driven
+  // off the located list so the numbers match what's actually rendered
+  // on the map (terminals without a fix are silently dropped above).
+  const onlineCount = useMemo(
+    () => located.filter(({ entry }) => entry.terminal.status === 'ONLINE').length,
+    [located],
+  );
+  const offlineCount = located.length - onlineCount;
+
   // Auto-fit bounds when the located set first becomes non-empty. The
   // `fittedRef` flag is reset inside `load()` on manual refresh so the
   // operator gets a fresh frame, but live WS updates do NOT re-fit.
@@ -247,7 +284,7 @@ export default function GpsFleetMapSection() {
         </div>
         <div className="flex items-center gap-2">
           <span className="text-sm text-gray-500 dark:text-gray-400">
-            {located.length} on map · {Object.keys(entries).length} online
+            {located.length} on map · {onlineCount} online · {offlineCount} offline
           </span>
           <button onClick={load} className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
             <RefreshCw size={18} />
@@ -287,23 +324,57 @@ export default function GpsFleetMapSection() {
                   avoid AdvancedMarkerElement here because it requires a
                   vector-mode Map ID provisioned in Google Cloud Console.
                   google.maps.Marker is logged as deprecated by Google but
-                  remains fully supported and renders without a Map ID. */}
-              {located.map(({ entry, lat, lng }) => (
-                <MarkerF
-                  key={entry.terminal.id}
-                  position={{ lat, lng }}
-                  title={vehicleLabel({
-                    vehicleYear: entry.terminal.vehicleYear,
-                    vehicleMake: entry.terminal.vehicleMake,
-                    vehicleModel: entry.terminal.vehicleModel,
-                    vehicleVin: entry.terminal.vehicleVin,
-                    nickname: entry.terminal.nickname,
-                    deviceIdentifier: entry.terminal.deviceIdentifier,
-                    imei: entry.terminal.imei,
-                  })}
-                  onClick={() => setSelectedId(entry.terminal.id)}
-                />
-              ))}
+                  remains fully supported and renders without a Map ID.
+
+                  Marker color is driven by terminal.status so an offline
+                  vehicle's last-known position renders gray and visually
+                  distinguishes "parked / scanner asleep" from "live".
+                  When the icon definition can't be built (Maps JS not
+                  fully initialised on first paint) we fall back to the
+                  default red marker by passing `undefined`. */}
+              {located.map(({ entry, lat, lng }) => {
+                const icon = buildMarkerIcon(entry.terminal.status);
+                const isSelected = selectedId === entry.terminal.id;
+                return (
+                  <MarkerF
+                    key={entry.terminal.id}
+                    position={{ lat, lng }}
+                    icon={icon}
+                    title={vehicleLabel({
+                      vehicleYear: entry.terminal.vehicleYear,
+                      vehicleMake: entry.terminal.vehicleMake,
+                      vehicleModel: entry.terminal.vehicleModel,
+                      vehicleVin: entry.terminal.vehicleVin,
+                      nickname: entry.terminal.nickname,
+                      deviceIdentifier: entry.terminal.deviceIdentifier,
+                      imei: entry.terminal.imei,
+                    })}
+                    onClick={() => setSelectedId(entry.terminal.id)}
+                  >
+                    {isSelected && (
+                      <InfoWindowF
+                        position={{ lat, lng }}
+                        onCloseClick={() => setSelectedId(null)}
+                        options={{
+                          pixelOffset:
+                            typeof google !== 'undefined' && google.maps
+                              ? new google.maps.Size(0, -34)
+                              : undefined,
+                        }}
+                      >
+                        <TerminalInfoCard
+                          terminal={entry.terminal}
+                          location={entry.location}
+                          obd={entry.obd}
+                          stockNumber={entry.stockNumber}
+                          lastTripEndedAt={entry.lastTripEndedAt}
+                          compact
+                        />
+                      </InfoWindowF>
+                    )}
+                  </MarkerF>
+                );
+              })}
             </GoogleMap>
           )}
         </div>
@@ -311,12 +382,15 @@ export default function GpsFleetMapSection() {
         {/* Sidebar */}
         <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden flex flex-col">
           <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-            <p className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Online terminals</p>
+            <p className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Fleet</p>
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
+              {onlineCount} online · {offlineCount} offline
+            </p>
           </div>
           <div className="flex-1 overflow-y-auto">
             {filteredList.length === 0 ? (
               <div className="px-4 py-12 text-center text-sm text-gray-400">
-                {Object.keys(entries).length === 0 ? 'No online terminals' : 'No matches'}
+                {Object.keys(entries).length === 0 ? 'No terminals' : 'No matches'}
               </div>
             ) : (
               filteredList.map(({ entry, lat, lng }) => (
@@ -359,6 +433,38 @@ export default function GpsFleetMapSection() {
       </div>
     </div>
   );
+}
+
+/**
+ * Build a Google-Maps marker icon definition coloured by terminal status.
+ * Returning `undefined` lets the marker fall back to the default red pin
+ * \u2014 we use that path only when the Maps JS module isn't initialised yet
+ * (first paint, before useLoadScript resolves) so the marker still
+ * renders rather than blowing up on `new google.maps.Point`.
+ */
+function buildMarkerIcon(status: GpsTerminal['status']): google.maps.Symbol | undefined {
+  if (typeof google === 'undefined' || !google.maps) return undefined;
+  const fill =
+    status === 'ONLINE'
+      ? '#dc2626' // red \u2014 live
+      : status === 'NEVER_CONNECTED'
+        ? '#f59e0b' // amber \u2014 never connected
+        : status === 'SUSPENDED'
+          ? '#8b5cf6' // violet
+          : '#94a3b8'; // gray \u2014 OFFLINE (last-known position)
+
+  // Map-pin path. Same shape as the public dashboard's DeviceMapPanel so
+  // the admin + dealer maps stay visually consistent.
+  return {
+    path:
+      'M12 2C7.589 2 4 5.589 4 10c0 5.518 6.875 11.418 7.166 11.665a1.25 1.25 0 0 0 1.668 0C13.125 21.418 20 15.518 20 10c0-4.411-3.589-8-8-8zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6z',
+    fillColor: fill,
+    fillOpacity: 1,
+    strokeWeight: 1.5,
+    strokeColor: '#ffffff',
+    scale: 1.5,
+    anchor: new google.maps.Point(12, 22),
+  };
 }
 
 function ApiKeyMissing({ reason }: { reason: string }) {

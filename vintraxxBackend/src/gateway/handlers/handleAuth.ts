@@ -24,8 +24,19 @@ import { SessionRegistry } from '../session/SessionRegistry';
 import { emit as emitNotify } from '../../realtime/notify';
 import { dispatchQueuedForTerminal } from '../services/command-dispatcher';
 import { authCodeLimiter } from '../services/rate-limit';
+import { enqueueCommand } from '../../services/gps-command.service';
 import type { Session } from '../session/Session';
 import type { DecodedAuth } from '../codec/types';
+
+/**
+ * JT/T 808 §C — parameter id for "default location report interval"
+ * (uint32, seconds). We pin every authenticated terminal to 10 s so the
+ * last persisted GpsLocation is at most ~10 s stale when the car powers
+ * off; this lets the admin map show the "final known position" of a
+ * vehicle even though the device itself goes offline with the ignition.
+ */
+const PARAM_ID_LOCATION_REPORT_INTERVAL = 0x0029;
+const TARGET_REPORT_INTERVAL_SEC = 10;
 
 export async function handleAuth(
   session: Session,
@@ -129,6 +140,33 @@ export async function handleAuth(
     ownerUserId: terminal.ownerUserId,
     at: now.toISOString(),
   });
+
+  // Pin location reporting to 10 s (system-issued 0x8103 set-params) so
+  // the last persisted fix is recent when the device goes offline at
+  // ignition-off. We only enqueue when the terminal isn't already pinned —
+  // markAcked clears the column once the device acks our 0x8103 so we
+  // don't spam a fresh command on every reconnect.
+  if (terminal.reportIntervalSec !== TARGET_REPORT_INTERVAL_SEC) {
+    void enqueueCommand({
+      terminalId: terminal.id,
+      // System-issued: both originator columns null (schema allows it).
+      adminId: null,
+      userId: null,
+      kind: 'set-params',
+      setParams: [
+        {
+          id: PARAM_ID_LOCATION_REPORT_INTERVAL,
+          value: TARGET_REPORT_INTERVAL_SEC,
+          byteWidth: 4,
+        },
+      ],
+    }).catch((err) => {
+      session.log.warn('handleAuth: failed to enqueue 10s report-interval set-params', {
+        terminalId: terminal.id,
+        err: (err as Error).message,
+      });
+    });
+  }
 
   // Drain any QUEUED commands that piled up while the device was offline.
   // The dispatcher itself swallows errors and logs them.

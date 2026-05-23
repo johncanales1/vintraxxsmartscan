@@ -42,6 +42,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import BulkBar from '../shared/BulkBar';
+import TerminalInfoCard from '../shared/TerminalInfoCard';
 
 interface Props {
   terminalId: string;
@@ -60,6 +61,14 @@ export default function GpsTerminalDetailModal({ terminalId, onClose, onMutated 
   // OBD bus shows non-zero vehicle speed). Populated by the same `latest`
   // endpoint, refreshed on tab open.
   const [latestObd, setLatestObd] = useState<GpsObdSnapshot | null>(null);
+  // Server-side enrichments returned by the same `getGpsTerminalLatest`
+  // call. `stockNumber` is best-effort (looked up via Scan.vin) and powers
+  // the parked-vehicle TerminalInfoCard at the top of the Overview pane;
+  // `lastTripEndedAt` falls in as a more-accurate "Ignition off since"
+  // than the device-side `disconnectedAt` for terminals that have never
+  // disconnected cleanly.
+  const [latestStockNumber, setLatestStockNumber] = useState<string | null>(null);
+  const [latestLastTripEndedAt, setLatestLastTripEndedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('overview');
 
@@ -85,6 +94,8 @@ export default function GpsTerminalDetailModal({ terminalId, onClose, onMutated 
       if (lRes.status === 'fulfilled') {
         setLatest(lRes.value.location);
         setLatestObd(lRes.value.obd);
+        setLatestStockNumber(lRes.value.stockNumber);
+        setLatestLastTripEndedAt(lRes.value.lastTripEndedAt);
       }
     } finally {
       setLoading(false);
@@ -331,7 +342,13 @@ export default function GpsTerminalDetailModal({ terminalId, onClose, onMutated 
               <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
             </div>
           ) : tab === 'overview' ? (
-            <OverviewPane terminal={terminal} latest={latest} latestObd={latestObd} />
+            <OverviewPane
+              terminal={terminal}
+              latest={latest}
+              latestObd={latestObd}
+              stockNumber={latestStockNumber}
+              lastTripEndedAt={latestLastTripEndedAt}
+            />
           ) : tab === 'track' ? (
             <TrackPane locations={locations} onReload={reloadLocations} onMutated={onMutated} />
           ) : tab === 'obd' ? (
@@ -364,10 +381,14 @@ function OverviewPane({
   terminal,
   latest,
   latestObd,
+  stockNumber,
+  lastTripEndedAt,
 }: {
   terminal: GpsTerminalDetail;
   latest: GpsLocation | null;
   latestObd: GpsObdSnapshot | null;
+  stockNumber: string | null;
+  lastTripEndedAt: string | null;
 }) {
   // Battery comes from the OBD snapshot in practice — the gateway never
   // populates GpsLocation.batteryVoltageMv (no JT/T 808 TLV maps to it).
@@ -376,6 +397,21 @@ function OverviewPane({
     latest?.batteryVoltageMv ?? latestObd?.batteryVoltageMv ?? null;
   return (
     <div className="space-y-6">
+      {/* Parked / Live status card — same shape used by the Fleet Map
+          InfoWindow, surfaced at the top of the Overview pane so an
+          admin drilling into an offline vehicle immediately sees its
+          last-known address, ignition-off duration, vehicle battery,
+          fuel, etc. Hidden when there's no location row yet (NEVER
+          CONNECTED terminals have nothing useful to render here). */}
+      {latest && (
+        <TerminalInfoCard
+          terminal={terminal}
+          location={latest}
+          obd={latestObd}
+          stockNumber={stockNumber}
+          lastTripEndedAt={lastTripEndedAt}
+        />
+      )}
       {/* Quick stats — speed shown twice on purpose: GPS-derived (from
           the location report) vs OBD-bus-derived (from the live OBD
           pass-through). Bench-test kits drive the OBD speed but the

@@ -35,15 +35,27 @@ import { acknowledgeAlarm } from './gps-alarm.service';
  * Also returns the most-recent GpsObdSnapshot so the Overview pane can show
  * OBD-derived speed/battery alongside the GPS-derived ones (the bench-test
  * case where GPS speed = 0 but OBD speed = 65 km/h motivated this).
+ *
+ * Additionally returns two derived fields the Fleet Map "parked vehicle"
+ * popup needs but doesn't have on the existing GpsTerminal payload:
+ *   • `stockNumber`     — best-effort string; pulled from the most recent
+ *                         `Scan` row matching the terminal's VIN, since
+ *                         GpsTerminal itself has no stockNumber column.
+ *                         Returns null when the terminal has no VIN or no
+ *                         Scan history.
+ *   • `lastTripEndedAt` — most recent CLOSED `GpsTrip.endAt`, used as a
+ *                         fallback for "Ignition off since" when
+ *                         `disconnectedAt` is unavailable (e.g. a brand-new
+ *                         terminal that's never disconnected cleanly).
  */
 export async function adminGetLatestLocation(terminalId: string) {
   const terminal = await prisma.gpsTerminal.findUnique({
     where: { id: terminalId },
-    select: { id: true },
+    select: { id: true, vehicleVin: true },
   });
   if (!terminal) throw new AppError('Terminal not found', 404);
 
-  const [location, obd] = await Promise.all([
+  const [location, obd, lastClosedTrip, latestScan] = await Promise.all([
     prisma.gpsLocation.findFirst({
       where: { terminalId },
       orderBy: { reportedAt: 'desc' },
@@ -52,9 +64,34 @@ export async function adminGetLatestLocation(terminalId: string) {
       where: { terminalId },
       orderBy: { reportedAt: 'desc' },
     }),
+    prisma.gpsTrip.findFirst({
+      where: { terminalId, status: 'CLOSED', endAt: { not: null } },
+      orderBy: { endAt: 'desc' },
+      select: { endAt: true },
+    }),
+    // Stock number lookup: only worth running when the terminal has a
+    // VIN. Match Scan.vin (case-insensitive — VINs are uppercase but the
+    // Scan flow has historically allowed lowercase entries).
+    terminal.vehicleVin
+      ? prisma.scan.findFirst({
+          where: {
+            vin: { equals: terminal.vehicleVin, mode: 'insensitive' },
+            // Skip rows that never got a stockNumber so we don't shadow a
+            // valid older value with a more-recent null.
+            stockNumber: { not: null },
+          },
+          orderBy: { receivedAt: 'desc' },
+          select: { stockNumber: true },
+        })
+      : Promise.resolve(null),
   ]);
 
-  return { location, obd };
+  return {
+    location,
+    obd,
+    stockNumber: latestScan?.stockNumber ?? null,
+    lastTripEndedAt: lastClosedTrip?.endAt?.toISOString() ?? null,
+  };
 }
 
 interface AdminLocationHistoryOptions {

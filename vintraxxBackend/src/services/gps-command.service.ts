@@ -251,11 +251,11 @@ export async function markAcked(args: {
   // use JT808_ACKED instead of ACKED and record the jt808Ack* fields.
   const cmd = await prisma.gpsCommand.findUnique({
     where: { id: args.commandId },
-    select: { payload: true, status: true },
+    select: { terminalId: true, payload: true, status: true },
   });
   if (!cmd || cmd.status !== 'SENT') return false;
 
-  const payload = cmd.payload as { kind?: string } | null;
+  const payload = cmd.payload as { kind?: string; items?: Array<{ id: number; value: unknown }> } | null;
   const is4g =
     payload?.kind === 'enable-4g-always-online' ||
     payload?.kind === 'disable-4g-always-online';
@@ -278,8 +278,64 @@ export async function markAcked(args: {
         err: (err as Error).message,
       }),
     );
+
+    // set-params acked: persist any "interesting" parameter values back onto
+    // the GpsTerminal row so we don't re-send identical commands on the
+    // next reconnect. Today we only care about the location report
+    // interval (id 0x0029) which `handleAuth` pins to 10 s, but the same
+    // shape extends to heartbeat (0x0001), TCP reconnect (0x0027), etc.
+    if (
+      payload?.kind === 'set-params' &&
+      Array.isArray(payload.items) &&
+      args.result === 0 // device-reported success
+    ) {
+      void persistSetParamsToTerminal(cmd.terminalId, payload.items).catch((err) =>
+        logger.warn('markAcked: persist set-params -> terminal failed', {
+          commandId: args.commandId,
+          terminalId: cmd.terminalId,
+          err: (err as Error).message,
+        }),
+      );
+    }
   }
   return result.count === 1;
+}
+
+/**
+ * Mirror acked 0x8103 parameter values onto the GpsTerminal row. Only the
+ * subset of parameter ids we expose as columns is mirrored; the rest are
+ * folded into the catch-all `parameters` JSON blob (Phase-4 will round-trip
+ * 0x8104 reads through it). Best-effort \u2014 never throws.
+ */
+async function persistSetParamsToTerminal(
+  terminalId: string,
+  items: Array<{ id: number; value: unknown }>,
+): Promise<void> {
+  const data: Prisma.GpsTerminalUpdateInput = {};
+  for (const it of items) {
+    if (typeof it.value !== 'number') continue;
+    switch (it.id) {
+      case 0x0001: // heartbeat interval (s)
+        data.heartbeatIntervalSec = it.value;
+        break;
+      case 0x0029: // default location report interval (s)
+        data.reportIntervalSec = it.value;
+        break;
+      case 0x0027: // TCP reconnect interval (s)
+        data.tcpReconnectSec = it.value;
+        break;
+      case 0x0028: // TCP reply timeout (s)
+        data.tcpReplySec = it.value;
+        break;
+      default:
+        // Other parameter ids are ignored here \u2014 they live in the
+        // structured-but-untyped `parameters` JSON populated by 0x8104
+        // query responses (Phase 4).
+        break;
+    }
+  }
+  if (Object.keys(data).length === 0) return;
+  await prisma.gpsTerminal.update({ where: { id: terminalId }, data });
 }
 
 /**

@@ -481,8 +481,11 @@ function TerminalCard({
   const ownerLabel = terminal.ownerUser?.fullName || terminal.ownerUser?.email || 'Unpaired';
 
   // 4G Always-Online toggle state
-  const [toggling, setToggling] = useState(false);
-  const [resending, setResending] = useState(false);
+  // The actual enable/disable command is intentionally gated behind a
+  // "Coming Soon" toast — the supplier (HOLLOO) ships a US-spec D450 that
+  // requires a firmware update before 4G Always-Online can be reliably
+  // toggled from the platform. Until that update lands the visual switch
+  // stays for forensic context but clicks no-op with a toast.
   const [showDetail, setShowDetail] = useState(false);
   const [detailCmd, setDetailCmd] = useState<import('@/lib/api').GpsCommand | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -505,46 +508,11 @@ function TerminalCard({
     return () => clearInterval(id);
   }, [isInFlight, onTerminalUpdated]);
 
-  const handle4gToggle = async () => {
-    if (toggling || isInFlight) return;
-    if (aoDesired && !disableConfigured) return;
-    setToggling(true);
-    try {
-      if (aoDesired) {
-        await api.disable4gAlwaysOnline(terminal.id);
-        toast.success('4G Always-Online disable command sent');
-      } else {
-        await api.enable4gAlwaysOnline(terminal.id);
-        if (terminal.status !== 'ONLINE') {
-          toast.info('Terminal is offline — ON command queued, will send when terminal reconnects');
-        } else {
-          toast.success('4G Always-Online ON command sent');
-        }
-      }
-      onTerminalUpdated();
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to toggle 4G Always-Online');
-    } finally {
-      setToggling(false);
-    }
-  };
-
-  const handleResendOn = async () => {
-    if (resending || isPending) return;
-    setResending(true);
-    try {
-      await api.enable4gAlwaysOnline(terminal.id, true);
-      if (terminal.status !== 'ONLINE') {
-        toast.info('Terminal is offline — ON command queued, will send when terminal reconnects');
-      } else {
-        toast.success('ON command sent — waiting for JT808 ACK and vendor response');
-      }
-      onTerminalUpdated();
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to resend ON command');
-    } finally {
-      setResending(false);
-    }
+  // Gated by supplier firmware — see comment block above. Both ON and OFF
+  // clicks resolve to a no-op toast so admins know the action is pending
+  // a vendor update rather than wondering why nothing happened.
+  const handle4gToggle = () => {
+    toast.info('Coming Soon — 4G Always-Online requires a firmware update from the supplier');
   };
 
   const handleShowDetail = async () => {
@@ -562,7 +530,9 @@ function TerminalCard({
   };
 
   const toggleChecked = isOn || aoDesired;
-  const toggleDisabled = toggling || isInFlight || (toggleChecked && !disableConfigured);
+  // Visual state still reflects desired/in-flight so historical context
+  // shows up, but every click resolves to the Coming Soon toast.
+  const toggleDisabled = false;
 
   let aoTooltip =
     '4G Always-Online keeps the terminal’s cellular connection active after ACC/ignition off. ' +
@@ -689,19 +659,7 @@ function TerminalCard({
           )}
         </div>
         <div className="flex items-center gap-2">
-          {/* Resend / Test ON Command — available even when switch is already ON */}
-          {(aoDesired || !!terminal.fourGAlwaysOnlineLastCommandId) && (
-            <button
-              type="button"
-              onClick={handleResendOn}
-              disabled={resending || isPending}
-              className="text-[10px] text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap transition-colors"
-              title="Force-send the ON command to capture fresh two-layer diagnostic data (0x8300 outbound → 0x0001 JT808 ACK → 0x6006 vendor response → 0xF3 sleep correlation)"
-            >
-              {resending ? 'Sending…' : 'Test ON'}
-            </button>
-          )}
-          {/* Toggle — OFF side disabled until supplier confirms disable command */}
+          {/* Toggle — gated behind a Coming Soon toast until supplier ships the firmware update */}
           <button
             type="button"
             role="switch"

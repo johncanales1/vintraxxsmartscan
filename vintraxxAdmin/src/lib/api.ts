@@ -441,6 +441,16 @@ export const api = {
       { method: 'POST', body: JSON.stringify({}) },
     ),
 
+  /**
+   * Lightweight AI explanation of DTC codes — returns descriptions, severity,
+   * and repair cost estimates without creating a Scan or generating a report.
+   */
+  explainGpsDtcEvent: (id: string) =>
+    request<DtcExplainResponse>(
+      `/gps/dtc-events/${id}/explain`,
+      { method: 'POST', body: JSON.stringify({}) },
+    ),
+
   // Trips + daily stats
   listGpsTrips: (
     page = 1,
@@ -1358,6 +1368,29 @@ export interface GpsOverviewStats {
     distanceKmLast24h: number;
     distanceKmLast7d: number;
   };
+}
+
+// ── DTC Explain types ────────────────────────────────────────────────────────
+
+export interface DtcExplanation {
+  code: string;
+  category: 'stored' | 'pending' | 'permanent';
+  description: string;
+  module: string;
+  severity: 'critical' | 'moderate' | 'minor';
+  urgency: 'immediate' | 'soon' | 'monitor';
+  possibleCauses: string[];
+  repair: {
+    description: string;
+    partsCost: number;
+    laborCost: number;
+  };
+}
+
+export interface DtcExplainResponse {
+  success: boolean;
+  explanations: DtcExplanation[];
+  aiSummary: string;
 }
 
 export interface AdminAuditEntry {

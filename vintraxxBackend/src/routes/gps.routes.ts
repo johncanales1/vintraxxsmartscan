@@ -115,6 +115,12 @@ router.post(
   validateRequest(userAnalyzeDtcEventSchema),
   gpsCtrl.myAnalyzeDtcEvent,
 );
+// Lightweight AI DTC explanation (no Scan/PDF/email)
+router.post(
+  '/dtc-events/:id/explain',
+  validateRequest(userAnalyzeDtcEventSchema),
+  gpsCtrl.myExplainDtcEvent,
+);
 
 // GPS Full Scan Reports (D450 Refresh / Email / AI promotion)
 router.post(

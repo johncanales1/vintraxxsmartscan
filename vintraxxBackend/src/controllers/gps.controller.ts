@@ -17,6 +17,7 @@ import * as pushService from '../services/push.service';
 import * as gpsAdminService from '../services/gps-admin.service';
 import * as bulkDeleteService from '../services/gps-bulk-delete.service';
 import { promoteDtcEventToScan } from '../services/gps-dtc-promote.service';
+import { explainDtcCodes } from '../services/dtc-explain.service';
 import * as scanReportService from '../services/gps-scan-report.service';
 import * as alwaysOnlineService from '../services/gps-4g-always-online.service';
 import { generateGpsScanReportPdf } from '../services/gps-scan-report-pdf.service';
@@ -509,6 +510,50 @@ export async function adminAnalyzeDtcEvent(
   }
 }
 
+/**
+ * Lightweight AI explanation of DTC codes from a GPS DTC event.
+ * Returns code descriptions, severity, and repair cost estimates
+ * without creating a Scan or running the full pipeline.
+ */
+export async function adminExplainDtcEvent(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const dtcEventId = req.params.id as string;
+
+    const event = await prisma.gpsDtcEvent.findUnique({
+      where: { id: dtcEventId },
+      include: {
+        terminal: {
+          select: {
+            vehicleYear: true,
+            vehicleMake: true,
+            vehicleModel: true,
+            vehicleVin: true,
+          },
+        },
+      },
+    });
+    if (!event) throw new AppError('DTC event not found', 404);
+
+    const result = await explainDtcCodes({
+      storedDtcCodes: event.storedDtcCodes,
+      pendingDtcCodes: event.pendingDtcCodes,
+      permanentDtcCodes: event.permanentDtcCodes,
+      vehicleYear: event.terminal?.vehicleYear ?? null,
+      vehicleMake: event.terminal?.vehicleMake ?? null,
+      vehicleModel: event.terminal?.vehicleModel ?? null,
+      vin: event.vin,
+    });
+
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // ── Phase 3: trips + daily stats ────────────────────────────────────────────
 
 function parseTripListQuery(req: Request) {
@@ -845,6 +890,52 @@ export async function myAnalyzeDtcEvent(
       scanId: result.scanId,
       reused: result.reused,
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Owner-only lightweight AI explanation of DTC codes from a GPS DTC event.
+ */
+export async function myExplainDtcEvent(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const userId = req.user!.userId;
+    const dtcEventId = req.params.id as string;
+
+    const event = await prisma.gpsDtcEvent.findUnique({
+      where: { id: dtcEventId },
+      include: {
+        terminal: {
+          select: {
+            vehicleYear: true,
+            vehicleMake: true,
+            vehicleModel: true,
+            vehicleVin: true,
+          },
+        },
+      },
+    });
+    if (!event) throw new AppError('DTC event not found', 404);
+    if (event.ownerUserId !== userId) {
+      throw new AppError('DTC event not found', 404);
+    }
+
+    const result = await explainDtcCodes({
+      storedDtcCodes: event.storedDtcCodes,
+      pendingDtcCodes: event.pendingDtcCodes,
+      permanentDtcCodes: event.permanentDtcCodes,
+      vehicleYear: event.terminal?.vehicleYear ?? null,
+      vehicleMake: event.terminal?.vehicleMake ?? null,
+      vehicleModel: event.terminal?.vehicleModel ?? null,
+      vin: event.vin,
+    });
+
+    res.json({ success: true, ...result });
   } catch (err) {
     next(err);
   }

@@ -11,6 +11,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api, GpsTerminal, GpsScanReport, AdminFullReportData } from '@/lib/api';
 import GpsFullReportModal from '@/components/modals/GpsFullReportModal';
+import ConfirmPasswordModal from '@/components/modals/ConfirmPasswordModal';
+import BulkActionBar from '@/components/shared/BulkActionBar';
+import { useMultiSelect } from '@/lib/useMultiSelect';
+import { useAuth } from '@/lib/auth';
 import { gpsAdminWs } from '@/lib/gpsAdminWs';
 import { fmtRelative, vehicleLabel } from '@/lib/gpsHelpers';
 import {
@@ -213,6 +217,8 @@ function TerminalScanRow({
 // ─── Scan Panel (inline per terminal) ────────────────────────────────────────
 
 function ScanPanel({ terminal }: { terminal: GpsTerminal }) {
+  const { admin } = useAuth();
+  const canDelete = !!admin?.superAdmin;
   const [report, setReport] = useState<GpsScanReport | null>(null);
   const [reports, setReports] = useState<GpsScanReport[]>([]);
   const [loading, setLoading] = useState(true);
@@ -223,6 +229,9 @@ function ScanPanel({ terminal }: { terminal: GpsTerminal }) {
   const [fullReportLoading, setFullReportLoading] = useState(false);
   const [fullReportData, setFullReportData] = useState<AdminFullReportData | null>(null);
   const [fullReportError, setFullReportError] = useState<string | null>(null);
+
+  const sel = useMultiSelect();
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
   const isOnline = terminal.status === 'ONLINE';
 
@@ -432,24 +441,81 @@ function ScanPanel({ terminal }: { terminal: GpsTerminal }) {
       {/* Previous Reports */}
       {reports.length > 1 && (
         <div className="mt-4">
-          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Previous Reports</p>
-          <div className="space-y-1">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Previous Reports</p>
+          </div>
+
+          {/* Bulk-action bar */}
+          {canDelete && (
+            <BulkActionBar
+              count={sel.selectedIds.size}
+              total={reports.length}
+              allSelected={sel.allSelected(reports.map((r) => r.id))}
+              onDelete={() => setBulkDeleteOpen(true)}
+              onCancel={sel.clear}
+              onToggleAll={() => sel.toggleAll(reports.map((r) => r.id))}
+              itemLabel="scan report"
+            />
+          )}
+
+          <div className="space-y-1 mt-2">
             {reports.slice(1).map((r) => (
-              <button
+              <div
                 key={r.id}
-                onClick={() => setReport(r)}
-                className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-all ${
-                  report?.id === r.id
-                    ? 'bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30'
-                    : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                className={`flex items-center gap-2 w-full text-left px-3 py-2 rounded-lg text-xs transition-all ${
+                  sel.isSelected(r.id)
+                    ? 'bg-blue-50 dark:bg-blue-500/10 border border-blue-300 dark:border-blue-500/40'
+                    : report?.id === r.id
+                      ? 'bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30'
+                      : 'hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent'
                 }`}
               >
-                <span className="font-mono">{fmtRelative(r.requestedAt)}</span>
-                <StatusBadge status={r.status} />
-              </button>
+                {canDelete && (
+                  <input
+                    type="checkbox"
+                    checked={sel.isSelected(r.id)}
+                    onChange={() => sel.toggle(r.id)}
+                    className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 flex-shrink-0"
+                  />
+                )}
+                <button
+                  onClick={() => setReport(r)}
+                  className="flex items-center gap-2 flex-1 min-w-0"
+                >
+                  <span className="font-mono">{fmtRelative(r.requestedAt)}</span>
+                  <StatusBadge status={r.status} />
+                </button>
+              </div>
             ))}
           </div>
         </div>
+      )}
+
+      {/* Bulk Delete Confirmation */}
+      {bulkDeleteOpen && (
+        <ConfirmPasswordModal
+          title="Delete Scan Reports"
+          message={
+            <span>
+              Permanently delete <span className="font-semibold">{sel.selectedIds.size}</span>{' '}
+              selected scan report{sel.selectedIds.size === 1 ? '' : 's'}? This action cannot be undone.
+            </span>
+          }
+          onConfirm={async () => {
+            const ids = Array.from(sel.selectedIds);
+            try {
+              const res = await api.bulkDeleteGpsScanReports(ids);
+              toast.success(`Deleted ${res.deleted} scan report${res.deleted === 1 ? '' : 's'}`);
+              sel.clear();
+              setBulkDeleteOpen(false);
+              loadReports();
+            } catch (err: any) {
+              toast.error(err.message || 'Failed to delete scan reports');
+              setBulkDeleteOpen(false);
+            }
+          }}
+          onClose={() => setBulkDeleteOpen(false)}
+        />
       )}
     </div>
   );

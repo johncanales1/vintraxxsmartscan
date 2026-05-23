@@ -201,6 +201,13 @@ router.post(
   gpsCtrl.adminAnalyzeDtcEvent,
 );
 
+// Admin: lightweight AI DTC explanation (no Scan/PDF/email)
+router.post(
+  '/gps/dtc-events/:id/explain',
+  validateRequest(adminAnalyzeDtcEventSchema),
+  gpsCtrl.adminExplainDtcEvent,
+);
+
 // Admin: trips + daily stats (Phase 3)
 router.get('/gps/trips', validateRequest(listTripsQuerySchema), gpsCtrl.adminListTrips);
 router.get(

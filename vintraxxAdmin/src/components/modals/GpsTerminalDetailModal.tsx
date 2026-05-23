@@ -869,8 +869,10 @@ function DtcsPane({
   const handleAnalyze = async (id: string) => {
     setAnalyzingId(id);
     try {
-      const res = await api.analyzeGpsDtcEvent(id);
-      toast.success(res.reused ? 'Existing scan reused' : 'AI analysis started');
+      const res = await api.explainGpsDtcEvent(id);
+      toast.success('AI analysis complete — check console for details');
+      // eslint-disable-next-line no-console
+      console.log('[DTC Explain]', res);
       onReload();
       onMutated?.();
     } catch (err: any) {
@@ -917,12 +919,7 @@ function DtcsPane({
                     </span>
                   )}
                   <span className="text-xs text-gray-500 dark:text-gray-400">DTCs: {e.dtcCount}</span>
-                  {e.scanId && (
-                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300">
-                      SCAN
-                    </span>
-                  )}
-                </div>
+                  </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{fmtRelative(e.reportedAt)}</p>
                 {e.storedDtcCodes.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
@@ -944,7 +941,7 @@ function DtcsPane({
                 ) : (
                   <Zap size={12} />
                 )}
-                {e.scanId ? 'Re-analyze' : 'Analyze with AI'}
+                Analyze with AI
               </button>
             </div>
           </div>

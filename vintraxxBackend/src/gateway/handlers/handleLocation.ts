@@ -27,7 +27,6 @@ import { decode as decodeBatch } from '../codec/messages/m0704-batch-location';
 import { emit as emitNotify } from '../../realtime/notify';
 import { diffAlarms } from '../services/alarm-diff';
 import {
-  maybeCreateAppointmentForAlarm,
   maybeSendCriticalAlarmPush,
 } from '../../services/gps-alarm-bridge.service';
 import {
@@ -293,10 +292,7 @@ async function processAlarmTransitions(
         at: alarm.openedAt.toISOString(),
       });
 
-      // CRITICAL alarms attempt to spin up a ServiceAppointment draft.
-      // Errors there are swallowed inside the bridge.
-      void maybeCreateAppointmentForAlarm({ alarm, terminal });
-      // … and fan out a CRITICAL push to the owner's mobile devices.
+      // … fan out a CRITICAL push to the owner's mobile devices.
       // Same swallow-all-errors contract; dedup via GpsAlarmPushDedup keeps
       // it exactly-once across multiple bridge invocations.
       void maybeSendCriticalAlarmPush({ alarm, terminal });

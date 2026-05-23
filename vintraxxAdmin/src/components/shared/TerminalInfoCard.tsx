@@ -186,65 +186,65 @@ export default function TerminalInfoCard({
   return (
     <div className={`${containerClass} ${padClass} text-[12px]`}>
       {/* Header */}
-      <div className="flex items-start gap-2 pb-2 mb-2 border-b border-gray-200 dark:border-gray-700">
+      <div className={`flex items-start gap-2 pb-2 mb-2 border-b ${compact ? 'border-gray-200' : 'border-gray-200 dark:border-gray-700'}`}>
         <span
           className={`mt-1 inline-block w-2.5 h-2.5 rounded-full flex-shrink-0 ${
             isOnline ? 'bg-emerald-500' : 'bg-gray-400'
           }`}
         />
         <div className="min-w-0 flex-1">
-          <div className={`${headerSizeClass} font-semibold text-gray-900 dark:text-white truncate`}>
+          <div className={`${headerSizeClass} font-semibold ${compact ? 'text-gray-900' : 'text-gray-900 dark:text-white'} truncate`}>
             {yearMakeModel || terminal.vehicleVin || terminal.nickname || terminalLabel(terminal)}
           </div>
-          <div className="text-[11px] text-gray-500 dark:text-gray-400">
+          <div className={`text-[11px] ${compact ? 'text-gray-600' : 'text-gray-500 dark:text-gray-400'}`}>
             {isOnline ? 'Live · Online' : 'Parked / Not in Use · Offline'}
           </div>
         </div>
       </div>
 
       {/* Vehicle identity */}
-      <Section title="Vehicle">
-        <Row label="VIN" value={terminal.vehicleVin} mono />
-        <Row label="Year / Make / Model" value={yearMakeModel || null} />
-        <Row label="Plate #" value={terminal.plateNumber} />
-        <Row label="Stock #" value={stockNumber} />
+      <Section title="Vehicle" forceLight={compact}>
+        <Row label="VIN" value={terminal.vehicleVin} mono forceLight={compact} />
+        <Row label="Year / Make / Model" value={yearMakeModel || null} forceLight={compact} />
+        <Row label="Plate #" value={terminal.plateNumber} forceLight={compact} />
+        <Row label="Stock #" value={stockNumber} forceLight={compact} />
       </Section>
 
       {/* Location */}
-      <Section title="Location">
-        <Row label="Address" value={address} />
-        <Row label="Coordinates" value={coordsLabel} mono />
-        <Row label="Last GPS ping" value={location?.reportedAt ? fmtRelative(location.reportedAt) : null} />
+      <Section title="Location" forceLight={compact}>
+        <Row label="Address" value={address} forceLight={compact} />
+        <Row label="Coordinates" value={coordsLabel} mono forceLight={compact} />
+        <Row label="Last GPS ping" value={location?.reportedAt ? fmtRelative(location.reportedAt) : null} forceLight={compact} />
         {!isOnline && (
           <>
-            <Row label="Time parked" value={parkedSince ? fmtRelative(parkedSince) : null} />
-            <Row label="Ignition off since" value={parkedSince ? fmtRelative(parkedSince) : null} />
+            <Row label="Time parked" value={parkedSince ? fmtRelative(parkedSince) : null} forceLight={compact} />
+            <Row label="Ignition off since" value={parkedSince ? fmtRelative(parkedSince) : null} forceLight={compact} />
           </>
         )}
         {isOnline && location?.speedKmh !== null && location?.speedKmh !== undefined && (
-          <Row label="Current speed" value={fmtKmh(location.speedKmh)} />
+          <Row label="Current speed" value={fmtKmh(location.speedKmh)} forceLight={compact} />
         )}
       </Section>
 
       {/* Vehicle telemetry */}
-      <Section title="Vehicle telemetry">
-        <Row label="Vehicle battery" value={vehicleBatteryMv !== null ? fmtVolts(vehicleBatteryMv) : null} />
-        <Row label="Device backup battery" value={deviceBatteryMv !== null ? fmtVolts(deviceBatteryMv) : null} />
-        <Row label="Odometer" value={odometerKm !== null ? fmtMiles(odometerKm) : null} />
-        <Row label="Fuel level" value={fuelPct !== null && fuelPct !== undefined ? fmtPct(fuelPct) : null} />
+      <Section title="Vehicle telemetry" forceLight={compact}>
+        <Row label="Vehicle battery" value={vehicleBatteryMv !== null ? fmtVolts(vehicleBatteryMv) : null} forceLight={compact} />
+        <Row label="Device backup battery" value={deviceBatteryMv !== null ? fmtVolts(deviceBatteryMv) : null} forceLight={compact} />
+        <Row label="Odometer" value={odometerKm !== null ? fmtMiles(odometerKm) : null} forceLight={compact} />
+        <Row label="Fuel level" value={fuelPct !== null && fuelPct !== undefined ? fmtPct(fuelPct) : null} forceLight={compact} />
       </Section>
 
       {/* Signal */}
-      <Section title="Signal">
-        <Row label="GPS satellites" value={location?.satelliteCount !== null && location?.satelliteCount !== undefined ? String(location.satelliteCount) : null} />
-        <Row label="Cellular (CSQ)" value={cellularLabel} />
+      <Section title="Signal" forceLight={compact}>
+        <Row label="GPS satellites" value={location?.satelliteCount !== null && location?.satelliteCount !== undefined ? String(location.satelliteCount) : null} forceLight={compact} />
+        <Row label="Cellular (CSQ)" value={cellularLabel} forceLight={compact} />
       </Section>
 
       {/* Device */}
-      <Section title="Device" last>
-        <Row label="Owner" value={terminal.ownerUser?.email ?? null} />
-        <Row label="IMEI" value={terminal.imei} mono />
-        <Row label="Device ID" value={terminal.deviceIdentifier} mono />
+      <Section title="Device" last forceLight={compact}>
+        <Row label="Owner" value={terminal.ownerUser?.email ?? null} forceLight={compact} />
+        <Row label="IMEI" value={terminal.imei} mono forceLight={compact} />
+        <Row label="Device ID" value={terminal.deviceIdentifier} mono forceLight={compact} />
       </Section>
     </div>
   );
@@ -254,17 +254,19 @@ function Section({
   title,
   children,
   last,
+  forceLight,
 }: {
   title: string;
   children: React.ReactNode;
   last?: boolean;
+  forceLight?: boolean;
 }) {
   // Filter out rows whose value is null/empty so we don't render whole
   // sections that say "— — — —". `children` is a fragment of <Row/>
   // elements; each Row already self-suppresses when value is empty.
   return (
-    <div className={`${last ? '' : 'mb-2 pb-2 border-b border-gray-100 dark:border-gray-700/50'}`}>
-      <div className="text-[9px] uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1">
+    <div className={`${last ? '' : `mb-2 pb-2 border-b ${forceLight ? 'border-gray-100' : 'border-gray-100 dark:border-gray-700/50'}`}`}>
+      <div className={`text-[9px] uppercase tracking-wider font-semibold mb-1 ${forceLight ? 'text-gray-800' : 'text-gray-500 dark:text-gray-400'}`}>
         {title}
       </div>
       <div className="space-y-0.5">{children}</div>
@@ -276,19 +278,21 @@ function Row({
   label,
   value,
   mono,
+  forceLight,
 }: {
   label: string;
   value: string | null | undefined;
   mono?: boolean;
+  forceLight?: boolean;
 }) {
   // Hide rows with no data instead of rendering "—" so the popup stays
   // compact for parked vehicles missing OBD telemetry.
   if (value === null || value === undefined || value === '') return null;
   return (
     <div className="flex items-start justify-between gap-3">
-      <span className="text-gray-500 dark:text-gray-400 flex-shrink-0">{label}</span>
+      <span className={`flex-shrink-0 ${forceLight ? 'text-gray-700' : 'text-gray-500 dark:text-gray-400'}`}>{label}</span>
       <span
-        className={`text-gray-900 dark:text-gray-200 text-right break-all ${
+        className={`text-right break-all ${forceLight ? 'text-gray-900' : 'text-gray-900 dark:text-gray-200'} ${
           mono ? 'font-mono text-[11px]' : ''
         }`}
       >

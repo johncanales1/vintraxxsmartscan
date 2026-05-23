@@ -413,7 +413,7 @@ export default function HistorySection({ initialTab = 'scans' }: HistorySectionP
                               PDF
                             </a>
                           ) : (
-                            <span className="text-gray-400 text-sm">—</span>
+                            <span className="text-gray-500 dark:text-gray-400 text-sm">—</span>
                           )}
                         </td>
                         <td className="px-4 lg:px-6 py-3.5 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
@@ -585,7 +585,7 @@ export default function HistorySection({ initialTab = 'scans' }: HistorySectionP
                               PDF
                             </a>
                           ) : (
-                            <span className="text-gray-400 text-sm">—</span>
+                            <span className="text-gray-500 dark:text-gray-400 text-sm">—</span>
                           )}
                         </td>
                         <td className="px-4 lg:px-6 py-3.5 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">

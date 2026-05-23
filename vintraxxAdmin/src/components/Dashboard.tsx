@@ -194,7 +194,7 @@ export default function Dashboard() {
           {navGroups.map((group, gi) => (
             <div key={group.label ?? `_top_${gi}`} className="space-y-1">
               {group.label && (
-                <p className="px-4 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                <p className="px-4 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                   {group.label}
                 </p>
               )}
@@ -468,7 +468,7 @@ function OverviewTab({
                   {typeof card.value === 'number' ? card.value.toLocaleString() : card.value}
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{card.label}</p>
-                <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">{card.subtitle}</p>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">{card.subtitle}</p>
               </button>
             ))}
           </div>

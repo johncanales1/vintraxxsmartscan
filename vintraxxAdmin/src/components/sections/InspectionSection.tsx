@@ -367,19 +367,19 @@ export default function InspectionSection() {
               {/* Vehicle Info */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
                 <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3">
-                  <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1">Date</p>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">Date</p>
                   <p className="text-sm font-medium text-gray-900 dark:text-white">{selectedInspection.date || 'N/A'}</p>
                 </div>
                 <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3">
-                  <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1">Inspector</p>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">Inspector</p>
                   <p className="text-sm font-medium text-gray-900 dark:text-white">{selectedInspection.inspector || 'N/A'}</p>
                 </div>
                 <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3">
-                  <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1">Mileage</p>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">Mileage</p>
                   <p className="text-sm font-medium text-gray-900 dark:text-white">{selectedInspection.mileage || 'N/A'}</p>
                 </div>
                 <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3">
-                  <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1">Color</p>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">Color</p>
                   <p className="text-sm font-medium text-gray-900 dark:text-white">{selectedInspection.color || 'N/A'}</p>
                 </div>
               </div>

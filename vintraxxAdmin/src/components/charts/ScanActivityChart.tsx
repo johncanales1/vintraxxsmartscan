@@ -99,7 +99,7 @@ export default function ScanActivityChart({ scans }: Props) {
         <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
           <BarChart3 size={16} />
           Scan Activity
-          <span className="text-xs font-normal text-gray-400 dark:text-gray-500">({totalInPeriod} scans)</span>
+          <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({totalInPeriod} scans)</span>
         </h3>
         <select
           value={period}
@@ -114,7 +114,7 @@ export default function ScanActivityChart({ scans }: Props) {
 
       <div className="w-full h-48 rounded-xl bg-gray-50 dark:bg-gray-700/30 border border-gray-200 dark:border-gray-600 p-3">
         {totalInPeriod === 0 ? (
-          <div className="flex items-center justify-center h-full text-sm text-gray-400 dark:text-gray-500">
+          <div className="flex items-center justify-center h-full text-sm text-gray-500 dark:text-gray-400">
             No scan activity in this period
           </div>
         ) : (

@@ -383,13 +383,13 @@ export default function GpsFleetMapSection() {
         <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden flex flex-col">
           <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
             <p className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Fleet</p>
-            <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
+            <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
               {onlineCount} online · {offlineCount} offline
             </p>
           </div>
           <div className="flex-1 overflow-y-auto">
             {filteredList.length === 0 ? (
-              <div className="px-4 py-12 text-center text-sm text-gray-400">
+              <div className="px-4 py-12 text-center text-sm text-gray-500 dark:text-gray-400">
                 {Object.keys(entries).length === 0 ? 'No terminals' : 'No matches'}
               </div>
             ) : (
@@ -420,7 +420,7 @@ export default function GpsFleetMapSection() {
                     <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                       {entry.terminal.ownerUser?.email || 'Unpaired'}
                     </p>
-                    <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
                       {fmtKmh(entry.location?.speedKmh ?? null)} · {fmtRelative(entry.location?.reportedAt ?? null)}
                     </p>
                   </div>

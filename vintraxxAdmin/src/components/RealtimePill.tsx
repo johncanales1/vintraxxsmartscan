@@ -152,7 +152,7 @@ export default function RealtimePill() {
         <span className={`w-2 h-2 rounded-full ${dotClass}`} />
         <span className="text-gray-700 dark:text-gray-200">{label}</span>
         {stats && state === 'open' && (
-          <span className="text-gray-400 dark:text-gray-500">
+          <span className="text-gray-500 dark:text-gray-400">
             · {stats.terminals.online} online
           </span>
         )}

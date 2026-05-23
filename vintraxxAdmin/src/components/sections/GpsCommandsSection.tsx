@@ -242,7 +242,7 @@ export default function GpsCommandsSection({
                   <td className="px-4 py-3">
                     <p className="text-gray-900 dark:text-white font-medium">{c.kind || '—'}</p>
                     {c.functionCode != null && (
-                      <p className="text-[10px] font-mono text-gray-400 dark:text-gray-500">
+                      <p className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
                         0x{c.functionCode.toString(16).toUpperCase().padStart(4, '0')}
                       </p>
                     )}

@@ -92,7 +92,7 @@ export default function ReassignTerminalModal({ terminal, onClose, onUpdated }: 
 
           <div className="overflow-y-auto flex-1 space-y-1">
             {filtered.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-8">No users match your search</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">No users match your search</p>
             ) : (
               filtered.map((u) => (
                 <button

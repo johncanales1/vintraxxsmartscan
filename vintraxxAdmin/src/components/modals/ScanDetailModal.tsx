@@ -106,7 +106,7 @@ export default function ScanDetailModal({ scan, loading, onClose }: Props) {
                 <Section title="Emissions Check">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div className={`px-3 py-2 rounded-lg ${emissionsCheck.status === 'pass' ? 'bg-emerald-50 dark:bg-emerald-500/10' : 'bg-red-50 dark:bg-red-500/10'}`}>
-                      <p className="text-[10px] uppercase tracking-wider text-gray-400">Status</p>
+                      <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Status</p>
                       <p className={`text-sm font-bold ${emissionsCheck.status === 'pass' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
                         {emissionsCheck.status === 'pass' ? '✓ Passed' : '✗ Failed'}
                       </p>
@@ -139,7 +139,7 @@ export default function ScanDetailModal({ scan, loading, onClose }: Props) {
                           )}
                         </div>
                         <p className="text-xs text-gray-700 dark:text-gray-300">{dtc.description}</p>
-                        {dtc.module && <p className="text-[10px] text-gray-400 mt-1">Module: {dtc.module}</p>}
+                        {dtc.module && <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">Module: {dtc.module}</p>}
                       </div>
                     ))}
                   </div>
@@ -262,7 +262,7 @@ export default function ScanDetailModal({ scan, loading, onClose }: Props) {
                       <div key={i} className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-700/30 border border-gray-200 dark:border-gray-700">
                         <div>
                           <p className="text-xs font-medium text-gray-900 dark:text-white">{risk.issue}</p>
-                          {risk.mileageEstimate && <p className="text-[10px] text-gray-400 mt-0.5">At ~{risk.mileageEstimate.toLocaleString()} mi</p>}
+                          {risk.mileageEstimate && <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">At ~{risk.mileageEstimate.toLocaleString()} mi</p>}
                         </div>
                         <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">
                           {fmtCurrency(risk.costEstimateLow)}–{fmtCurrency(risk.costEstimateHigh)}
@@ -341,7 +341,7 @@ export default function ScanDetailModal({ scan, loading, onClose }: Props) {
 function StatCard({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
   return (
     <div className="px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 text-center">
-      <div className="flex items-center justify-center gap-1.5 text-gray-400 mb-1">{icon}<span className="text-[10px] uppercase tracking-wider">{label}</span></div>
+      <div className="flex items-center justify-center gap-1.5 text-gray-500 dark:text-gray-400 mb-1">{icon}<span className="text-[10px] uppercase tracking-wider">{label}</span></div>
       <p className="text-sm font-bold text-gray-900 dark:text-white">{value}</p>
     </div>
   );
@@ -359,7 +359,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-700/30">
-      <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">{label}</p>
+      <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">{label}</p>
       <p className={`text-sm text-gray-900 dark:text-white truncate ${mono ? 'font-mono' : ''}`}>{value}</p>
     </div>
   );

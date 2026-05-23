@@ -109,14 +109,14 @@ export default function AppraisalDetailModal({ appraisal, loading, onClose }: Pr
                 <Section title="Market Analysis">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-700/30">
-                      <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Market Trend</p>
+                      <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Market Trend</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         {getTrendIcon(v.marketTrend)}
                         <p className="text-sm text-gray-900 dark:text-white capitalize">{v.marketTrend || 'N/A'}</p>
                       </div>
                     </div>
                     <div className="px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-700/30">
-                      <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Confidence Level</p>
+                      <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Confidence Level</p>
                       <p className="text-sm text-gray-900 dark:text-white capitalize">{v.confidenceLevel || 'N/A'}</p>
                     </div>
                   </div>
@@ -183,7 +183,7 @@ export default function AppraisalDetailModal({ appraisal, loading, onClose }: Pr
                 <Section title="AI Summary">
                   <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{v.aiSummary}</p>
                   {v.dataAsOf && (
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Data as of: {v.dataAsOf}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Data as of: {v.dataAsOf}</p>
                   )}
                 </Section>
               )}
@@ -229,7 +229,7 @@ export default function AppraisalDetailModal({ appraisal, loading, onClose }: Pr
 function StatCard({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
   return (
     <div className="px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 text-center">
-      <div className="flex items-center justify-center gap-1.5 text-gray-400 mb-1">{icon}<span className="text-[10px] uppercase tracking-wider">{label}</span></div>
+      <div className="flex items-center justify-center gap-1.5 text-gray-500 dark:text-gray-400 mb-1">{icon}<span className="text-[10px] uppercase tracking-wider">{label}</span></div>
       <p className="text-sm font-bold text-gray-900 dark:text-white capitalize">{value}</p>
     </div>
   );
@@ -247,7 +247,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-700/30">
-      <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">{label}</p>
+      <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">{label}</p>
       <p className={`text-sm text-gray-900 dark:text-white truncate ${mono ? 'font-mono' : ''}`}>{value}</p>
     </div>
   );

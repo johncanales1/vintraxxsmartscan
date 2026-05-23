@@ -300,7 +300,7 @@ export default function GpsTerminalDetailModal({ terminalId, onClose, onMutated 
                 </h2>
                 <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">{terminal ? terminalLabel(terminal) : ''}</p>
                 {terminal && (
-                  <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 mt-0.5">
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 mt-0.5">
                     {terminal.status.replace(/_/g, ' ')} · {terminal.ownerUser?.email || 'Unpaired'}
                   </p>
                 )}
@@ -1192,7 +1192,7 @@ function Stat({
 }) {
   return (
     <div className="px-3 py-2 rounded-xl bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600">
-      <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 flex items-center gap-1">
+      <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1">
         {icon}
         {label}
       </p>
@@ -1206,7 +1206,7 @@ function Stat({
 function ObdField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div>
-      <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">{label}</p>
+      <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">{label}</p>
       <p className={`text-gray-900 dark:text-white truncate ${mono ? 'font-mono' : ''}`}>{value}</p>
     </div>
   );
@@ -1518,7 +1518,7 @@ function ScanDtcRow({ label, codes, color }: { label: string; codes: string[]; c
 function ScanObdCell({ label, value }: { label: string; value: string }) {
   return (
     <div className="px-2.5 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600">
-      <p className="text-[9px] uppercase tracking-wide text-gray-400">{label}</p>
+      <p className="text-[9px] uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</p>
       <p className="text-xs font-semibold text-gray-900 dark:text-white mt-0.5">{value}</p>
     </div>
   );

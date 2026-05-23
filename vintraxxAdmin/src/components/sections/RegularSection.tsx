@@ -181,7 +181,7 @@ export default function RegularSection({ onNavigate }: RegularSectionProps = {})
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{user.fullName || user.email}</p>
                       {user.fullName && <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user.email}</p>}
-                      <span className="text-xs text-gray-400 dark:text-gray-500">{user.authProvider}</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">{user.authProvider}</span>
                     </div>
                   </div>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

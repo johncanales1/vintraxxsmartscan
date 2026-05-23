@@ -378,7 +378,7 @@ function AuditRow({
         <span className="text-xs text-gray-500 dark:text-gray-400 truncate hidden sm:inline">
           {entry.action || '—'}
         </span>
-        <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0 hidden md:inline">
+        <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0 hidden md:inline">
           {entry.admin?.email?.split('@')[0] || 'system'}
         </span>
         <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0 whitespace-nowrap">
@@ -413,13 +413,13 @@ function AuditRow({
           {entry.userAgent && <KV label="User agent" value={entry.userAgent} truncate />}
           {entry.errorText && (
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1">Error</p>
+              <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">Error</p>
               <p className="text-red-500 dark:text-red-400">{entry.errorText}</p>
             </div>
           )}
           {entry.payload && Object.keys(entry.payload).length > 0 && (
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1">Payload</p>
+              <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">Payload</p>
               <pre className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-2 font-mono overflow-x-auto whitespace-pre-wrap">
                 {JSON.stringify(entry.payload, null, 2)}
               </pre>
@@ -451,7 +451,7 @@ function KV({
 }) {
   return (
     <div className="flex gap-3">
-      <span className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 w-24 flex-shrink-0">{label}</span>
+      <span className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 w-24 flex-shrink-0">{label}</span>
       <span className={`text-gray-700 dark:text-gray-200 flex-1 ${mono ? 'font-mono' : ''} ${truncate ? 'truncate' : 'break-all'}`}>
         {value}
       </span>

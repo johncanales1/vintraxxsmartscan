@@ -303,7 +303,7 @@ export default function ProvisionTerminalModal({ onClose, onCreated }: Props) {
                   </div>
                   <div className="overflow-y-auto">
                     {filteredUsers.length === 0 ? (
-                      <p className="text-xs text-gray-400 text-center py-4">No matches</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 text-center py-4">No matches</p>
                     ) : (
                       filteredUsers.map((u) => (
                         <button

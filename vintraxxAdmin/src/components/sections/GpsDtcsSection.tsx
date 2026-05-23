@@ -335,7 +335,7 @@ function DtcEventRow({
               </span>
             )}
             {event.protocol && (
-              <span className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">
+              <span className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">
                 {event.protocol}
               </span>
             )}

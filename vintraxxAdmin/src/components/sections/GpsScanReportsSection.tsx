@@ -192,7 +192,7 @@ function TerminalScanRow({
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
             {terminal.vehicleVin || terminal.deviceIdentifier}
             {terminal.ownerUser && (
-              <span className="ml-2 text-gray-400">• {terminal.ownerUser.email}</span>
+              <span className="ml-2 text-gray-500 dark:text-gray-400">• {terminal.ownerUser.email}</span>
             )}
           </p>
         </div>
@@ -603,7 +603,7 @@ function ObdCell({ label, value }: { label: string; value: string | null }) {
   if (!value || value === '—' || value === '0 mi') return null;
   return (
     <div className="px-2.5 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600">
-      <p className="text-[9px] uppercase tracking-wide text-gray-400">{label}</p>
+      <p className="text-[9px] uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</p>
       <p className="text-xs font-semibold text-gray-900 dark:text-white mt-0.5">{value}</p>
     </div>
   );

@@ -438,11 +438,11 @@ export default function ScheduleSection() {
               <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4 mb-6 border border-gray-200 dark:border-gray-600">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Customer</p>
+                    <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Customer</p>
                     <p className="text-sm font-medium text-gray-900 dark:text-white">{completeTarget.name}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Service Type</p>
+                    <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Service Type</p>
                     <p className="text-sm font-medium text-gray-900 dark:text-white">{completeTarget.serviceType}</p>
                   </div>
                 </div>

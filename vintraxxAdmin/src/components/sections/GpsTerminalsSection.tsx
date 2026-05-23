@@ -589,7 +589,7 @@ function TerminalCard({
               })}
             </p>
             <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">{terminalLabel(terminal)}</p>
-            <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 mt-0.5">{terminal.status.replace(/_/g, ' ')}</p>
+            <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 mt-0.5">{terminal.status.replace(/_/g, ' ')}</p>
           </div>
         </div>
         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -795,7 +795,7 @@ function FourGCommandDetailDrawer({
 
             {/* Lifecycle timestamps */}
             <div className="border-t border-gray-100 dark:border-gray-700 pt-3 space-y-2">
-              <p className="text-[10px] uppercase tracking-wider text-gray-400 font-medium mb-1">Lifecycle</p>
+              <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-medium mb-1">Lifecycle</p>
               <TwoCol label="Enqueued" value={fmt(cmd.createdAt)} />
               <TwoCol label="Sent at" value={fmt(cmd.sentAt)} />
               <TwoCol label="JT808 ACK (0x0001)" value={cmd.jt808AckAt ? `${fmt(cmd.jt808AckAt)} — result=${cmd.jt808AckResult ?? '?'}` : '—'} />
@@ -811,7 +811,7 @@ function FourGCommandDetailDrawer({
 
             {/* Payload */}
             <div className="border-t border-gray-100 dark:border-gray-700 pt-3 space-y-2">
-              <p className="text-[10px] uppercase tracking-wider text-gray-400 font-medium mb-1">Command</p>
+              <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-medium mb-1">Command</p>
               <TwoCol label="Kind" value={String(cmd.payload?.kind ?? '—')} mono />
               <TwoCol label="Text payload" value={String(cmd.payload?.textPayload ?? '—')} mono />
               <TwoCol label="Transport" value="JT/T 808 0x8300 Text Distribution" />
@@ -820,13 +820,13 @@ function FourGCommandDetailDrawer({
             {/* Vendor response */}
             {(cmd.vendorResponseAt || cmd.vendorResponseRawHex) && (
               <div className="border-t border-gray-100 dark:border-gray-700 pt-3 space-y-2">
-                <p className="text-[10px] uppercase tracking-wider text-gray-400 font-medium mb-1">
+                <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-medium mb-1">
                   Vendor 0x6006 Response
                 </p>
                 <TwoCol label="Parse status" value={cmd.vendorResponseParseStatus ?? '—'} mono />
                 {cmd.vendorResponseDecodedText && (
                   <div>
-                    <p className="text-gray-400 mb-0.5">Decoded text</p>
+                    <p className="text-gray-500 dark:text-gray-400 mb-0.5">Decoded text</p>
                     <pre className="bg-gray-50 dark:bg-gray-800 rounded p-2 text-[10px] font-mono whitespace-pre-wrap break-all">
                       {cmd.vendorResponseDecodedText}
                     </pre>
@@ -834,7 +834,7 @@ function FourGCommandDetailDrawer({
                 )}
                 {cmd.vendorResponseRawHex && (
                   <div>
-                    <p className="text-gray-400 mb-0.5">Raw hex (body)</p>
+                    <p className="text-gray-500 dark:text-gray-400 mb-0.5">Raw hex (body)</p>
                     <pre className="bg-gray-50 dark:bg-gray-800 rounded p-2 text-[10px] font-mono whitespace-pre-wrap break-all">
                       {cmd.vendorResponseRawHex}
                     </pre>
@@ -861,7 +861,7 @@ function FourGCommandDetailDrawer({
               </div>
             )}
 
-            <p className="text-[10px] text-gray-400 italic border-t border-gray-100 dark:border-gray-700 pt-3">
+            <p className="text-[10px] text-gray-500 dark:text-gray-400 italic border-t border-gray-100 dark:border-gray-700 pt-3">
               TODO: Supplier must confirm the 0x6006 body format and success/failure codes for &lt;HL&amp;P:HOLLOO&amp;7K:1&gt;.
               Until confirmed, status RESPONSE_RECEIVED does not imply the device applied the setting.
             </p>
@@ -875,7 +875,7 @@ function FourGCommandDetailDrawer({
 function TwoCol({ label, value, mono, warn }: { label: string; value: string; mono?: boolean; warn?: boolean }) {
   return (
     <div className="flex items-start justify-between gap-2">
-      <span className="text-gray-400 flex-shrink-0 min-w-0">{label}</span>
+      <span className="text-gray-500 dark:text-gray-400 flex-shrink-0 min-w-0">{label}</span>
       <span className={`text-right truncate ${mono ? 'font-mono' : ''} ${warn ? 'text-orange-500 dark:text-orange-400' : 'text-gray-700 dark:text-gray-300'}`}>
         {value}
       </span>

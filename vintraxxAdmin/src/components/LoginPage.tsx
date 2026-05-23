@@ -209,7 +209,7 @@ export default function LoginPage() {
           </form>
         )}
 
-        <p className="text-center text-xs text-gray-400 dark:text-gray-500 mt-6">
+        <p className="text-center text-xs text-gray-500 dark:text-gray-400 mt-6">
           VinTraxx SmartScan &copy; {new Date().getFullYear()}
         </p>
       </div>

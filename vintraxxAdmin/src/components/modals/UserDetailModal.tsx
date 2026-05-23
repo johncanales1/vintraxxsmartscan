@@ -207,7 +207,7 @@ export default function UserDetailModal({ user: userProp, loading, onClose, onRe
                 <div className="flex flex-wrap gap-4">
                   {user.logoUrl && (
                     <div className="flex flex-col items-center gap-1.5">
-                      <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Logo</p>
+                      <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Logo</p>
                       <img
                         src={user.logoUrl}
                         alt="Dealer Logo"
@@ -218,7 +218,7 @@ export default function UserDetailModal({ user: userProp, loading, onClose, onRe
                   )}
                   {user.qrCodeUrl && (
                     <div className="flex flex-col items-center gap-1.5">
-                      <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">QR Code</p>
+                      <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">QR Code</p>
                       <img
                         src={user.qrCodeUrl}
                         alt="QR Code"
@@ -399,7 +399,7 @@ export default function UserDetailModal({ user: userProp, loading, onClose, onRe
                             </p>
                             <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">{terminalLabel(t)}</p>
                           </div>
-                          <span className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 flex-shrink-0">
+                          <span className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 flex-shrink-0">
                             {t.status === 'ONLINE' ? 'online' : fmtRelative(t.lastHeartbeatAt)}
                           </span>
                         </div>
@@ -460,7 +460,7 @@ export default function UserDetailModal({ user: userProp, loading, onClose, onRe
                               {scan.stockNumber && (
                                 <span className="text-xs text-gray-500 dark:text-gray-400">Stock: {scan.stockNumber}</span>
                               )}
-                              <span className="text-xs text-gray-400 dark:text-gray-500">{new Date(scan.receivedAt).toLocaleDateString()}</span>
+                              <span className="text-xs text-gray-500 dark:text-gray-400">{new Date(scan.receivedAt).toLocaleDateString()}</span>
                             </div>
                             {scan.fullReport && (
                               <div className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
@@ -515,7 +515,7 @@ function InfoItem({ icon, label, value, valueClassName }: { icon: React.ReactNod
     <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600">
       <span className="text-gray-400">{icon}</span>
       <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">{label}</p>
+        <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">{label}</p>
         <p className={`text-sm font-medium truncate ${valueClassName || 'text-gray-900 dark:text-white'}`}>{value}</p>
       </div>
     </div>

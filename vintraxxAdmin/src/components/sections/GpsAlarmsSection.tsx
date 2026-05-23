@@ -499,7 +499,7 @@ function AlarmRow({
           <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${sev.bg} ${sev.text}`}>{alarm.severity}</span>
           <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{alarmTypeLabel(alarm.alarmType)}</p>
           {alarm.acknowledged && <CheckCircle size={14} className="text-emerald-500 flex-shrink-0" />}
-          {alarm.closedAt && <span className="text-[10px] uppercase tracking-wider text-gray-400">CLOSED</span>}
+          {alarm.closedAt && <span className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">CLOSED</span>}
         </div>
         <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
           {label} · {owner}

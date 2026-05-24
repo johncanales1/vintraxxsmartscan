@@ -42,6 +42,7 @@ import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import type { RootStackParamList } from '../navigation/types';
 import type { GpsAlarm, GpsLocation } from '../types/gps';
+import { GOOGLE_MAPS_CONFIG } from '../config/api';
 
 import CarIcon from '../assets/icons/car.svg';
 import WarningIcon from '../assets/icons/warning.svg';
@@ -300,6 +301,7 @@ export const LiveTrackScreen: React.FC = () => {
       {MapView ? (
         <MapView
           provider={PROVIDER_GOOGLE}
+          googleMapId={GOOGLE_MAPS_CONFIG.MAP_ID}
           style={StyleSheet.absoluteFill}
           showsUserLocation={false}
           showsCompass
@@ -416,7 +418,10 @@ export const LiveTrackScreen: React.FC = () => {
         {/* Peek row — always visible. */}
         <View style={styles.peekRow}>
           <PeekKpi label="Speed" value={formatSpeedMph(latest?.speedKmh)} />
-          <PeekKpi label="Coolant" value="—°C" />
+          <PeekKpi
+            label="Ignition"
+            value={latest ? (latest.accOn ? 'ON' : 'OFF') : '—'}
+          />
           <PeekKpi
             label="Fuel"
             value={latest?.fuelLevelPct != null ? `${Math.round(latest.fuelLevelPct)}%` : '—'}
@@ -505,22 +510,18 @@ const LiveObdGrid: React.FC<{ latest: GpsLocation | undefined }> = ({ latest }) 
     <KpiCard label="Speed" value={formatSpeedMph(latest?.speedKmh)} />
     <KpiCard label="Heading" value={latest?.heading != null ? `${latest.heading}°` : '—'} />
     <KpiCard
-      label="Altitude"
-      value={latest?.altitudeM != null ? `${latest.altitudeM} m` : '—'}
+      label="Ignition"
+      value={latest ? (latest.accOn ? 'ON' : 'OFF') : '—'}
     />
     <KpiCard
-      label="Battery"
-      value={
-        latest?.batteryVoltageMv != null
-          ? `${(latest.batteryVoltageMv / 1000).toFixed(1)} V`
-          : '—'
-      }
+      label="GPS"
+      value={latest?.gpsFix ? 'Fixed' : latest ? 'No fix' : '—'}
     />
     <KpiCard
-      label="External"
+      label="Odometer"
       value={
-        latest?.externalVoltageMv != null
-          ? `${(latest.externalVoltageMv / 1000).toFixed(1)} V`
+        latest?.odometerKm != null
+          ? `${Math.round(latest.odometerKm * 0.621371)} mi`
           : '—'
       }
     />
@@ -529,12 +530,20 @@ const LiveObdGrid: React.FC<{ latest: GpsLocation | undefined }> = ({ latest }) 
       value={latest?.fuelLevelPct != null ? `${Math.round(latest.fuelLevelPct)}%` : '—'}
     />
     <KpiCard
-      label="Odometer"
-      value={latest?.odometerKm != null ? `${Math.round(latest.odometerKm)} km` : '—'}
+      label="Vehicle Battery"
+      value={
+        latest?.externalVoltageMv != null
+          ? `${(latest.externalVoltageMv / 1000).toFixed(1)} V`
+          : '—'
+      }
     />
     <KpiCard
-      label="Satellites"
-      value={latest?.satelliteCount != null ? String(latest.satelliteCount) : '—'}
+      label="Backup Battery"
+      value={
+        latest?.batteryVoltageMv != null
+          ? `${(latest.batteryVoltageMv / 1000).toFixed(1)} V`
+          : '—'
+      }
     />
   </View>
 );

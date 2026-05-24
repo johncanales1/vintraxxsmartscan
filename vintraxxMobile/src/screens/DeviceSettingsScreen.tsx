@@ -20,6 +20,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  TextInput,
   Alert,
   ActivityIndicator,
 } from 'react-native';
@@ -47,6 +48,9 @@ export const DeviceSettingsScreen: React.FC = () => {
   );
   const [loading, setLoading] = useState(!terminal);
   const [locating, setLocating] = useState(false);
+  const [editingNickname, setEditingNickname] = useState(false);
+  const [nicknameValue, setNicknameValue] = useState(terminal?.nickname ?? '');
+  const [savingNickname, setSavingNickname] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,6 +71,19 @@ export const DeviceSettingsScreen: React.FC = () => {
       cancelled = true;
     };
   }, [terminalId, upsertGpsTerminal]);
+
+  const onSaveNickname = async () => {
+    setSavingNickname(true);
+    const result = await gpsApi.renameTerminal(terminalId, { nickname: nicknameValue.trim() });
+    setSavingNickname(false);
+    if (result.success && result.data) {
+      setTerminal(result.data.terminal);
+      upsertGpsTerminal(result.data.terminal);
+      setEditingNickname(false);
+    } else {
+      Alert.alert('Could not rename', result.message ?? 'Try again later.');
+    }
+  };
 
   const onLocate = async () => {
     setLocating(true);
@@ -110,7 +127,57 @@ export const DeviceSettingsScreen: React.FC = () => {
       </Section>
 
       <Section title="Vehicle">
-        <Row label="Nickname" value={terminal.nickname ?? '—'} />
+        {editingNickname ? (
+          <View style={styles.nicknameEditRow}>
+            <Text style={styles.rowLabel}>Nickname</Text>
+            <View style={styles.nicknameEditInputWrap}>
+              <TextInput
+                style={styles.nicknameInput}
+                value={nicknameValue}
+                onChangeText={setNicknameValue}
+                placeholder="e.g. Lot 12 — 2024 F-150"
+                placeholderTextColor={colors.text.muted}
+                autoFocus
+                returnKeyType="done"
+                onSubmitEditing={onSaveNickname}
+              />
+              <View style={styles.nicknameEditBtns}>
+                <TouchableOpacity
+                  style={[styles.nicknameSaveBtn, savingNickname && styles.btnDisabled]}
+                  onPress={onSaveNickname}
+                  disabled={savingNickname}
+                >
+                  <Text style={styles.nicknameSaveBtnText}>
+                    {savingNickname ? 'Saving…' : 'Save'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.nicknameCancelBtn}
+                  onPress={() => {
+                    setEditingNickname(false);
+                    setNicknameValue(terminal.nickname ?? '');
+                  }}
+                >
+                  <Text style={styles.nicknameCancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.row}
+            onPress={() => setEditingNickname(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.rowLabel}>Nickname</Text>
+            <View style={styles.nicknameValueRow}>
+              <Text style={styles.rowValue} numberOfLines={1}>
+                {terminal.nickname ?? '—'}
+              </Text>
+              <Text style={styles.nicknameEditLink}>Edit</Text>
+            </View>
+          </TouchableOpacity>
+        )}
         <Row label="VIN" value={terminal.vehicleVin ?? '—'} mono />
         <Row
           label="Vehicle"
@@ -280,4 +347,38 @@ const styles = StyleSheet.create({
   btnGhostDisabled: { opacity: 0.6, backgroundColor: '#F8FAFC' },
   btnGhostText: { color: colors.primary.navy, fontWeight: '700' },
   btnGhostTextDisabled: { color: colors.text.muted },
+
+  nicknameEditRow: {
+    paddingVertical: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border.light,
+  },
+  nicknameEditInputWrap: { marginTop: 6 },
+  nicknameInput: {
+    height: 40,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    fontSize: 13,
+    color: colors.text.primary,
+    backgroundColor: '#FFFFFF',
+  },
+  nicknameEditBtns: { flexDirection: 'row', marginTop: 8, gap: 8 },
+  nicknameSaveBtn: {
+    backgroundColor: colors.primary.navy,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  nicknameSaveBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 13 },
+  nicknameCancelBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: '#F1F5F9',
+  },
+  nicknameCancelBtnText: { color: colors.text.secondary, fontWeight: '600', fontSize: 13 },
+  nicknameValueRow: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'flex-end', marginLeft: 12 },
+  nicknameEditLink: { color: colors.primary.navy, fontWeight: '700', fontSize: 12, marginLeft: 8 },
 });

@@ -130,6 +130,10 @@ const TripRow: React.FC<{ trip: GpsTrip; onPress: () => void }> = ({
   const end = trip.endAt ? new Date(trip.endAt) : null;
   const dist = Number(trip.distanceKm ?? 0) * 0.621371;
   const dur = trip.durationSec ?? 0;
+  const maxSpeedMph =
+    trip.maxSpeedKmh != null ? Math.round(Number(trip.maxSpeedKmh) * 0.621371) : null;
+  const harsh = trip.harshAccelCount + trip.harshBrakeCount + trip.harshTurnCount;
+  const idle = trip.idleDurationSec ?? 0;
   return (
     <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.85}>
       <View style={{ flex: 1 }}>
@@ -141,8 +145,12 @@ const TripRow: React.FC<{ trip: GpsTrip; onPress: () => void }> = ({
           {end ? ` → ${end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ' (open)'}
         </Text>
         <Text style={styles.rowSubtitle}>
-          {dist.toFixed(1)} mi · {formatDuration(dur)} ·{' '}
-          {trip.score != null ? `Score ${trip.score}` : 'No score'}
+          {dist.toFixed(1)} mi · {formatDuration(dur)}
+          {maxSpeedMph != null ? ` · Max ${maxSpeedMph} mph` : ''}
+        </Text>
+        <Text style={styles.rowDetail}>
+          {harsh > 0 ? `${harsh} harsh event${harsh === 1 ? '' : 's'}` : '0 harsh'}
+          {idle > 0 ? ` · Idle ${formatDuration(idle)}` : ''}
         </Text>
       </View>
       <View
@@ -204,6 +212,7 @@ const styles = StyleSheet.create({
   },
   rowTitle: { fontSize: 14, fontWeight: '700', color: colors.text.primary },
   rowSubtitle: { fontSize: 12, color: colors.text.muted, marginTop: 2 },
+  rowDetail: { fontSize: 11, color: colors.text.secondary, marginTop: 2 },
   statusPill: {
     paddingHorizontal: 8,
     paddingVertical: 3,

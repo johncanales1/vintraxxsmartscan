@@ -27,26 +27,39 @@ import { spacing } from '../theme/spacing';
 import type { RootStackParamList } from '../navigation/types';
 import type { GpsAlarm, GpsAlarmSeverity } from '../types/gps';
 
-import WarningIcon from '../assets/icons/warning.svg';
-
 type AlertsRoute = RouteProp<RootStackParamList, 'Alerts'>;
 type Tab = 'active' | 'all' | 'acknowledged';
 type SeverityFilter = 'all' | GpsAlarmSeverity;
+type PeriodFilter = '24h' | '7d' | '30d';
+const PERIOD_MS: Record<PeriodFilter, number> = {
+  '24h': 24 * 60 * 60 * 1000,
+  '7d': 7 * 24 * 60 * 60 * 1000,
+  '30d': 30 * 24 * 60 * 60 * 1000,
+};
 
 export const AlertsScreen: React.FC = () => {
   const route = useRoute<AlertsRoute>();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const terminalId = route.params?.terminalId;
 
-  const { gpsAlarms, setGpsAlarms, addGpsAlarm } = useAppStore();
+  const { gpsAlarms, setGpsAlarms, addGpsAlarm, updateGpsAlarm } = useAppStore();
   const [tab, setTab] = useState<Tab>('active');
   const [severity, setSeverity] = useState<SeverityFilter>('all');
+  const [period, setPeriod] = useState<PeriodFilter>('7d');
   const [refreshing, setRefreshing] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [acking, setAcking] = useState(false);
+
+  const sinceIso = useMemo(
+    () => new Date(Date.now() - PERIOD_MS[period]).toISOString(),
+    [period],
+  );
 
   const fetch = useCallback(async () => {
     const result = await gpsApi.listAlarms({
       terminalId,
-      limit: 100,
+      since: sinceIso,
+      limit: 200,
     });
     if (!result.success || !result.data) {
       logger.warn(LogCategory.APP, '[Alerts] listAlarms failed', {
@@ -55,7 +68,7 @@ export const AlertsScreen: React.FC = () => {
       return;
     }
     setGpsAlarms(result.data.alarms);
-  }, [terminalId, setGpsAlarms]);
+  }, [terminalId, sinceIso, setGpsAlarms]);
 
   useEffect(() => {
     void fetch();
@@ -72,6 +85,33 @@ export const AlertsScreen: React.FC = () => {
     });
     return off;
   }, [terminalId, addGpsAlarm]);
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const onBulkAck = async () => {
+    if (selected.size === 0) return;
+    setAcking(true);
+    const ids = Array.from(selected);
+    const concurrency = 5;
+    for (let i = 0; i < ids.length; i += concurrency) {
+      const batch = ids.slice(i, i + concurrency);
+      await Promise.all(batch.map((id) => gpsApi.ackAlarm(id)));
+    }
+    // Optimistic update in store
+    for (const id of ids) {
+      updateGpsAlarm(id, { acknowledged: true, acknowledgedAt: new Date().toISOString() });
+    }
+    setAcking(false);
+    setSelected(new Set());
+    void fetch();
+  };
 
   const visible = useMemo(() => {
     let list = terminalId
@@ -104,6 +144,21 @@ export const AlertsScreen: React.FC = () => {
         ))}
       </View>
 
+      {/* Period filter */}
+      <View style={styles.chipRow}>
+        {(['24h', '7d', '30d'] as PeriodFilter[]).map((p) => (
+          <TouchableOpacity
+            key={p}
+            onPress={() => setPeriod(p)}
+            style={[styles.chip, period === p && styles.chipActive]}
+          >
+            <Text style={[styles.chipLabel, period === p && styles.chipLabelActive]}>
+              {p}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       {/* Severity filter */}
       <View style={styles.chipRow}>
         {(['all', 'CRITICAL', 'WARNING', 'INFO'] as SeverityFilter[]).map((s) => (
@@ -118,6 +173,25 @@ export const AlertsScreen: React.FC = () => {
           </TouchableOpacity>
         ))}
       </View>
+
+      {/* Bulk-acknowledge bar */}
+      {selected.size > 0 && (
+        <View style={styles.bulkBar}>
+          <Text style={styles.bulkBarText}>{selected.size} selected</Text>
+          <TouchableOpacity
+            style={[styles.bulkAckBtn, acking && styles.bulkAckBtnDisabled]}
+            onPress={onBulkAck}
+            disabled={acking}
+          >
+            <Text style={styles.bulkAckBtnText}>
+              {acking ? 'Acknowledging…' : 'Acknowledge'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setSelected(new Set())}>
+            <Text style={styles.bulkClearText}>Clear</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <FlatList
         data={visible}
@@ -146,6 +220,8 @@ export const AlertsScreen: React.FC = () => {
         renderItem={({ item }) => (
           <AlertRow
             alarm={item}
+            selected={selected.has(item.id)}
+            onToggle={() => toggleSelect(item.id)}
             onPress={() => navigation.navigate('AlertDetail', { alarmId: item.id })}
           />
         )}
@@ -154,10 +230,12 @@ export const AlertsScreen: React.FC = () => {
   );
 };
 
-const AlertRow: React.FC<{ alarm: GpsAlarm; onPress: () => void }> = ({
-  alarm,
-  onPress,
-}) => {
+const AlertRow: React.FC<{
+  alarm: GpsAlarm;
+  selected: boolean;
+  onToggle: () => void;
+  onPress: () => void;
+}> = ({ alarm, selected, onToggle, onPress }) => {
   const dotColor =
     alarm.severity === 'CRITICAL'
       ? colors.status.error
@@ -170,20 +248,47 @@ const AlertRow: React.FC<{ alarm: GpsAlarm; onPress: () => void }> = ({
       .filter(Boolean)
       .join(' ') ??
     'Unknown vehicle';
+
+  const stateLabel = alarm.acknowledged
+    ? 'Acknowledged'
+    : alarm.closedAt
+    ? 'Closed'
+    : 'Open';
+  const stateStyle = alarm.acknowledged
+    ? styles.statePillAck
+    : alarm.closedAt
+    ? styles.statePillClosed
+    : styles.statePillOpen;
+  const stateTextStyle = alarm.acknowledged
+    ? styles.statePillAckText
+    : alarm.closedAt
+    ? styles.statePillClosedText
+    : styles.statePillOpenText;
+
   return (
-    <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.85}>
-      <View style={[styles.severityDot, { backgroundColor: dotColor }]} />
-      <View style={{ flex: 1 }}>
-        <Text style={styles.rowTitle} numberOfLines={1}>
-          {humanise(alarm.type)}
-        </Text>
-        <Text style={styles.rowSubtitle} numberOfLines={1}>
-          {vehicle} · {formatRelativeTime(alarm.openedAt)}
-          {alarm.acknowledged ? ' · acknowledged' : ''}
-        </Text>
-      </View>
-      <WarningIcon width={16} height={16} color={colors.text.muted} />
-    </TouchableOpacity>
+    <View style={styles.row}>
+      <TouchableOpacity onPress={onToggle} hitSlop={8} style={styles.selectCircleWrap}>
+        <View style={[styles.selectCircle, selected && styles.selectCircleActive]} />
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.rowContent}
+        onPress={onPress}
+        activeOpacity={0.85}
+      >
+        <View style={[styles.severityDot, { backgroundColor: dotColor }]} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.rowTitle} numberOfLines={1}>
+            {humanise(alarm.type)}
+          </Text>
+          <Text style={styles.rowSubtitle} numberOfLines={1}>
+            {vehicle} · {formatRelativeTime(alarm.openedAt)}
+          </Text>
+        </View>
+        <View style={[styles.statePill, stateStyle]}>
+          <Text style={[styles.statePillText, stateTextStyle]}>{stateLabel}</Text>
+        </View>
+      </TouchableOpacity>
+    </View>
   );
 };
 
@@ -228,7 +333,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: spacing.screenHorizontal,
-    paddingVertical: 8,
+    paddingVertical: 4,
   },
   chip: {
     paddingVertical: 6,
@@ -242,6 +347,28 @@ const styles = StyleSheet.create({
   chipLabel: { fontSize: 12, color: colors.text.secondary, fontWeight: '600' },
   chipLabelActive: { color: '#FFFFFF', fontWeight: '700' },
 
+  bulkBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0F172A',
+    marginHorizontal: spacing.screenHorizontal,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginBottom: 4,
+  },
+  bulkBarText: { color: '#FFFFFF', fontWeight: '700', fontSize: 13, flex: 1 },
+  bulkAckBtn: {
+    backgroundColor: '#10B981',
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    marginRight: 10,
+  },
+  bulkAckBtnDisabled: { opacity: 0.5 },
+  bulkAckBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 12 },
+  bulkClearText: { color: '#94A3B8', fontWeight: '600', fontSize: 12 },
+
   listContent: {
     paddingHorizontal: spacing.screenHorizontal,
     paddingBottom: 120,
@@ -253,9 +380,40 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border.light,
   },
+  selectCircleWrap: { marginRight: 10 },
+  selectCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.border.light,
+  },
+  selectCircleActive: {
+    backgroundColor: colors.primary.navy,
+    borderColor: colors.primary.navy,
+  },
+  rowContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   severityDot: { width: 10, height: 10, borderRadius: 5, marginRight: 12 },
   rowTitle: { fontSize: 14, fontWeight: '700', color: colors.text.primary },
   rowSubtitle: { fontSize: 12, color: colors.text.muted, marginTop: 2 },
+
+  statePill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    marginLeft: 8,
+  },
+  statePillText: { fontSize: 10, fontWeight: '700' },
+  statePillOpen: { backgroundColor: '#FEE2E2' },
+  statePillOpenText: { color: '#B91C1C' },
+  statePillClosed: { backgroundColor: '#F1F5F9' },
+  statePillClosedText: { color: '#64748B' },
+  statePillAck: { backgroundColor: '#D1FAE5' },
+  statePillAckText: { color: '#065F46' },
 
   empty: {
     paddingTop: 80,

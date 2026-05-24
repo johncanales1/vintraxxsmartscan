@@ -57,6 +57,15 @@ export const GOOGLE_CONFIG = {
   IOS_CLIENT_ID: ENV.GOOGLE_IOS_CLIENT_ID,
 };
 
+// Google Maps configuration for react-native-maps.
+// GOOGLE_MAPS_API_KEY must have "Maps SDK for Android" AND "Maps SDK for iOS"
+// enabled in the GCP Console. The native layers (AndroidManifest + AppDelegate)
+// read the key at build-time; the JS layer uses GOOGLE_MAP_ID for cloud styling.
+export const GOOGLE_MAPS_CONFIG = {
+  API_KEY: ENV.GOOGLE_MAPS_API_KEY,
+  MAP_ID: ENV.GOOGLE_MAP_ID || undefined,
+};
+
 
 
 // Scan endpoints (prefix: /api/v1/scan) - all require auth

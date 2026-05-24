@@ -19,6 +19,14 @@
 //                       tied to that platform's bundle id / SHA fingerprint.
 //                       Using the Android id for iOS will cause `signIn()`
 //                       to fail with INVALID_AUDIENCE on a real iPhone.
+// - GOOGLE_MAPS_API_KEY — API key with "Maps SDK for Android" AND "Maps SDK
+//                       for iOS" enabled in GCP Console. Used by
+//                       react-native-maps and the native AndroidManifest /
+//                       AppDelegate setup.
+// - GOOGLE_MAP_ID       — (optional) Cloud Map ID for styled maps. Create one
+//                       at https://console.cloud.google.com/google/maps-apis/studio.
+//                       Pass to <MapView googleMapId={...}> for consistent
+//                       styling with the web dashboard.
 
 export const ENV = {
   API_BASE_URL: 'https://api.vintraxx.com',
@@ -26,4 +34,6 @@ export const ENV = {
   GOOGLE_WEB_CLIENT_ID: 'REPLACE_ME-web.apps.googleusercontent.com',
   GOOGLE_ANDROID_CLIENT_ID: 'REPLACE_ME-android.apps.googleusercontent.com',
   GOOGLE_IOS_CLIENT_ID: 'REPLACE_ME-ios.apps.googleusercontent.com',
+  GOOGLE_MAPS_API_KEY: 'REPLACE_ME-maps-api-key',
+  GOOGLE_MAP_ID: '',
 } as const;

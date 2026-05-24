@@ -23,6 +23,13 @@
       android:theme="@style/AppTheme"
       android:usesCleartextTraffic="${usesCleartextTraffic}"
       android:supportsRtl="true">
+
+      <!-- Google Maps API key for react-native-maps (PROVIDER_GOOGLE).
+           The key must have "Maps SDK for Android" enabled in GCP Console. -->
+      <meta-data
+        android:name="com.google.android.geo.API_KEY"
+        android:value="REMOVED_GOOGLE_API_KEY"/>
+
       <activity
         android:name=".MainActivity"
         android:label="@string/app_name"

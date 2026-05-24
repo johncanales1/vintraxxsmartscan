@@ -21,6 +21,7 @@ import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import type { RootStackParamList } from '../navigation/types';
 import type { GpsTripDetail, GpsLocation } from '../types/gps';
+import { GOOGLE_MAPS_CONFIG } from '../config/api';
 
 let MapView: any = null;
 let Polyline: any = null;
@@ -142,6 +143,7 @@ export const TripDetailScreen: React.FC = () => {
         {MapView ? (
           <MapView
             provider={PROVIDER_GOOGLE}
+            googleMapId={GOOGLE_MAPS_CONFIG.MAP_ID}
             style={StyleSheet.absoluteFill}
             initialRegion={region}
           >

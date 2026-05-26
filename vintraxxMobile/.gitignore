@@ -70,6 +70,10 @@ yarn-error.log
 # Commit `src/config/env.example.ts` instead.
 /src/config/env.ts
 
+# Secret configuration files
+**/Secrets.xcconfig
+**/secrets.properties
+
 # Yarn
 .yarn/*
 !.yarn/patches

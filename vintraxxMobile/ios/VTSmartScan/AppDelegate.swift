@@ -19,7 +19,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
   ) -> Bool {
     // Google Maps SDK — must be initialized before any MapView is rendered.
     // The key must have "Maps SDK for iOS" enabled in GCP Console.
-    GMSServices.provideAPIKey("REMOVED_GOOGLE_API_KEY")
+    // Set GOOGLE_MAPS_API_KEY in Secrets.xcconfig or environment variable
+    let apiKey = Bundle.main.object(forInfoDictionaryKey: "GOOGLE_MAPS_API_KEY") as? String 
+        ?? ProcessInfo.processInfo.environment["GOOGLE_MAPS_API_KEY"] 
+        ?? "YOUR_GOOGLE_MAPS_API_KEY"
+    GMSServices.provideAPIKey(apiKey)
 
     FirebaseApp.configure()
     let delegate = ReactNativeDelegate()

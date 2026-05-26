@@ -30,8 +30,7 @@ target 'VTSmartScan' do
 
   # Google Maps native SDK for react-native-maps (PROVIDER_GOOGLE).
   # Without this, MapView with provider={PROVIDER_GOOGLE} will fail on iOS.
-  rn_maps_path = '../node_modules/react-native-maps'
-  pod 'react-native-google-maps', :path => rn_maps_path
+  pod 'GoogleMaps'
 
   # Pin GoogleMLKit subspecs so CocoaPods does not resolve the old
   # MLKitTextRecognitionChinese 1.0.0-beta1 (which drags in MLKitCommon 3.1.0

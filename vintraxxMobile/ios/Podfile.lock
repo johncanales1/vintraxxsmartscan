@@ -45,6 +45,9 @@ PODS:
   - GoogleDataTransport (10.1.0):
     - nanopb (~> 3.30910.0)
     - PromisesObjC (~> 2.4)
+  - GoogleMaps (9.4.0):
+    - GoogleMaps/Maps (= 9.4.0)
+  - GoogleMaps/Maps (9.4.0)
   - GoogleMLKit/MLKitCore (9.0.0):
     - MLKitCommon (~> 14.0.0)
   - GoogleMLKit/TextRecognition (9.0.0):
@@ -3113,6 +3116,7 @@ DEPENDENCIES:
   - FBLazyVector (from `../node_modules/react-native/Libraries/FBLazyVector`)
   - fmt (from `../node_modules/react-native/third-party-podspecs/fmt.podspec`)
   - glog (from `../node_modules/react-native/third-party-podspecs/glog.podspec`)
+  - GoogleMaps
   - GoogleMLKit/TextRecognition (~> 9.0)
   - GoogleMLKit/TextRecognitionChinese (~> 9.0)
   - GoogleMLKit/TextRecognitionDevanagari (~> 9.0)
@@ -3219,6 +3223,7 @@ SPEC REPOS:
     - FirebaseInstallations
     - FirebaseMessaging
     - GoogleDataTransport
+    - GoogleMaps
     - GoogleMLKit
     - GoogleSignIn
     - GoogleToolboxForMac
@@ -3444,6 +3449,7 @@ SPEC CHECKSUMS:
   fmt: a40bb5bd0294ea969aaaba240a927bd33d878cdd
   glog: 5683914934d5b6e4240e497e0f4a3b42d1854183
   GoogleDataTransport: aae35b7ea0c09004c3797d53c8c41f66f219d6a7
+  GoogleMaps: 0608099d4870cac8754bdba9b6953db543432438
   GoogleMLKit: b1eee21a41c57704fe72483b15c85cb2c0cd7444
   GoogleSignIn: fcee2257188d5eda57a5e2b6a715550ffff9206d
   GoogleToolboxForMac: d1a2cbf009c453f4d6ded37c105e2f67a32206d8
@@ -3551,6 +3557,6 @@ SPEC CHECKSUMS:
   VisionCamera: 0044a94f7489f19e19d5938e97dfc36f4784af3c
   Yoga: 5456bb010373068fc92221140921b09d126b116e
 
-PODFILE CHECKSUM: f019878239703189c296447a8730ebd604918108
+PODFILE CHECKSUM: 9f813a2c2a6ee50ba2448ac9bbb602518037dcf5
 
 COCOAPODS: 1.16.2

@@ -20,6 +20,9 @@ out/
 .env.test.local
 .env.production.local
 .env.bak*
+*.env.bak
+.env.*.bak
+*.env.local.bak
 
 # IDE
 .vscode/

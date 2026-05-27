@@ -1,3 +1,16 @@
+// Load root .env (secrets kept out of source control)
+const fs = require('fs');
+const path = require('path');
+const envPath = path.resolve(__dirname, '.env');
+if (fs.existsSync(envPath)) {
+  fs.readFileSync(envPath, 'utf8').split('\n').forEach(line => {
+    const idx = line.indexOf('=');
+    if (idx > 0 && !line.startsWith('#')) {
+      process.env[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+    }
+  });
+}
+
 module.exports = {
   apps: [
     {
@@ -34,8 +47,8 @@ module.exports = {
         HOSTNAME: '127.0.0.1',
         NEXT_PUBLIC_API_BASE_URL: '/api/v1',
         NEXT_PUBLIC_FRONTEND_URL: 'https://dev.vintraxx.com',
-        NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: 'REMOVED_GOOGLE_API_KEY',
-        NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID: 'fe1f6d7f58347f26a1b23125'
+        NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY || '',
+        NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID: process.env.GOOGLE_MAPS_MAP_ID || ''
       },
       instances: 1,
       autorestart: true,
@@ -61,8 +74,8 @@ module.exports = {
         HOSTNAME: '127.0.0.1',
         NEXT_PUBLIC_API_URL: '/api/v1/admin',
         NEXT_PUBLIC_ADMIN_URL: 'https://admin.vintraxx.com',
-        NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: 'REMOVED_GOOGLE_API_KEY',
-        NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID: 'fe1f6d7f58347f26a1b23125'
+        NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY || '',
+        NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID: process.env.GOOGLE_MAPS_MAP_ID || ''
       },
       instances: 1,
       autorestart: true,

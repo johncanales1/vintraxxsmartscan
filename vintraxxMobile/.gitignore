@@ -74,6 +74,11 @@ yarn-error.log
 **/Secrets.xcconfig
 **/secrets.properties
 
+# Firebase config files — contain API keys, download from Firebase Console
+# (also covered by root .gitignore, but listed here for defense-in-depth)
+android/app/google-services.json
+ios/VTSmartScan/GoogleService-Info.plist
+
 # Yarn
 .yarn/*
 !.yarn/patches

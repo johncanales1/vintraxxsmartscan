@@ -3,6 +3,12 @@ apply plugin: "com.google.gms.google-services"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
+def localProps = new Properties()
+def localPropsFile = rootProject.file('local.properties')
+if (localPropsFile.exists()) {
+    localPropsFile.withReader('UTF-8') { reader -> localProps.load(reader) }
+}
+
 /**
  * This is the configuration block to customize your React Native Android app.
  * By default you don't need to apply any configuration, just uncomment the lines you need.
@@ -86,8 +92,7 @@ android {
         versionCode 1
         versionName "1.0"
         
-        // Read Google Maps API key from local.properties or gradle.properties
-        def googleMapsApiKey = project.findProperty('GOOGLE_MAPS_API_KEY') ?: ''
+        def googleMapsApiKey = localProps.getProperty('GOOGLE_MAPS_API_KEY') ?: project.findProperty('GOOGLE_MAPS_API_KEY') ?: ''
         manifestPlaceholders = [GOOGLE_MAPS_API_KEY: googleMapsApiKey]
     }
     signingConfigs {
@@ -98,11 +103,12 @@ android {
             keyPassword 'android'
         }
         release {
-            if (project.hasProperty('MYAPP_RELEASE_STORE_FILE')) {
-                storeFile file(MYAPP_RELEASE_STORE_FILE)
-                storePassword MYAPP_RELEASE_STORE_PASSWORD
-                keyAlias MYAPP_RELEASE_KEY_ALIAS
-                keyPassword MYAPP_RELEASE_KEY_PASSWORD
+            def storeFileProp = localProps.getProperty('MYAPP_RELEASE_STORE_FILE') ?: project.findProperty('MYAPP_RELEASE_STORE_FILE')
+            if (storeFileProp) {
+                storeFile file(storeFileProp)
+                storePassword localProps.getProperty('MYAPP_RELEASE_STORE_PASSWORD') ?: project.findProperty('MYAPP_RELEASE_STORE_PASSWORD')
+                keyAlias localProps.getProperty('MYAPP_RELEASE_KEY_ALIAS') ?: project.findProperty('MYAPP_RELEASE_KEY_ALIAS')
+                keyPassword localProps.getProperty('MYAPP_RELEASE_KEY_PASSWORD') ?: project.findProperty('MYAPP_RELEASE_KEY_PASSWORD')
             }
         }
     }

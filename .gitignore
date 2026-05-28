@@ -110,3 +110,18 @@ temp/
 # Lock files (keep package-lock.json but ignore others)
 yarn.lock
 pnpm-lock.yaml
+
+# Android secrets - never commit these
+vintraxxMobile/android/local.properties
+
+# Firebase config files - contain API keys, download from Firebase Console
+vintraxxMobile/android/app/google-services.json
+vintraxxMobile/ios/VTSmartScan/GoogleService-Info.plist
+
+# Backend TLS private key - never commit
+vintraxxBackend/server.key
+vintraxxBackend/*.key
+
+# Environment files - contain API keys, manage locally or via CI secrets
+vintraxxAdmin/.env.local
+vintraxxFrontend/.env.local

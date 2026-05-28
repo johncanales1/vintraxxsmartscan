@@ -125,3 +125,16 @@ vintraxxBackend/*.key
 # Environment files - contain API keys, manage locally or via CI secrets
 vintraxxAdmin/.env.local
 vintraxxFrontend/.env.local
+
+# TLS / SSL private keys and certificates (catch-all)
+*.key
+*.crt
+*.pem
+
+# Android keystores
+vintraxxMobile/android/app/debug.keystore
+vintraxxMobile/android/app/*.keystore
+vintraxxMobile/*.keystore
+*.jks
+*.p12
+*.pfx

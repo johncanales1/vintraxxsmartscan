@@ -199,6 +199,10 @@ const VinScannerScreenInner: React.FC<VinScannerScreenProps> = ({ navigation, ro
   const [isOcrInFlight, setIsOcrInFlight] = useState(false);
   // Tap-to-focus pulse location.
   const [tapPoint, setTapPoint] = useState<{ x: number; y: number } | null>(null);
+  // Closing flag — set before goBack() so the camera deactivates immediately
+  // and in-flight OCR bails out, eliminating the 5+ second dismiss delay.
+  const [closing, setClosing] = useState(false);
+  const closingRef = useRef(false);
 
   const cameraRef = useRef<VisionCamera>(null);
   const lastScanTimeRef = useRef<number>(0);
@@ -387,6 +391,7 @@ const VinScannerScreenInner: React.FC<VinScannerScreenProps> = ({ navigation, ro
   // Fabric/New-Architecture crash that disabled the previous OCR path.
   const runOcrSnapshot = useCallback(async () => {
     if (
+      closingRef.current ||
       ocrInFlightRef.current ||
       isProcessingRef.current ||
       scannedVinRef.current ||
@@ -433,7 +438,7 @@ const VinScannerScreenInner: React.FC<VinScannerScreenProps> = ({ navigation, ro
   // autofocus/auto-exposure pipeline has time to settle.
   useEffect(() => {
     if (!device || !hasPermission) return;
-    if (scannedVin) return;
+    if (scannedVin || closing) return;
     const warmup = setTimeout(() => {
       ocrIntervalRef.current = setInterval(runOcrSnapshot, OCR_INTERVAL_MS);
     }, OCR_WARMUP_MS);
@@ -444,7 +449,7 @@ const VinScannerScreenInner: React.FC<VinScannerScreenProps> = ({ navigation, ro
         ocrIntervalRef.current = null;
       }
     };
-  }, [device, hasPermission, scannedVin, runOcrSnapshot]);
+  }, [device, hasPermission, scannedVin, closing, runOcrSnapshot]);
 
   // ── Tap-to-focus + visual focus pulse ─────────────────────────────
   const handleCameraTap = useCallback(
@@ -471,8 +476,10 @@ const VinScannerScreenInner: React.FC<VinScannerScreenProps> = ({ navigation, ro
 
   // ── Actions ───────────────────────────────────────────────────────
   const handleConfirmVin = useCallback(() => {
+    if (closingRef.current) return;
     const finalVin = editableVin.replace(/[^A-HJ-NPR-Z0-9]/gi, '').toUpperCase();
     if (finalVin && isValidVinFormat(finalVin)) {
+      closingRef.current = true;
       debugLogger.logEvent('VIN Scanner: VIN confirmed by user', {
         vin: finalVin,
         wasEdited: finalVin !== scannedVin,
@@ -496,6 +503,14 @@ const VinScannerScreenInner: React.FC<VinScannerScreenProps> = ({ navigation, ro
   }, []);
 
   const handleClose = useCallback(() => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    setClosing(true);
+    // Stop OCR loop immediately so no in-flight takePhoto/MLKit blocks unmount.
+    if (ocrIntervalRef.current) {
+      clearInterval(ocrIntervalRef.current);
+      ocrIntervalRef.current = null;
+    }
     debugLogger.logEvent('VIN Scanner: closed without scan');
     navigation.goBack();
   }, [navigation]);
@@ -519,11 +534,13 @@ const VinScannerScreenInner: React.FC<VinScannerScreenProps> = ({ navigation, ro
   }, []);
 
   const handleManualSubmit = useCallback(() => {
+    if (closingRef.current) return;
     const cleaned = manualVinInput.replace(/[^A-HJ-NPR-Z0-9]/gi, '').toUpperCase();
     if (!isValidVinFormat(cleaned)) {
       Alert.alert('Invalid VIN', 'Please enter a valid 17-character VIN.');
       return;
     }
+    closingRef.current = true;
     debugLogger.logEvent('VIN Scanner: manual VIN submitted', {
       vin: cleaned,
       checkDigitValid: isValidVinCheckDigit(cleaned),
@@ -577,7 +594,7 @@ const VinScannerScreenInner: React.FC<VinScannerScreenProps> = ({ navigation, ro
     );
   }
 
-  const isActive = !scannedVin;
+  const isActive = !scannedVin && !closing;
 
   // Status pill copy/icon driven by current OCR/scan state.
   const statusContent: {
@@ -850,6 +867,21 @@ const VinScannerScreenInner: React.FC<VinScannerScreenProps> = ({ navigation, ro
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* ── Redundant floating close button ──────────────────────────────
+          Always visible in the top-right corner as a fallback when the
+          header close button is hard to reach or unresponsive on certain
+          devices/builds. Absolutely positioned outside the SafeAreaView
+          flow so it cannot be occluded by other overlay layers. */}
+      <TouchableOpacity
+        style={styles.floatingCloseButton}
+        onPress={handleClose}
+        hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+        accessibilityLabel="Close scanner"
+        activeOpacity={0.7}
+      >
+        <Ionicons name="close-circle" size={36} color="rgba(255,255,255,0.9)" />
+      </TouchableOpacity>
     </View>
   );
 };
@@ -962,6 +994,19 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.12)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.18)',
+  },
+  // Redundant floating close button — always visible top-right corner.
+  floatingCloseButton: {
+    position: 'absolute',
+    top: 54,
+    right: 16,
+    zIndex: 999,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.45)',
   },
 
   // ── Center: corner ticks + status pill (natural flow) ──────────────

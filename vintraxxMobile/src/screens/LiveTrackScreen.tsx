@@ -173,6 +173,13 @@ export const LiveTrackScreen: React.FC = () => {
         }),
       ]);
       if (cancelled) return;
+      logger.info(LogCategory.GPS, '[LiveTrack] Initial data fetched', {
+        terminalOk: detail.success,
+        latestOk: latestRes.success,
+        historyOk: history.success,
+        hasLocation: !!latestRes.data?.location,
+        trailCount: history.data?.locations?.length ?? 0,
+      });
       if (detail.success && detail.data) upsertGpsTerminal(detail.data.terminal);
       if (latestRes.success && latestRes.data?.location) {
         setGpsLatestLocation(terminalId, latestRes.data.location);
@@ -238,6 +245,16 @@ export const LiveTrackScreen: React.FC = () => {
       offAlarm();
     };
   }, [terminalId, applyLocationUpdate, addGpsAlarm]);
+
+  // Log map availability once on mount for GPS workflow diagnostics.
+  useEffect(() => {
+    logger.info(LogCategory.GPS, '[LiveTrack] Map availability', {
+      mapAvailable: !!MapView,
+      mapId: GOOGLE_MAPS_CONFIG.MAP_ID,
+      terminalId,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onRequestLocate = async () => {
     const result = await gpsApi.requestLocate(terminalId);
@@ -819,11 +836,12 @@ const styles = StyleSheet.create({
   },
   peekKpi: { alignItems: 'center', flex: 1 },
   peekKpiValue: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '800',
     color: colors.text.primary,
+    letterSpacing: -0.3,
   },
-  peekKpiLabel: { fontSize: 10, color: colors.text.muted, marginTop: 2 },
+  peekKpiLabel: { fontSize: 11, color: colors.text.muted, marginTop: 3, fontWeight: '500', letterSpacing: 0.2 },
 
   sheetTabs: {
     flexDirection: 'row',
@@ -834,15 +852,23 @@ const styles = StyleSheet.create({
   },
   sheetTab: {
     flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 9,
     borderRadius: 999,
     alignItems: 'center',
   },
-  sheetTabActive: { backgroundColor: '#FFFFFF' },
+  sheetTabActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
   sheetTabLabel: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: colors.text.secondary,
+    letterSpacing: 0.1,
   },
   sheetTabLabelActive: { color: colors.primary.navy, fontWeight: '700' },
 
@@ -855,17 +881,25 @@ const styles = StyleSheet.create({
   },
   kpiCard: {
     width: '48%',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: colors.border.light,
   },
   kpiCardValue: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 20,
+    fontWeight: '800',
     color: colors.text.primary,
+    letterSpacing: -0.3,
   },
-  kpiCardLabel: { fontSize: 11, color: colors.text.muted, marginTop: 2 },
+  kpiCardLabel: { fontSize: 12, color: colors.text.muted, marginTop: 4, fontWeight: '500' },
 
   statusGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   statusCell: {
@@ -919,10 +953,10 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
   },
   sheetActionGhost: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: colors.primary.red,
   },
-  sheetActionText: { color: '#FFFFFF', fontWeight: '700', fontSize: 13 },
-  sheetActionTextGhost: { color: colors.primary.navy },
+  sheetActionText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14, letterSpacing: 0.2 },
+  sheetActionTextGhost: { color: '#FFFFFF' },
 });
 
 // Silence unused-import warnings in builds where the icon transformer

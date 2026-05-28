@@ -156,23 +156,47 @@ class GpsApiService {
   // ── Terminals ─────────────────────────────────────────────────────────────
 
   async listTerminals(): Promise<ApiResult<{ terminals: GpsTerminal[] }>> {
-    return this.request<ListTerminalsResponse>('GET', GPS_ENDPOINTS.TERMINALS);
+    logger.info(LogCategory.GPS, '[GPS] listTerminals: fetching all terminals');
+    const result = await this.request<ListTerminalsResponse>('GET', GPS_ENDPOINTS.TERMINALS);
+    logger.info(LogCategory.GPS, '[GPS] listTerminals: result', {
+      success: result.success,
+      count: result.data?.terminals?.length ?? 0,
+    });
+    return result;
   }
 
   async getTerminal(id: string): Promise<ApiResult<{ terminal: GpsTerminal }>> {
-    return this.request<TerminalDetailResponse>(
+    logger.info(LogCategory.GPS, '[GPS] getTerminal: fetching', { terminalId: id });
+    const result = await this.request<TerminalDetailResponse>(
       'GET',
       this.interpolate(GPS_ENDPOINTS.TERMINAL_DETAIL, { id }),
     );
+    logger.info(LogCategory.GPS, '[GPS] getTerminal: result', {
+      success: result.success,
+      status: result.data?.terminal?.status,
+    });
+    return result;
   }
 
   async getLatestLocation(
     id: string,
   ): Promise<ApiResult<{ location: GpsLocation | null }>> {
-    return this.request<LatestLocationResponse>(
+    logger.info(LogCategory.GPS, '[GPS] getLatestLocation: fetching', { terminalId: id });
+    const result = await this.request<LatestLocationResponse>(
       'GET',
       this.interpolate(GPS_ENDPOINTS.TERMINAL_LATEST, { id }),
     );
+    const loc = result.data?.location;
+    logger.info(LogCategory.GPS, '[GPS] getLatestLocation: result', {
+      success: result.success,
+      hasLocation: !!loc,
+      lat: loc?.latitude,
+      lng: loc?.longitude,
+      gpsFix: loc?.gpsFix,
+      accOn: loc?.accOn,
+      speedKmh: loc?.speedKmh,
+    });
+    return result;
   }
 
   async getLocationHistory(
@@ -185,11 +209,22 @@ class GpsApiService {
       minSpeedKmh?: number;
     } = {},
   ) {
-    return this.request<LocationHistoryResponse>(
+    logger.info(LogCategory.GPS, '[GPS] getLocationHistory: fetching', {
+      terminalId: id,
+      since: opts.since,
+      until: opts.until,
+      limit: opts.limit,
+    });
+    const result = await this.request<LocationHistoryResponse>(
       'GET',
       this.interpolate(GPS_ENDPOINTS.TERMINAL_LOCATIONS, { id }),
       { query: opts },
     );
+    logger.info(LogCategory.GPS, '[GPS] getLocationHistory: result', {
+      success: result.success,
+      count: result.data?.locations?.length ?? 0,
+    });
+    return result;
   }
 
   async renameTerminal(
@@ -209,10 +244,16 @@ class GpsApiService {
    * WebSocket as a `location.update` event.
    */
   async requestLocate(id: string): Promise<ApiResult<LocateCommandResponse>> {
-    return this.request<LocateCommandResponse>(
+    logger.info(LogCategory.GPS, '[GPS] requestLocate: sending locate command', { terminalId: id });
+    const result = await this.request<LocateCommandResponse>(
       'POST',
       this.interpolate(GPS_ENDPOINTS.TERMINAL_LOCATE, { id }),
     );
+    logger.info(LogCategory.GPS, '[GPS] requestLocate: result', {
+      success: result.success,
+      message: result.message,
+    });
+    return result;
   }
 
   // ── Trips + stats ─────────────────────────────────────────────────────────

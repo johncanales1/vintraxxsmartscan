@@ -120,6 +120,7 @@ class GpsWsClient {
    * Subscriptions are remembered across reconnects.
    */
   subscribe(channels: string[]): void {
+    logger.info(LogCategory.GPS, '[GPS-WS] Subscribing to channels', { channels });
     for (const ch of channels) this.desiredChannels.add(ch);
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.send({ op: 'subscribe', channels });
@@ -132,6 +133,7 @@ class GpsWsClient {
   }
 
   unsubscribe(channels: string[]): void {
+    logger.info(LogCategory.GPS, '[GPS-WS] Unsubscribing from channels', { channels });
     for (const ch of channels) this.desiredChannels.delete(ch);
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.send({ op: 'unsubscribe', channels });
@@ -268,6 +270,19 @@ class GpsWsClient {
     }
 
     // Domain event — fan out to typed listeners + the catch-all `any`.
+    if (parsed.type === 'location.update') {
+      const loc = parsed as WsLocationUpdate;
+      logger.info(LogCategory.GPS, '[GPS-WS] location.update received', {
+        terminalId: loc.terminalId,
+        lat: loc.data?.latitude,
+        lng: loc.data?.longitude,
+        speedKmh: loc.data?.speedKmh,
+        accOn: loc.data?.accOn,
+        gpsFix: loc.data?.gpsFix,
+      });
+    } else {
+      logger.info(LogCategory.GPS, '[GPS-WS] Event received', { type: parsed.type });
+    }
     this.emit(parsed.type as EventName, parsed);
     this.emit('any', parsed);
   }
@@ -364,6 +379,7 @@ class GpsWsClient {
 
   private setState(state: GpsWsState): void {
     if (this.state === state) return;
+    logger.info(LogCategory.GPS, '[GPS-WS] State changed', { from: this.state, to: state });
     this.state = state;
     const set = this.listeners.get('state');
     if (!set) return;

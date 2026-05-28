@@ -23,6 +23,7 @@ export enum LogCategory {
   VIN_SCANNER = 'VIN_SCANNER',
   OCR = 'OCR',
   PUSH = 'PUSH',
+  GPS = 'GPS',
 }
 
 interface LogEntry {

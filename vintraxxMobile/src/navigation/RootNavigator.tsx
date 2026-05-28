@@ -211,7 +211,7 @@ export const RootNavigator: React.FC = () => {
           <Stack.Screen
             name="DeviceSettings"
             component={DeviceSettingsScreen}
-            options={{ headerShown: true, title: 'Device settings' }}
+            options={{ headerShown: true, title: 'Device details' }}
           />
           <Stack.Screen
             name="Alerts"

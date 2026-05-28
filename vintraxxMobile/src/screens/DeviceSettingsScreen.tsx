@@ -1,17 +1,10 @@
-// DeviceSettingsScreen — read-only GPS terminal info + Request Locate.
+// DeviceDetailsScreen — read-only GPS terminal info.
 //
-// In our pairing model, vehicle pairing/unpairing is admin-only, so this
-// screen deliberately exposes no destructive controls. It surfaces:
-//
+// Surfaces:
 //   • Identity (IMEI, manufacturer/model, firmware/hardware versions)
 //   • Vehicle (VIN, year/make/model, plate, nickname)
 //   • Reporting (heartbeat + report intervals)
 //   • Status (last connect / disconnect / heartbeat)
-//   • Action: Request live position (locate command)
-//
-// The Unpair button in the spec is gated behind admin role and is omitted
-// here for end users. We expose it as a disabled-with-tooltip row so the
-// affordance is discoverable.
 
 import React, { useEffect, useState } from 'react';
 import {
@@ -24,8 +17,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useRoute, RouteProp } from '@react-navigation/native';
 
 import { useAppStore } from '../store/appStore';
 import { gpsApi } from '../services/gps/GpsApiService';
@@ -39,7 +31,6 @@ type DeviceSettingsRoute = RouteProp<RootStackParamList, 'DeviceSettings'>;
 
 export const DeviceSettingsScreen: React.FC = () => {
   const route = useRoute<DeviceSettingsRoute>();
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { terminalId } = route.params;
   const { gpsTerminals, upsertGpsTerminal } = useAppStore();
 
@@ -47,7 +38,6 @@ export const DeviceSettingsScreen: React.FC = () => {
     gpsTerminals.find((t) => t.id === terminalId),
   );
   const [loading, setLoading] = useState(!terminal);
-  const [locating, setLocating] = useState(false);
   const [editingNickname, setEditingNickname] = useState(false);
   const [nicknameValue, setNicknameValue] = useState(terminal?.nickname ?? '');
   const [savingNickname, setSavingNickname] = useState(false);
@@ -85,23 +75,6 @@ export const DeviceSettingsScreen: React.FC = () => {
     }
   };
 
-  const onLocate = async () => {
-    setLocating(true);
-    const result = await gpsApi.requestLocate(terminalId);
-    setLocating(false);
-    if (result.success) {
-      Alert.alert(
-        'Locate requested',
-        'The device will reply with its current position shortly.',
-      );
-    } else {
-      Alert.alert(
-        'Could not request locate',
-        result.message ?? 'The command could not be queued.',
-      );
-    }
-  };
-
   if (loading || !terminal) {
     return (
       <View style={styles.loadingWrap}>
@@ -109,11 +82,6 @@ export const DeviceSettingsScreen: React.FC = () => {
       </View>
     );
   }
-
-  // Pairing is admin-only and lives in the web console; the mobile User
-  // model exposes no role field, so we surface unpair as a permanently
-  // disabled affordance.
-  const isAdmin = false;
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
@@ -216,40 +184,6 @@ export const DeviceSettingsScreen: React.FC = () => {
         <Row label="Disconnected at" value={formatTime(terminal.disconnectedAt)} />
       </Section>
 
-      <View style={styles.actionsCard}>
-        <TouchableOpacity
-          style={[styles.btnPrimary, locating && styles.btnDisabled]}
-          onPress={onLocate}
-          disabled={locating}
-        >
-          <Text style={styles.btnPrimaryText}>
-            {locating ? 'Requesting…' : 'Request live position'}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.btnGhost}
-          onPress={() => navigation.navigate('LiveTrack', { terminalId })}
-        >
-          <Text style={styles.btnGhostText}>View live tracking →</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.btnGhost, !isAdmin && styles.btnGhostDisabled]}
-          disabled={!isAdmin}
-          onPress={() =>
-            Alert.alert(
-              'Unpair device',
-              'Unpairing is performed by an administrator from the web console.',
-            )
-          }
-        >
-          <Text
-            style={[styles.btnGhostText, !isAdmin && styles.btnGhostTextDisabled]}
-          >
-            {isAdmin ? 'Unpair device →' : 'Unpair (admin only)'}
-          </Text>
-        </TouchableOpacity>
-      </View>
     </ScrollView>
   );
 };
@@ -289,96 +223,76 @@ const styles = StyleSheet.create({
 
   section: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: spacing.md,
-    marginBottom: 8,
+    marginBottom: 12,
     shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: colors.border.light,
   },
   sectionTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.text.muted,
-    letterSpacing: 0.4,
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.primary.navy,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border.light,
   },
-  rowLabel: { fontSize: 13, color: colors.text.secondary, fontWeight: '600' },
+  rowLabel: { fontSize: 14, color: colors.text.secondary, fontWeight: '500' },
   rowValue: {
-    fontSize: 13,
+    fontSize: 14,
     color: colors.text.primary,
     fontWeight: '600',
     flex: 1,
     textAlign: 'right',
     marginLeft: 12,
   },
-  rowValueMono: { fontFamily: 'monospace' as any, fontSize: 12 },
-
-  actionsCard: { marginTop: 12 },
-  btnPrimary: {
-    backgroundColor: colors.primary.navy,
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginBottom: 8,
-  },
+  rowValueMono: { fontFamily: 'monospace' as any, fontSize: 13 },
   btnDisabled: { opacity: 0.5 },
-  btnPrimaryText: { color: '#FFFFFF', fontWeight: '700' },
-  btnGhost: {
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    backgroundColor: '#FFFFFF',
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: colors.border.light,
-  },
-  btnGhostDisabled: { opacity: 0.6, backgroundColor: '#F8FAFC' },
-  btnGhostText: { color: colors.primary.navy, fontWeight: '700' },
-  btnGhostTextDisabled: { color: colors.text.muted },
 
   nicknameEditRow: {
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border.light,
   },
-  nicknameEditInputWrap: { marginTop: 6 },
+  nicknameEditInputWrap: { marginTop: 8 },
   nicknameInput: {
-    height: 40,
+    height: 44,
     borderWidth: 1,
     borderColor: colors.border.light,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    fontSize: 13,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    fontSize: 14,
     color: colors.text.primary,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F8FAFC',
   },
-  nicknameEditBtns: { flexDirection: 'row', marginTop: 8, gap: 8 },
+  nicknameEditBtns: { flexDirection: 'row', marginTop: 10, gap: 8 },
   nicknameSaveBtn: {
     backgroundColor: colors.primary.navy,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 10,
   },
-  nicknameSaveBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 13 },
+  nicknameSaveBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
   nicknameCancelBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 10,
     backgroundColor: '#F1F5F9',
   },
-  nicknameCancelBtnText: { color: colors.text.secondary, fontWeight: '600', fontSize: 13 },
+  nicknameCancelBtnText: { color: colors.text.secondary, fontWeight: '600', fontSize: 14 },
   nicknameValueRow: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'flex-end', marginLeft: 12 },
-  nicknameEditLink: { color: colors.primary.navy, fontWeight: '700', fontSize: 12, marginLeft: 8 },
+  nicknameEditLink: { color: colors.primary.navy, fontWeight: '700', fontSize: 13, marginLeft: 8 },
 });

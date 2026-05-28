@@ -205,7 +205,6 @@ function LiveTab({ terminal }: { terminal: GpsTerminal }) {
               ]
             : []
         }
-        highlightId={terminal.id}
         heightClass="h-[320px] sm:h-[420px]"
       />
       {!location && !loading && (

@@ -5,7 +5,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name admin.vintraxx.com;
     
     ssl_certificate /etc/letsencrypt/live/admin.vintraxx.com/fullchain.pem;
@@ -13,6 +14,26 @@ server {
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
     
+    # Handle Next.js static assets directly with correct MIME types
+    location /_next/static/ {
+        alias /home/ec2-user/vintraxxsmartscan/vintraxxAdmin/.next/standalone/.next/static/;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+    
+    location /api/v1/admin/ {
+        proxy_pass http://127.0.0.1:3000/api/v1/admin/;
+        proxy_http_version 1.1;
+        proxy_set_header Host api.vintraxx.com;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 120s;
+        proxy_send_timeout 120s;
+        proxy_read_timeout 120s;
+        proxy_buffering off;
+    }
+
     location / {
         proxy_pass http://127.0.0.1:3002;
         proxy_http_version 1.1;

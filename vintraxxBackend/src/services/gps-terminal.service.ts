@@ -5,6 +5,7 @@
  * Controllers translate HTTP into calls into this module.
  */
 
+import { Prisma } from '@prisma/client';
 import prisma from '../config/db';
 import { AppError } from '../middleware/errorHandler';
 
@@ -199,6 +200,52 @@ export async function getTerminalDetail(id: string) {
   return terminal;
 }
 
+/**
+ * After clearing a REVOKED state we must put the terminal back into a status
+ * the gateway will accept on the next connection. A device that has ever
+ * authenticated (has `connectedAt` or a persisted `authCode`) goes to OFFLINE;
+ * one that never has stays NEVER_CONNECTED. Either way the gateway no longer
+ * rejects it, so the physical device reconnects on its own.
+ */
+function connectableStatusAfterRevoke(terminal: {
+  connectedAt: Date | null;
+  authCode: string | null;
+}): 'OFFLINE' | 'NEVER_CONNECTED' {
+  return terminal.connectedAt || terminal.authCode ? 'OFFLINE' : 'NEVER_CONNECTED';
+}
+
+/**
+ * Delete every GPS telemetry row tied to a terminal so a new owner starts with
+ * a clean slate. Identity, auth code, and the terminal row itself are kept —
+ * the physical device keeps working without a re-provision.
+ *
+ * `gpsAlarm` is deleted before `gpsLocation` because each alarm carries an
+ * optional `locationId` FK into GpsLocation (no cascade on that edge). The
+ * promoted BLE `Scan` rows referenced by `gpsScanReport.promotedScanId` are
+ * intentionally left untouched — those belong to the user's scan history.
+ */
+async function wipeTerminalTelemetry(tx: Prisma.TransactionClient, terminalId: string) {
+  await tx.gpsAlarm.deleteMany({ where: { terminalId } });
+  await tx.gpsLocation.deleteMany({ where: { terminalId } });
+  await tx.gpsObdSnapshot.deleteMany({ where: { terminalId } });
+  await tx.gpsDtcEvent.deleteMany({ where: { terminalId } });
+  await tx.gpsTrip.deleteMany({ where: { terminalId } });
+  await tx.gpsScanReport.deleteMany({ where: { terminalId } });
+  await tx.gpsTerminalDailyStats.deleteMany({ where: { terminalId } });
+  await tx.gpsCommand.deleteMany({ where: { terminalId } });
+}
+
+/**
+ * Reassign (or detach) a terminal's owner.
+ *
+ *   - Clears a stale REVOKED status so the device can reconnect (re-pairing
+ *     after an unpair must "just work").
+ *   - When the owner actually changes to a DIFFERENT non-null user, wipes the
+ *     device's telemetry so the new owner doesn't inherit the previous owner's
+ *     locations / trips / DTCs / scan reports / alarms.
+ *   - Assigning the same owner, or detaching (`ownerUserId = null`), never
+ *     wipes history.
+ */
 export async function reassignTerminalOwner(id: string, ownerUserId: string | null) {
   const terminal = await prisma.gpsTerminal.findUnique({ where: { id } });
   if (!terminal) throw new AppError('Terminal not found', 404);
@@ -208,7 +255,26 @@ export async function reassignTerminalOwner(id: string, ownerUserId: string | nu
     if (!user) throw new AppError('Owner user not found', 404);
   }
 
-  return prisma.gpsTerminal.update({ where: { id }, data: { ownerUserId } });
+  const ownerChangedToDifferentUser =
+    ownerUserId !== null && ownerUserId !== terminal.ownerUserId;
+
+  return prisma.$transaction(async (tx) => {
+    if (ownerChangedToDifferentUser) {
+      await wipeTerminalTelemetry(tx, id);
+    }
+
+    const data: Prisma.GpsTerminalUncheckedUpdateInput = { ownerUserId };
+    if (terminal.status === 'REVOKED') {
+      data.status = connectableStatusAfterRevoke(terminal);
+    }
+    if (ownerChangedToDifferentUser) {
+      // Reset the alarm-bit latch so the first report under the new owner is
+      // evaluated from scratch rather than diffed against the old owner's state.
+      data.lastAlarmBits = 0;
+    }
+
+    return tx.gpsTerminal.update({ where: { id }, data });
+  });
 }
 
 /**
@@ -286,21 +352,25 @@ export async function updateTerminalMetadata(id: string, patch: UpdateTerminalIn
 }
 
 /**
- * Unpair = set ownerUserId to null AND mark REVOKED so the gateway rejects
- * any future auth attempts until the admin re-provisions / reassigns.
+ * Unpair = detach the owner ONLY. The physical device stays connectable and
+ * keeps its history, so re-assigning it to a new owner later "just works"
+ * without a device reboot or re-provision.
  *
- * The gateway closes any live socket for the terminal as a side-effect on its
- * next heartbeat (handleHeartbeat sees REVOKED → drops). For instant effect
- * we'd need an in-process signal, deferred to Phase 4 when commands ship.
+ * We deliberately do NOT mark the terminal REVOKED here — REVOKED is reserved
+ * for an explicit permanent decommission (or `deleteTerminal`). If the row was
+ * already REVOKED from a legacy unpair, we normalize it back to a connectable
+ * status so the device can reconnect.
  */
 export async function unpairTerminal(id: string) {
   const terminal = await prisma.gpsTerminal.findUnique({ where: { id } });
   if (!terminal) throw new AppError('Terminal not found', 404);
 
-  return prisma.gpsTerminal.update({
-    where: { id },
-    data: { ownerUserId: null, status: 'REVOKED' },
-  });
+  const data: Prisma.GpsTerminalUncheckedUpdateInput = { ownerUserId: null };
+  if (terminal.status === 'REVOKED') {
+    data.status = connectableStatusAfterRevoke(terminal);
+  }
+
+  return prisma.gpsTerminal.update({ where: { id }, data });
 }
 
 export async function deleteTerminal(id: string) {

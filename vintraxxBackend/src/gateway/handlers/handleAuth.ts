@@ -85,7 +85,14 @@ export async function handleAuth(
     return;
   }
 
-  if (!terminal.authCode || !authCodeEquals(terminal.authCode, body.authCode)) {
+  // If the terminal has NEVER_CONNECTED and no auth code on file (freshly
+  // provisioned or re-created row), trust the device's identity via
+  // deviceIdentifier and adopt whatever auth code it presents. This handles
+  // devices that skip re-registration after their old terminal row was
+  // deleted and a new one created with the same deviceIdentifier.
+  const freshTerminal = terminal.status === 'NEVER_CONNECTED' && !terminal.authCode;
+
+  if (!freshTerminal && (!terminal.authCode || !authCodeEquals(terminal.authCode, body.authCode))) {
     session.log.warn('Auth code mismatch', {
       terminalId: terminal.id,
       received: body.authCode.length,
@@ -94,6 +101,17 @@ export async function handleAuth(
     session.ack(MsgId.TERMINAL_AUTH, msgSerial, PlatformResult.FAILURE);
     session.close('bad auth code');
     return;
+  }
+
+  if (freshTerminal) {
+    session.log.info('Adopting auth code from device for fresh terminal', {
+      terminalId: terminal.id,
+      deviceIdentifier,
+    });
+    await prisma.gpsTerminal.update({
+      where: { id: terminal.id },
+      data: { authCode: body.authCode, authCodeIssuedAt: new Date() },
+    });
   }
 
   // Success — record metadata, bind session, register globally.

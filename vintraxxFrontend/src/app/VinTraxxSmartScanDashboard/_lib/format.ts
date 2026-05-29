@@ -134,11 +134,11 @@ export function terminalLabel(t: {
 export function statusDotClasses(status: string): string {
   switch (status) {
     case "ONLINE":
-      return "bg-emerald-500 ring-2 ring-emerald-200";
+      return "bg-[#16A34A] ring-2 ring-green-200";
     case "OFFLINE":
-      return "bg-gray-400 ring-2 ring-gray-200";
+      return "bg-[#DC2626] ring-2 ring-red-200";
     case "NEVER_CONNECTED":
-      return "bg-amber-400 ring-2 ring-amber-200";
+      return "bg-[#9CA3AF] ring-2 ring-gray-200";
     case "REVOKED":
       return "bg-red-500 ring-2 ring-red-200";
     default:

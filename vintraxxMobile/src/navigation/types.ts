@@ -4,23 +4,45 @@ import { Vehicle } from '../models/Vehicle';
 import type { FullReportData, ScanSubmissionPayload } from '../types/api';
 import { ScanResult } from '../services/scanner/ScannerService';
 
-// Tab Navigator param list (Option B: 5 slots, centre is Scan).
-// "Devices" replaces the old "Connect" tab and unifies BLE + GPS via an
-// internal segmented control.
+// Legacy unified Tab param list — kept for backward compatibility.
 export type TabParamList = {
   Devices: { autoConnect?: boolean; autoScan?: boolean; segment?: 'bluetooth' | 'gps' } | undefined;
   History: undefined;
-  // Center elevated button → routes to the existing `Scan` screen, but
-  // smart-default may also send the user to LiveTrack or Appraisal.
   Scan: { vehicle?: Vehicle; autoStart?: boolean } | undefined;
   AppraisalTab: undefined;
   Schedule: { vin?: string; vehicle?: string; additionalNotes?: string } | undefined;
 };
 
+// ── BLE Tab Navigator (5 tabs — no GPS) ─────────────────────────────────
+export type BleTabParamList = {
+  Devices: { autoConnect?: boolean; autoScan?: boolean } | undefined;
+  Scan: { vehicle?: Vehicle; autoStart?: boolean } | undefined;
+  AppraisalTab: undefined;
+  Schedule: { vin?: string; vehicle?: string; additionalNotes?: string } | undefined;
+  History: undefined;
+};
+
+// ── GPS Tab Navigator (3 tabs) ──────────────────────────────────────────
+export type GpsTabParamList = {
+  GpsScanTab: undefined;
+  GpsLiveMap: undefined;
+  GpsHistory: undefined;
+};
+
 // Root Stack Navigator param list (includes tabs + modal screens)
 export type RootStackParamList = {
   Login: undefined;
+  WorkflowSelector: undefined;
   DeviceSetup: undefined;
+  BleMain: {
+    screen?: keyof BleTabParamList;
+    params?: BleTabParamList[keyof BleTabParamList];
+  } | undefined;
+  GpsMain: {
+    screen?: keyof GpsTabParamList;
+    params?: GpsTabParamList[keyof GpsTabParamList];
+  } | undefined;
+  // Legacy — kept so existing deep-links don't break during migration.
   Main: { 
     screen?: keyof TabParamList;
     params?: TabParamList[keyof TabParamList];
@@ -69,6 +91,8 @@ export type RootStackParamList = {
   DtcEventDetail: { dtcEventId: string };
   /** Full Scan Report — Refresh / Email / AI promotion. */
   GpsScanReport: { terminalId: string };
+  /** GPS terminal detail with Run Full Scan / View Report / Email actions. */
+  GpsTerminalDetail: { terminalId: string };
 };
 
 // Combined navigation prop types

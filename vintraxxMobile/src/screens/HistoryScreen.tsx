@@ -68,6 +68,7 @@ const formatDate = (date: Date): string => {
 
 export const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
   // Four-way filter per the Phase 5 spec: All / OBD / Appraisal / GPS.
+  // In BLE workflow mode, hide the GPS filter entirely.
   const [filter, setFilter] = useState<'all' | 'obd' | 'appraisal' | 'gps'>('all');
   const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
@@ -78,7 +79,11 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
     removeSavedAppraisal,
     gpsAlarms,
     gpsDtcEvents,
+    workflowMode,
   } = useAppStore();
+
+  // In BLE mode, exclude GPS items entirely
+  const isBleMode = workflowMode === 'ble';
 
   // Build unified history list sorted by date (newest first)
   const unifiedHistory: UnifiedHistoryItem[] = useMemo(() => {
@@ -103,28 +108,31 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
     });
 
     // GPS alarms (alerts that have crossed into the user's history).
-    gpsAlarms.forEach((alarm) => {
-      items.push({
-        id: 'gpsa-' + alarm.id,
-        type: 'gps-alarm',
-        date: new Date(alarm.openedAt),
-        gpsAlarm: alarm,
+    // Skip GPS items in BLE workflow mode.
+    if (!isBleMode) {
+      gpsAlarms.forEach((alarm) => {
+        items.push({
+          id: 'gpsa-' + alarm.id,
+          type: 'gps-alarm',
+          date: new Date(alarm.openedAt),
+          gpsAlarm: alarm,
+        });
       });
-    });
 
-    // GPS-detected DTC snapshots.
-    gpsDtcEvents.forEach((event) => {
-      items.push({
-        id: 'gpsd-' + event.id,
-        type: 'gps-dtc',
-        date: new Date(event.reportedAt),
-        gpsDtc: event,
+      // GPS-detected DTC snapshots.
+      gpsDtcEvents.forEach((event) => {
+        items.push({
+          id: 'gpsd-' + event.id,
+          type: 'gps-dtc',
+          date: new Date(event.reportedAt),
+          gpsDtc: event,
+        });
       });
-    });
+    }
 
     items.sort((a, b) => b.date.getTime() - a.date.getTime());
     return items;
-  }, [savedReports, savedAppraisals, gpsAlarms, gpsDtcEvents]);
+  }, [savedReports, savedAppraisals, gpsAlarms, gpsDtcEvents, isBleMode]);
 
   const filteredHistory = useMemo(() => {
     if (filter === 'all') return unifiedHistory;
@@ -526,14 +534,16 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
             Appr ({appraisalCount})
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.filterTab, filter === 'gps' && styles.filterTabActive]}
-          onPress={() => setFilter('gps')}
-        >
-          <Text style={[styles.filterText, filter === 'gps' && styles.filterTextActive]}>
-            GPS ({gpsCount})
-          </Text>
-        </TouchableOpacity>
+        {!isBleMode && (
+          <TouchableOpacity
+            style={[styles.filterTab, filter === 'gps' && styles.filterTabActive]}
+            onPress={() => setFilter('gps')}
+          >
+            <Text style={[styles.filterText, filter === 'gps' && styles.filterTextActive]}>
+              GPS ({gpsCount})
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* History List */}

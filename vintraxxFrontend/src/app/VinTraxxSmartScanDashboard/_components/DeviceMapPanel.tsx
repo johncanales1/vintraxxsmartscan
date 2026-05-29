@@ -37,7 +37,7 @@ export interface MapPoint {
   /** Optional sub-line, e.g. speed/heading (fallback when no terminal). */
   caption?: string;
   /** Marker color hint. */
-  color?: "primary" | "online" | "offline" | "alarm";
+  color?: "primary" | "online" | "offline" | "never_connected" | "alarm";
   /** Terminal data for rich InfoWindow popup. */
   terminal?: GpsTerminal;
   /** Location data for rich InfoWindow popup. */
@@ -68,14 +68,16 @@ const DEFAULT_ZOOM_FLEET = 4;
 const DEFAULT_ZOOM_SINGLE = 15;
 
 /**
- * Marker colors matching the admin dashboard:
- *   • Online (live) → Red (matches admin's "#dc2626")
- *   • Offline → Gray
+ * Marker colors matching the spec:
+ *   • Online  → Green (#16A34A)
+ *   • Offline → Red   (#DC2626)
+ *   • Never connected → Grey (#9CA3AF)
  */
 const MARKER_PALETTE: Record<NonNullable<MapPoint["color"]>, string> = {
   primary: "#1B3A5F",
-  online: "#dc2626",   // Red for live/online (matches admin)
-  offline: "#94a3b8",  // Gray for offline
+  online: "#16A34A",           // Green — online
+  offline: "#DC2626",          // Red — offline / sleeping
+  never_connected: "#9CA3AF",  // Grey — never connected
   alarm: "#E11D48",
 };
 

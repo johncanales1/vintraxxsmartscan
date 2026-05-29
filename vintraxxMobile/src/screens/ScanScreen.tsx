@@ -238,6 +238,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
     user,
     selectedBleDevice,
     gpsTerminals,
+    workflowMode,
   } = useAppStore();
   const isConnected = connectionState === BleConnectionState.CONNECTED;
   const hasAutoStarted = useRef(false);
@@ -653,7 +654,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
         {/* GPS-side data banner — only shown when the user has at least one
             paired GPS terminal. Provides a one-tap path into the GPS DTC
             history when they're considering an OBD scan. */}
-        {gpsTerminals.length > 0 && (
+        {workflowMode !== 'ble' && gpsTerminals.length > 0 && (
           <TouchableOpacity
             style={gpsBannerStyles.banner}
             onPress={() =>

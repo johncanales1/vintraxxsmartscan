@@ -129,7 +129,7 @@ export default function MapPage() {
           ? "online"
           : t.status === "OFFLINE"
             ? "offline"
-            : "primary") as "online" | "offline" | "primary",
+            : "never_connected") as "online" | "offline" | "never_connected",
         terminal: t,
         location: loc,
         obd: data?.obd ?? null,

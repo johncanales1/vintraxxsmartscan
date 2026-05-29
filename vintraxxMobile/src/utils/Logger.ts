@@ -24,6 +24,9 @@ export enum LogCategory {
   OCR = 'OCR',
   PUSH = 'PUSH',
   GPS = 'GPS',
+  WORKFLOW = 'WORKFLOW',
+  NAV = 'NAV',
+  PERF = 'PERF',
 }
 
 interface LogEntry {
@@ -43,8 +46,10 @@ interface LogEntry {
 class Logger {
   private static instance: Logger;
   private logs: LogEntry[] = [];
-  private maxLogs = 500;
+  private maxLogs = 1000;
   private enabled = __DEV__;
+  /** In production, only WARN and ERROR are logged to console. */
+  private productionMinLevel: LogLevel = LogLevel.WARN;
   /** Current correlation ID — auto-prefixed onto every log entry. */
   private activeRequestId: string | null = null;
 
@@ -118,7 +123,9 @@ class Logger {
       this.logs.shift();
     }
 
-    if (this.enabled) {
+    // Always log to console in dev; in production only WARN+
+    const shouldLog = this.enabled || this.isAtLeast(level, this.productionMinLevel);
+    if (shouldLog) {
       const rid = entry.requestId ? ` [rid=${entry.requestId.slice(0, 8)}]` : '';
       const prefix = `[${category}]${rid} ${level}:`;
       const logMessage = data ? `${message} ${JSON.stringify(data)}` : message;
@@ -154,6 +161,31 @@ class Logger {
 
   error(category: LogCategory, message: string, data?: any) {
     this.log(LogLevel.ERROR, category, message, data);
+  }
+
+  /**
+   * Log with high-resolution performance timestamp (ms since page load).
+   * Useful for measuring GPS API call durations, render times, etc.
+   */
+  logWithTimestamp(
+    level: LogLevel,
+    category: LogCategory,
+    message: string,
+    meta?: Record<string, unknown>,
+  ) {
+    const perfNow = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    this.log(level, category, message, { ...meta, _perfMs: Math.round(perfNow * 100) / 100 });
+  }
+
+  /** Helper: compare log-level severity. */
+  private isAtLeast(level: LogLevel, minLevel: LogLevel): boolean {
+    const order: Record<LogLevel, number> = {
+      [LogLevel.DEBUG]: 0,
+      [LogLevel.INFO]: 1,
+      [LogLevel.WARN]: 2,
+      [LogLevel.ERROR]: 3,
+    };
+    return order[level] >= order[minLevel];
   }
 
   getLogs(category?: LogCategory, limit = 200): LogEntry[] {

@@ -442,12 +442,14 @@ export default function GpsFleetMapSection() {
 /** Return the pin fill color for a terminal status. */
 function getStatusColor(status: GpsTerminal['status']): string {
   return status === 'ONLINE'
-    ? '#dc2626' // red — live
-    : status === 'NEVER_CONNECTED'
-      ? '#f59e0b' // amber — never connected
-      : status === 'SUSPENDED'
-        ? '#8b5cf6' // violet
-        : '#94a3b8'; // gray — OFFLINE (last-known position)
+    ? '#16A34A' // green — online
+    : status === 'OFFLINE'
+      ? '#DC2626' // red — offline / sleeping
+      : status === 'NEVER_CONNECTED'
+        ? '#9CA3AF' // grey — never connected
+        : status === 'SUSPENDED'
+          ? '#8b5cf6' // violet
+          : '#9CA3AF'; // grey fallback
 }
 
 function ApiKeyMissing({ reason }: { reason: string }) {

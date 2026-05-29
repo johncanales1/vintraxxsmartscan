@@ -74,6 +74,9 @@ interface AppState {
    *  the smart-default points back at it on subsequent taps. */
   lastPrimaryAction: 'ble-scan' | 'go-live' | 'appraisal' | null;
   
+  // Workflow mode — determines which tab navigator to show after login
+  workflowMode: 'ble' | 'gps' | null;
+
   // DEV Settings
   devModeActivated: boolean;
   
@@ -118,6 +121,9 @@ interface AppState {
   setGpsDtcEvents: (events: GpsDtcEvent[]) => void;
   addGpsDtcEvent: (event: GpsDtcEvent) => void;
   setLastPrimaryAction: (action: AppState['lastPrimaryAction']) => void;
+
+  // Workflow Actions
+  setWorkflowMode: (mode: AppState['workflowMode']) => void;
   
   // DEV Actions
   setDevModeActivated: (activated: boolean) => void;
@@ -148,6 +154,7 @@ const initialState = {
   gpsAlarms: [] as GpsAlarm[],
   gpsDtcEvents: [] as GpsDtcEvent[],
   lastPrimaryAction: null as AppState['lastPrimaryAction'],
+  workflowMode: null as AppState['workflowMode'],
   devModeActivated: false,
 };
 
@@ -306,6 +313,9 @@ export const useAppStore = create<AppState>((set) => ({
     }),
 
   setLastPrimaryAction: (action) => set({ lastPrimaryAction: action }),
+
+  // Workflow Actions
+  setWorkflowMode: (mode) => set({ workflowMode: mode }),
 
   // DEV Actions
   setDevModeActivated: (activated) => set({ devModeActivated: activated }),

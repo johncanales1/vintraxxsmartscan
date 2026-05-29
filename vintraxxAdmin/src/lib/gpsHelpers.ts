@@ -136,11 +136,11 @@ export function severityColor(sev: 'INFO' | 'WARNING' | 'CRITICAL'): {
 export function statusDotClasses(status: string): string {
   switch (status) {
     case 'ONLINE':
-      return 'bg-emerald-500 ring-2 ring-emerald-200 dark:ring-emerald-500/30';
+      return 'bg-[#16A34A] ring-2 ring-green-200 dark:ring-green-500/30';
     case 'OFFLINE':
-      return 'bg-gray-400 ring-2 ring-gray-200 dark:ring-gray-500/30';
+      return 'bg-[#DC2626] ring-2 ring-red-200 dark:ring-red-500/30';
     case 'NEVER_CONNECTED':
-      return 'bg-amber-400 ring-2 ring-amber-200 dark:ring-amber-500/30';
+      return 'bg-[#9CA3AF] ring-2 ring-gray-200 dark:ring-gray-500/30';
     case 'REVOKED':
       return 'bg-red-500 ring-2 ring-red-200 dark:ring-red-500/30';
     case 'SUSPENDED':

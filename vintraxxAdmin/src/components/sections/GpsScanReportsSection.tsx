@@ -182,6 +182,7 @@ function TerminalScanRow({
   onToggle: () => void;
 }) {
   const isOnline = terminal.status === 'ONLINE';
+  const isOffline = terminal.status === 'OFFLINE';
   const label = vehicleLabel(terminal);
 
   return (
@@ -190,7 +191,7 @@ function TerminalScanRow({
         onClick={onToggle}
         className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all"
       >
-        <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${isOnline ? 'bg-green-500' : 'bg-gray-400'}`} />
+        <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${isOnline ? 'bg-[#16A34A]' : isOffline ? 'bg-[#DC2626]' : 'bg-[#9CA3AF]'}`} />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{label}</p>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
@@ -203,8 +204,10 @@ function TerminalScanRow({
         <div className="flex items-center gap-2 flex-shrink-0">
           {isOnline ? (
             <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-300">ONLINE</span>
+          ) : isOffline ? (
+            <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300">OFFLINE</span>
           ) : (
-            <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-gray-100 dark:bg-gray-500/20 text-gray-600 dark:text-gray-400">OFFLINE</span>
+            <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-gray-100 dark:bg-gray-500/20 text-gray-600 dark:text-gray-400">{terminal.status.replace(/_/g, ' ')}</span>
           )}
           <FileText size={16} className={`transition-transform ${expanded ? 'text-blue-500 rotate-90' : 'text-gray-400'}`} />
         </div>

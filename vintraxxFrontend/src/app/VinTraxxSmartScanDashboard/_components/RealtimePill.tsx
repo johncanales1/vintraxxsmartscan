@@ -34,8 +34,8 @@ const PILL_STYLES: Record<EffectiveState, { dot: string; label: string; text: st
   wsOffline: { dot: "bg-slate-400", label: "Offline", text: "text-slate-600", pulse: false },
   connecting: { dot: "bg-amber-500", label: "Connecting", text: "text-amber-700", pulse: false },
   noDevices: { dot: "bg-slate-400", label: "No Devices", text: "text-slate-600", pulse: false },
-  allOffline: { dot: "bg-rose-500", label: "Offline", text: "text-rose-700", pulse: false },
-  live: { dot: "bg-emerald-500", label: "Live", text: "text-emerald-700", pulse: true },
+  allOffline: { dot: "bg-[#DC2626]", label: "Offline", text: "text-red-700", pulse: false },
+  live: { dot: "bg-[#16A34A]", label: "Live", text: "text-green-700", pulse: true },
 };
 
 function deriveEffectiveState(

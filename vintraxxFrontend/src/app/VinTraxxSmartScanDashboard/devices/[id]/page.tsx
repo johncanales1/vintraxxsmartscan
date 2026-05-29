@@ -106,9 +106,9 @@ function DeviceHeader({ terminal }: { terminal: GpsTerminal | null }) {
 
 function StatusPill({ status }: { status: GpsTerminal["status"] }) {
   const map: Record<GpsTerminal["status"], { dot: string; label: string }> = {
-    ONLINE: { dot: "bg-emerald-500", label: "Online" },
-    OFFLINE: { dot: "bg-slate-400", label: "Offline" },
-    NEVER_CONNECTED: { dot: "bg-slate-300", label: "Never connected" },
+    ONLINE: { dot: "bg-[#16A34A]", label: "Online" },
+    OFFLINE: { dot: "bg-[#DC2626]", label: "Offline" },
+    NEVER_CONNECTED: { dot: "bg-[#9CA3AF]", label: "Never connected" },
     REVOKED: { dot: "bg-rose-500", label: "Revoked" },
   };
   const s = map[status];

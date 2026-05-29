@@ -27,6 +27,8 @@ export enum LogCategory {
   PHOTO = 'PHOTO',
   VIN = 'VIN',
   APP = 'APP',
+  GPS = 'GPS',
+  WORKFLOW = 'WORKFLOW',
 }
 
 export interface DebugLogEntry {

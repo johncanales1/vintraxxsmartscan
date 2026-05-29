@@ -27,18 +27,18 @@ import {
 const STATUS_PILL: Record<GpsTerminal["status"], { label: string; classes: string; dot: string }> = {
   ONLINE: {
     label: "Online",
-    classes: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    dot: "bg-emerald-500",
+    classes: "bg-green-50 text-green-700 border-green-200",
+    dot: "bg-[#16A34A]",
   },
   OFFLINE: {
     label: "Offline",
-    classes: "bg-slate-50 text-slate-600 border-slate-200",
-    dot: "bg-slate-400",
+    classes: "bg-red-50 text-red-600 border-red-200",
+    dot: "bg-[#DC2626]",
   },
   NEVER_CONNECTED: {
     label: "Never connected",
-    classes: "bg-slate-50 text-slate-500 border-slate-200",
-    dot: "bg-slate-300",
+    classes: "bg-gray-50 text-gray-500 border-gray-200",
+    dot: "bg-[#9CA3AF]",
   },
   REVOKED: {
     label: "Revoked",

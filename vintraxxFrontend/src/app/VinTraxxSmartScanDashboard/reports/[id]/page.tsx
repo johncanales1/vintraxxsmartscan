@@ -17,10 +17,10 @@ import { vehicleLabel, formatRelativeOrAbsolute } from "../../_lib/format";
 import type { GpsTerminalStatus } from "../../_lib/types";
 
 const STATUS_MAP: Record<GpsTerminalStatus, { dot: string; label: string; text: string }> = {
-  ONLINE:          { dot: "bg-emerald-500", label: "text-emerald-700", text: "Online" },
-  OFFLINE:         { dot: "bg-slate-400",   label: "text-slate-500",   text: "Offline" },
-  NEVER_CONNECTED: { dot: "bg-slate-300",   label: "text-slate-400",   text: "Never connected" },
-  REVOKED:         { dot: "bg-rose-500",    label: "text-rose-600",    text: "Revoked" },
+  ONLINE:          { dot: "bg-[#16A34A]", label: "text-green-700",  text: "Online" },
+  OFFLINE:         { dot: "bg-[#DC2626]", label: "text-red-600",    text: "Offline" },
+  NEVER_CONNECTED: { dot: "bg-[#9CA3AF]", label: "text-gray-500",   text: "Never connected" },
+  REVOKED:         { dot: "bg-rose-500",  label: "text-rose-600",   text: "Revoked" },
 };
 
 export default function ReportDetailPage() {

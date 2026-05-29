@@ -5,8 +5,13 @@ import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createNavigationContainerRef } from '@react-navigation/native';
 import { TabNavigator } from './TabNavigator';
+import { BleTabNavigator } from './BleTabNavigator';
+import { GpsTabNavigator } from './GpsTabNavigator';
 import { LoginScreen } from '../screens/LoginScreen';
+import { WorkflowSelectorScreen } from '../screens/WorkflowSelectorScreen';
 import { DeviceSetupScreen } from '../screens/DeviceSetupScreen';
+import { GpsTerminalDetailScreen } from '../screens/gps/GpsTerminalDetailScreen';
+
 import { ReportScreen } from '../screens/ReportScreen';
 import { FullReportScreen } from '../screens/FullReportScreen';
 import { AppraiserScreen } from '../screens/AppraiserScreen';
@@ -45,6 +50,7 @@ export const RootNavigator: React.FC = () => {
     isAuthenticated,
     isAuthLoading,
     deviceSetupCompleted,
+    workflowMode,
     setUser, 
     setIsAuthenticated, 
     setIsAuthLoading,
@@ -145,8 +151,15 @@ export const RootNavigator: React.FC = () => {
           component={LoginScreen}
           options={{ headerShown: false }}
         />
-      ) : !deviceSetupCompleted ? (
-        // Device setup - shown after login but before device is set up
+      ) : !workflowMode ? (
+        // Workflow selector - shown after login before choosing BLE or GPS
+        <Stack.Screen
+          name="WorkflowSelector"
+          component={WorkflowSelectorScreen}
+          options={{ headerShown: false }}
+        />
+      ) : workflowMode === 'ble' && !deviceSetupCompleted ? (
+        // BLE device setup - shown after selecting BLE but before device is set up
         <Stack.Screen
           name="DeviceSetup"
           component={DeviceSetupScreen}
@@ -157,8 +170,22 @@ export const RootNavigator: React.FC = () => {
           }}
         />
       ) : (
-        // Main app screens - shown when authenticated AND device is set up
+        // Main app screens - shown when workflow is selected AND setup is done
         <>
+          {workflowMode === 'gps' ? (
+            <Stack.Screen
+              name="GpsMain"
+              component={GpsTabNavigator}
+              options={{ headerShown: false }}
+            />
+          ) : (
+            <Stack.Screen
+              name="BleMain"
+              component={BleTabNavigator}
+              options={{ headerShown: false }}
+            />
+          )}
+          {/* Legacy Main kept for backward compat */}
           <Stack.Screen
             name="Main"
             component={TabNavigator}
@@ -247,6 +274,11 @@ export const RootNavigator: React.FC = () => {
             name="GpsScanReport"
             component={GpsScanReportScreen}
             options={{ headerShown: true, title: 'Full Scan Report' }}
+          />
+          <Stack.Screen
+            name="GpsTerminalDetail"
+            component={GpsTerminalDetailScreen}
+            options={{ headerShown: true, title: 'Terminal Detail' }}
           />
         </>
       )}

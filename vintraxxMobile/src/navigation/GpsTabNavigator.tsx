@@ -23,9 +23,10 @@ import { GpsHistoryTabScreen } from '../screens/gps/GpsHistoryTabScreen';
 
 import { navigationTheme } from '../theme/navigation';
 import { GpsTabParamList } from './types';
+import { WorkflowSwitchButton } from '../components/WorkflowSwitchButton';
 
-import ScanIcon from '../assets/icons/tab-scan.svg';
-import DevicesIcon from '../assets/icons/tab-devices.svg';
+import ScanIcon from '../assets/icons/tab-gps-scan.svg';
+import MapIcon from '../assets/icons/tab-map.svg';
 import HistoryIcon from '../assets/icons/tab-history.svg';
 
 const Tab = createBottomTabNavigator<GpsTabParamList>();
@@ -42,7 +43,7 @@ const GPS_TAB_META: {
   Icon: React.FC<SvgIconProps>;
 }[] = [
   { routeName: 'GpsScanTab', label: 'Scan',     Icon: ScanIcon },
-  { routeName: 'GpsLiveMap', label: 'Live Map',  Icon: DevicesIcon },
+  { routeName: 'GpsLiveMap', label: 'Live Map',  Icon: MapIcon },
   { routeName: 'GpsHistory', label: 'History',   Icon: HistoryIcon },
 ];
 
@@ -209,20 +210,27 @@ const GpsCustomTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) => 
 // ── Navigator ──────────────────────────────────────────────────────────────
 export const GpsTabNavigator: React.FC = () => {
   return (
-    <Tab.Navigator
-      tabBar={(props) => <GpsCustomTabBar {...props} />}
-      screenOptions={{ headerShown: false }}
-      initialRouteName="GpsScanTab"
-    >
-      <Tab.Screen name="GpsScanTab" component={GpsScanTabScreen} />
-      <Tab.Screen name="GpsLiveMap" component={GpsLiveMapTabScreen} />
-      <Tab.Screen name="GpsHistory" component={GpsHistoryTabScreen} />
-    </Tab.Navigator>
+    <View style={styles.navRoot}>
+      <Tab.Navigator
+        tabBar={(props) => <GpsCustomTabBar {...props} />}
+        screenOptions={{ headerShown: false }}
+        initialRouteName="GpsScanTab"
+      >
+        <Tab.Screen name="GpsScanTab" component={GpsScanTabScreen} />
+        <Tab.Screen name="GpsLiveMap" component={GpsLiveMapTabScreen} />
+        <Tab.Screen name="GpsHistory" component={GpsHistoryTabScreen} />
+      </Tab.Navigator>
+      {/* Floating "switch scan mode" pill — visible on every GPS main tab. */}
+      <WorkflowSwitchButton />
+    </View>
   );
 };
 
 // ── Styles ─────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
+  navRoot: {
+    flex: 1,
+  },
   tabBarOuter: {
     position: 'absolute',
     left: navigationTheme.tabBar.horizontalInset,

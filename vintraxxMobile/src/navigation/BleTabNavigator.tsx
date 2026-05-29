@@ -28,6 +28,7 @@ import { ConnectScreen } from '../screens/ConnectScreen';
 
 import { navigationTheme } from '../theme/navigation';
 import { BleTabParamList } from './types';
+import { WorkflowSwitchButton } from '../components/WorkflowSwitchButton';
 
 import DevicesIcon from '../assets/icons/tab-devices.svg';
 import ScanIcon from '../assets/icons/tab-scan.svg';
@@ -269,22 +270,29 @@ const BleDevicesScreen: React.FC<{ navigation?: any; route?: any }> = ({ navigat
 
 export const BleTabNavigator: React.FC = () => {
   return (
-    <Tab.Navigator
-      tabBar={(props) => <BleCustomTabBar {...props} />}
-      screenOptions={{ headerShown: false }}
-      initialRouteName="Devices"
-    >
-      <Tab.Screen name="Devices"      component={BleDevicesScreen} />
-      <Tab.Screen name="Scan"         component={ScanScreen} />
-      <Tab.Screen name="AppraisalTab" component={AppraisalTabScreen} />
-      <Tab.Screen name="Schedule"     component={ScheduleScreen} />
-      <Tab.Screen name="History"      component={HistoryScreen} />
-    </Tab.Navigator>
+    <View style={styles.navRoot}>
+      <Tab.Navigator
+        tabBar={(props) => <BleCustomTabBar {...props} />}
+        screenOptions={{ headerShown: false }}
+        initialRouteName="Devices"
+      >
+        <Tab.Screen name="Devices"      component={BleDevicesScreen} />
+        <Tab.Screen name="Scan"         component={ScanScreen} />
+        <Tab.Screen name="AppraisalTab" component={AppraisalTabScreen} />
+        <Tab.Screen name="Schedule"     component={ScheduleScreen} />
+        <Tab.Screen name="History"      component={HistoryScreen} />
+      </Tab.Navigator>
+      {/* Floating "switch scan mode" pill — visible on every BLE main tab. */}
+      <WorkflowSwitchButton />
+    </View>
   );
 };
 
 // ── Styles ─────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
+  navRoot: {
+    flex: 1,
+  },
   tabBarOuter: {
     position: 'absolute',
     left: navigationTheme.tabBar.horizontalInset,

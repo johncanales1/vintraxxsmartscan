@@ -11,7 +11,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   Animated,
-  Dimensions,
   StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,9 +25,6 @@ import { logger, LogCategory } from '../utils/Logger';
 // dedicated SVGs for GPS / BLE mode selection yet.
 import ConnectIcon from '../assets/icons/connect.svg';
 import CarIcon from '../assets/icons/car.svg';
-
-const { width: SCREEN_W } = Dimensions.get('window');
-const CARD_WIDTH = SCREEN_W - spacing.lg * 2;
 
 export const WorkflowSelectorScreen: React.FC = () => {
   const { setWorkflowMode, user } = useAppStore();
@@ -116,30 +112,29 @@ export const WorkflowSelectorScreen: React.FC = () => {
           ]}
         >
           <TouchableOpacity
-            style={styles.card}
+            style={[styles.card, styles.cardGps]}
             onPress={handleSelectGps}
-            activeOpacity={0.85}
+            activeOpacity={0.9}
           >
-            <LinearGradient
-              colors={['#1B3A5F', '#2B5A8C']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.cardGradient}
-            >
-              <View style={styles.cardIconContainer}>
-                <CarIcon width={36} height={36} color="#FFFFFF" />
+            <View style={styles.cardTopRow}>
+              <View style={[styles.cardIconChip, styles.cardIconChipGps]}>
+                <CarIcon width={28} height={28} color="#FFFFFF" />
               </View>
-              <View style={styles.cardTextContainer}>
-                <Text style={styles.cardTitle}>GPS OBD Scan</Text>
-                <Text style={styles.cardDescription}>
-                  Connect to GPS-enabled OBD trackers. View live location, scan
-                  reports, trips, and alerts remotely.
-                </Text>
+              <View style={[styles.cardBadge, styles.cardBadgeGps]}>
+                <Text style={[styles.cardBadgeText, styles.cardBadgeTextGps]}>REMOTE</Text>
               </View>
-              <View style={styles.cardArrow}>
+            </View>
+            <Text style={styles.cardTitle}>GPS OBD Scan</Text>
+            <Text style={styles.cardDescription}>
+              Connect to GPS-enabled OBD trackers. View live location, scan
+              reports, trips, and alerts remotely.
+            </Text>
+            <View style={styles.cardFooterRow}>
+              <Text style={[styles.cardCta, styles.cardCtaGps]}>Get started</Text>
+              <View style={[styles.cardArrow, styles.cardArrowGps]}>
                 <Text style={styles.cardArrowText}>→</Text>
               </View>
-            </LinearGradient>
+            </View>
           </TouchableOpacity>
         </Animated.View>
 
@@ -154,30 +149,29 @@ export const WorkflowSelectorScreen: React.FC = () => {
           ]}
         >
           <TouchableOpacity
-            style={styles.card}
+            style={[styles.card, styles.cardBle]}
             onPress={handleSelectBle}
-            activeOpacity={0.85}
+            activeOpacity={0.9}
           >
-            <LinearGradient
-              colors={['#DC2626', '#EF4444']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.cardGradient}
-            >
-              <View style={styles.cardIconContainer}>
-                <ConnectIcon width={36} height={36} color="#FFFFFF" />
+            <View style={styles.cardTopRow}>
+              <View style={[styles.cardIconChip, styles.cardIconChipBle]}>
+                <ConnectIcon width={28} height={28} color="#FFFFFF" />
               </View>
-              <View style={styles.cardTextContainer}>
-                <Text style={styles.cardTitle}>BLE OBD Scan</Text>
-                <Text style={styles.cardDescription}>
-                  Connect via Bluetooth to a nearby OBD-II scanner. Run
-                  diagnostics, build reports, and appraise vehicles.
-                </Text>
+              <View style={[styles.cardBadge, styles.cardBadgeBle]}>
+                <Text style={[styles.cardBadgeText, styles.cardBadgeTextBle]}>BLUETOOTH</Text>
               </View>
-              <View style={styles.cardArrow}>
+            </View>
+            <Text style={styles.cardTitle}>BLE OBD Scan</Text>
+            <Text style={styles.cardDescription}>
+              Connect via Bluetooth to a nearby OBD-II scanner. Run
+              diagnostics, build reports, and appraise vehicles.
+            </Text>
+            <View style={styles.cardFooterRow}>
+              <Text style={[styles.cardCta, styles.cardCtaBle]}>Get started</Text>
+              <View style={[styles.cardArrow, styles.cardArrowBle]}>
                 <Text style={styles.cardArrowText}>→</Text>
               </View>
-            </LinearGradient>
+            </View>
           </TouchableOpacity>
         </Animated.View>
       </View>
@@ -235,59 +229,114 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   cardWrapper: {
-    marginBottom: spacing.md,
+    marginBottom: spacing.base,
   },
   card: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
+    backgroundColor: colors.background.secondary,
+    borderRadius: 22,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
+    elevation: 6,
+    shadowColor: '#0B1B2B',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
   },
-  cardGradient: {
+  cardGps: {
+    borderTopWidth: 3,
+    borderTopColor: colors.primary.navy,
+  },
+  cardBle: {
+    borderTopWidth: 3,
+    borderTopColor: colors.primary.red,
+  },
+  cardTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 28,
-    paddingHorizontal: 24,
+    justifyContent: 'space-between',
+    marginBottom: 14,
   },
-  cardIconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+  cardIconChip: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 18,
   },
-  cardTextContainer: {
-    flex: 1,
+  cardIconChipGps: {
+    backgroundColor: colors.primary.navy,
+  },
+  cardIconChipBle: {
+    backgroundColor: colors.primary.red,
+  },
+  cardBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  cardBadgeGps: {
+    backgroundColor: 'rgba(30,58,95,0.10)',
+  },
+  cardBadgeBle: {
+    backgroundColor: 'rgba(220,38,38,0.10)',
+  },
+  cardBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  cardBadgeTextGps: {
+    color: colors.primary.navy,
+  },
+  cardBadgeTextBle: {
+    color: colors.primary.red,
   },
   cardTitle: {
-    fontSize: 20,
+    fontSize: 19,
     fontWeight: typography.fontWeight.bold,
-    color: '#FFFFFF',
+    color: colors.text.primary,
     marginBottom: 6,
   },
   cardDescription: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.82)',
-    lineHeight: 18,
+    fontSize: 13.5,
+    color: colors.text.secondary,
+    lineHeight: 20,
+  },
+  cardFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 16,
+  },
+  cardCta: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  cardCtaGps: {
+    color: colors.primary.navy,
+  },
+  cardCtaBle: {
+    color: colors.primary.red,
   },
   cardArrow: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
+  },
+  cardArrowGps: {
+    backgroundColor: colors.primary.navy,
+  },
+  cardArrowBle: {
+    backgroundColor: colors.primary.red,
   },
   cardArrowText: {
-    fontSize: 20,
+    fontSize: 18,
     color: '#FFFFFF',
     fontWeight: '700',
+    marginTop: -2,
   },
   footerSafe: {
     paddingHorizontal: spacing.lg,

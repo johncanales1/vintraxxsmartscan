@@ -1,11 +1,15 @@
 // GpsTerminalDetailScreen — detail view for a single GPS terminal.
 //
-// Shows terminal info and 3 action buttons:
-//   • Run Full Scan
-//   • View Full Report
-//   • Email Report
+// Progressive Actions flow (inline):
+//   1. Only "Run Full Scan" is shown.
+//   2. After a scan completes, the scanned OBD data is rendered inline and
+//      "View Full Report" appears.
+//   3. "View Full Report" generates the AI report, opens it, and reveals
+//      "Email Report".
+//   4. "Email Report" sends the PDF to an editable address (defaults to the
+//      logged-in user's email).
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -14,22 +18,32 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Modal,
+  TextInput,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { gpsApi } from '../../services/gps/GpsApiService';
+import { apiService } from '../../services/api/ApiService';
 import { logger, LogCategory } from '../../utils/Logger';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
 import type { RootStackParamList } from '../../navigation/types';
-import type { GpsTerminal } from '../../types/gps';
+import type { GpsTerminal, GpsScanReport } from '../../types/gps';
 import { useAppStore } from '../../store/appStore';
+import { GpsScanReportBody } from '../../components/gps/GpsScanReportBody';
 
 import CarIcon from '../../assets/icons/car.svg';
+
+const POLL_INTERVAL_MS = 2000;
+const POLL_MAX_ATTEMPTS = 25;
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
 
 type DetailRoute = RouteProp<RootStackParamList, 'GpsTerminalDetail'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -67,64 +81,159 @@ export const GpsTerminalDetailScreen: React.FC = () => {
   const { terminalId } = route.params;
 
   const terminal = useAppStore((s) => s.gpsTerminals.find((t) => t.id === terminalId));
+  const user = useAppStore((s) => s.user);
+
+  const [report, setReport] = useState<GpsScanReport | null>(null);
+  const [loadingReport, setLoadingReport] = useState(true);
   const [scanning, setScanning] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiGenerated, setAiGenerated] = useState(false);
   const [emailing, setEmailing] = useState(false);
+  const [emailModalVisible, setEmailModalVisible] = useState(false);
+  const [emailValue, setEmailValue] = useState('');
+  const [errorText, setErrorText] = useState<string | null>(null);
+
+  const cancelledRef = useRef(false);
+
+  // Poll a scan report until it leaves PENDING (or the budget is exhausted).
+  const pollUntilSettled = useCallback(
+    async (scanReportId: string): Promise<GpsScanReport | null> => {
+      for (let i = 0; i < POLL_MAX_ATTEMPTS; i += 1) {
+        if (cancelledRef.current) return null;
+        await sleep(POLL_INTERVAL_MS);
+        if (cancelledRef.current) return null;
+        const res = await gpsApi.getGpsScanReport(scanReportId);
+        if (!res.success || !res.data) continue;
+        const next = res.data.report;
+        if (cancelledRef.current) return null;
+        setReport(next);
+        if (next.status !== 'PENDING') {
+          setScanning(false);
+          if (next.status !== 'COMPLETED' && next.status !== 'PARTIAL') {
+            setErrorText(next.errorText ?? `Scan ${next.status.toLowerCase()}`);
+          }
+          return next;
+        }
+      }
+      setScanning(false);
+      setErrorText('Scan timed out — please try again.');
+      return null;
+    },
+    [],
+  );
+
+  // Load the most recent scan report so an already-scanned terminal lands in
+  // the right progressive state on entry.
+  const loadLatest = useCallback(async () => {
+    const res = await gpsApi.listGpsScanReports(terminalId, { limit: 1 });
+    if (cancelledRef.current) return;
+    if (res.success) {
+      const first = res.data?.reports?.[0] ?? null;
+      setReport(first);
+      if (first?.promotedScanId) setAiGenerated(true);
+      if (first?.status === 'PENDING') {
+        setScanning(true);
+        void pollUntilSettled(first.id);
+      }
+    }
+    setLoadingReport(false);
+  }, [terminalId, pollUntilSettled]);
+
+  useEffect(() => {
+    cancelledRef.current = false;
+    void loadLatest();
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, [loadLatest]);
 
   if (!terminal) {
     return (
-      <SafeAreaView style={styles.loadingContainer} edges={['top']}>
+      <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary.navy} />
         <Text style={styles.loadingText}>Loading terminal...</Text>
-      </SafeAreaView>
+      </View>
     );
   }
 
   const status = STATUS_CONFIG[terminal.status] ?? STATUS_CONFIG.OFFLINE;
 
   const handleRunScan = async () => {
+    setErrorText(null);
+    // A fresh scan invalidates any previously-generated AI report, so hide the
+    // Email Report step until the new report is promoted again.
+    setAiGenerated(false);
     setScanning(true);
     try {
       logger.info(LogCategory.GPS, `Requesting full scan for terminal ${terminalId}`);
-      const result = await gpsApi.requestGpsScan(terminalId);
-      if (result.success && result.data) {
-        Alert.alert(
-          'Scan Requested',
-          'A full OBD scan has been requested. This may take a few minutes. Check back in the History tab.',
-          [{ text: 'OK' }],
-        );
-      } else {
-        Alert.alert('Error', result.message || 'Failed to request scan.');
+      const res = await gpsApi.requestGpsScan(terminalId);
+      if (!res.success || !res.data) {
+        setScanning(false);
+        setErrorText(res.message || 'Failed to request scan.');
+        return;
       }
+      // Optimistic shell — replaced by the first poll tick.
+      const shell = await gpsApi.getGpsScanReport(res.data.scanReportId);
+      if (shell.success && shell.data) setReport(shell.data.report);
+      await pollUntilSettled(res.data.scanReportId);
     } catch (error) {
       logger.error(LogCategory.GPS, 'Failed to request scan', error);
-      Alert.alert('Error', 'Failed to request scan. Please try again.');
-    } finally {
       setScanning(false);
+      setErrorText('Failed to request scan. Please try again.');
     }
   };
 
-  const handleViewReport = () => {
-    navigation.navigate('GpsScanReport', { terminalId });
-  };
-
-  const handleEmail = async () => {
-    setEmailing(true);
+  // Generate the AI report from the scanned data, open it, and unlock email.
+  const handleViewReport = async () => {
+    if (!report || (report.status !== 'COMPLETED' && report.status !== 'PARTIAL')) return;
+    setAiBusy(true);
     try {
-      logger.info(LogCategory.GPS, `Listing scan reports for terminal ${terminalId}`);
-      const listResult = await gpsApi.listGpsScanReports(terminalId, { limit: 1 });
-      if (listResult.success && listResult.data) {
-        const reports = (listResult.data as any).reports ?? [];
-        if (reports.length === 0) {
-          Alert.alert('No Reports', 'No scan reports available to email. Run a full scan first.');
+      let scanId = report.promotedScanId;
+      if (!scanId) {
+        const res = await gpsApi.promoteGpsScanToAi(report.id);
+        if (!res.success || !res.data) {
+          Alert.alert('Could not start AI report', res.message ?? 'The server rejected the request.');
           return;
         }
-        const latestReport = reports[0];
-        const emailResult = await gpsApi.emailGpsScanReport(latestReport.id);
-        if (emailResult.success) {
-          Alert.alert('Email Sent', `Report emailed successfully.`);
-        } else {
-          Alert.alert('Error', emailResult.message || 'Failed to send email.');
-        }
+        scanId = res.data.scanId;
+        setReport((prev) => (prev ? { ...prev, promotedScanId: scanId! } : prev));
+      }
+      logger.info(LogCategory.GPS, '[GpsTerminalDetail] promoting to AI', {
+        scanReportId: report.id,
+        scanId,
+      });
+      const pollRes = await apiService.pollReport(scanId);
+      if (!pollRes.success || !pollRes.data) {
+        Alert.alert('AI report failed', pollRes.message ?? 'The report could not be generated.');
+        return;
+      }
+      setAiGenerated(true);
+      navigation.navigate('FullReport', {
+        prefetchedReport: pollRes.data,
+        prefetchedScanId: scanId,
+      });
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  const openEmailModal = () => {
+    setEmailValue(user?.email ?? '');
+    setEmailModalVisible(true);
+  };
+
+  const handleSendEmail = async () => {
+    if (!report) return;
+    const target = emailValue.trim();
+    setEmailing(true);
+    try {
+      logger.info(LogCategory.GPS, `Emailing scan report ${report.id}`, { to: target });
+      const res = await gpsApi.emailGpsScanReport(report.id, target ? { email: target } : {});
+      if (res.success) {
+        setEmailModalVisible(false);
+        Alert.alert('Email sent', `Report emailed to ${res.data?.sentTo ?? target}.`);
+      } else {
+        Alert.alert('Error', res.message || 'Failed to send email.');
       }
     } catch (error) {
       logger.error(LogCategory.GPS, 'Failed to email report', error);
@@ -133,6 +242,11 @@ export const GpsTerminalDetailScreen: React.FC = () => {
       setEmailing(false);
     }
   };
+
+  const hasReportData =
+    !!report && (report.status === 'COMPLETED' || report.status === 'PARTIAL');
+  const showEmail = hasReportData && (aiGenerated || !!report?.promotedScanId);
+  const scanBusy = scanning || aiBusy;
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
@@ -170,10 +284,11 @@ export const GpsTerminalDetailScreen: React.FC = () => {
       {/* Action Buttons */}
       <Text style={styles.actionsTitle}>Actions</Text>
 
+      {/* Step 1 — Run Full Scan (always available) */}
       <TouchableOpacity
         style={[styles.actionButton, styles.actionPrimary]}
         onPress={handleRunScan}
-        disabled={scanning}
+        disabled={scanBusy}
         activeOpacity={0.8}
       >
         {scanning ? (
@@ -182,51 +297,137 @@ export const GpsTerminalDetailScreen: React.FC = () => {
           <>
             <Text style={styles.actionIcon}>⚡</Text>
             <View style={styles.actionTextWrap}>
-              <Text style={styles.actionButtonText}>Run Full Scan</Text>
+              <Text style={styles.actionButtonText}>
+                {report ? 'Re-run Full Scan' : 'Run Full Scan'}
+              </Text>
               <Text style={styles.actionButtonSub}>Request a remote OBD diagnostic scan</Text>
             </View>
           </>
         )}
       </TouchableOpacity>
 
-      <TouchableOpacity
-        style={[styles.actionButton, styles.actionSecondary]}
-        onPress={handleViewReport}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.actionIcon}>📊</Text>
-        <View style={styles.actionTextWrap}>
-          <Text style={[styles.actionButtonText, { color: colors.primary.navy }]}>
-            View Full Report
-          </Text>
-          <Text style={styles.actionButtonSubDark}>
-            View scan history and detailed reports
-          </Text>
+      {errorText && (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorBannerText}>{errorText}</Text>
         </View>
-      </TouchableOpacity>
+      )}
 
-      <TouchableOpacity
-        style={[styles.actionButton, styles.actionSecondary]}
-        onPress={handleEmail}
-        disabled={emailing}
-        activeOpacity={0.8}
+      {loadingReport && !report && !scanning && (
+        <ActivityIndicator
+          style={{ marginVertical: spacing.md }}
+          color={colors.primary.navy}
+        />
+      )}
+
+      {/* Scanned data — rendered inline once a scan exists */}
+      {report && (
+        <View style={styles.resultsWrap}>
+          <Text style={styles.sectionTitle}>Scan Results</Text>
+          <GpsScanReportBody report={report} />
+        </View>
+      )}
+
+      {/* Step 2 — View Full Report (after a completed scan) */}
+      {hasReportData && (
+        <TouchableOpacity
+          style={[styles.actionButton, styles.actionSecondary]}
+          onPress={handleViewReport}
+          disabled={aiBusy}
+          activeOpacity={0.8}
+        >
+          {aiBusy ? (
+            <ActivityIndicator color={colors.primary.navy} size="small" />
+          ) : (
+            <>
+              <Text style={styles.actionIcon}>📊</Text>
+              <View style={styles.actionTextWrap}>
+                <Text style={[styles.actionButtonText, { color: colors.primary.navy }]}>
+                  View Full Report
+                </Text>
+                <Text style={styles.actionButtonSubDark}>
+                  Generate an AI report from the scanned data
+                </Text>
+              </View>
+            </>
+          )}
+        </TouchableOpacity>
+      )}
+
+      {/* Step 3 — Email Report (after the AI report is generated) */}
+      {showEmail && (
+        <TouchableOpacity
+          style={[styles.actionButton, styles.actionSecondary]}
+          onPress={openEmailModal}
+          disabled={emailing}
+          activeOpacity={0.8}
+        >
+          {emailing ? (
+            <ActivityIndicator color={colors.primary.navy} size="small" />
+          ) : (
+            <>
+              <Text style={styles.actionIcon}>✉️</Text>
+              <View style={styles.actionTextWrap}>
+                <Text style={[styles.actionButtonText, { color: colors.primary.navy }]}>
+                  Email Report
+                </Text>
+                <Text style={styles.actionButtonSubDark}>
+                  Send the full report PDF via email
+                </Text>
+              </View>
+            </>
+          )}
+        </TouchableOpacity>
+      )}
+
+      {/* Email recipient modal */}
+      <Modal
+        visible={emailModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEmailModalVisible(false)}
       >
-        {emailing ? (
-          <ActivityIndicator color={colors.primary.navy} size="small" />
-        ) : (
-          <>
-            <Text style={styles.actionIcon}>✉️</Text>
-            <View style={styles.actionTextWrap}>
-              <Text style={[styles.actionButtonText, { color: colors.primary.navy }]}>
-                Email Report
-              </Text>
-              <Text style={styles.actionButtonSubDark}>
-                Send the latest scan report via email
-              </Text>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Email Report</Text>
+            <Text style={styles.modalSubtitle}>
+              Send the full report PDF to this address.
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              value={emailValue}
+              onChangeText={setEmailValue}
+              placeholder="name@example.com"
+              placeholderTextColor={colors.text.muted}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!emailing}
+            />
+            <View style={styles.modalButtonsRow}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalCancel]}
+                onPress={() => setEmailModalVisible(false)}
+                disabled={emailing}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalConfirm]}
+                onPress={handleSendEmail}
+                disabled={emailing || emailValue.trim().length === 0}
+                activeOpacity={0.8}
+              >
+                {emailing ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <Text style={styles.modalConfirmText}>Send</Text>
+                )}
+              </TouchableOpacity>
             </View>
-          </>
-        )}
-      </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 };
@@ -395,5 +596,88 @@ const styles = StyleSheet.create({
   actionButtonSubDark: {
     fontSize: 12,
     color: colors.text.muted,
+  },
+  errorBanner: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FCD34D',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  errorBannerText: {
+    color: '#92400E',
+    fontSize: 13,
+  },
+  resultsWrap: {
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text.primary,
+    marginBottom: spacing.sm,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  modalCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 22,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text.primary,
+    marginBottom: 4,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: colors.text.secondary,
+    marginBottom: 16,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: colors.border.medium,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: Platform.OS === 'ios' ? 14 : 10,
+    fontSize: 15,
+    color: colors.text.primary,
+    marginBottom: 18,
+  },
+  modalButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+  },
+  modalButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 96,
+  },
+  modalCancel: {
+    backgroundColor: '#F3F4F6',
+  },
+  modalCancelText: {
+    color: colors.text.secondary,
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  modalConfirm: {
+    backgroundColor: colors.primary.navy,
+  },
+  modalConfirmText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 14,
   },
 });

@@ -9,7 +9,6 @@ import { BleTabNavigator } from './BleTabNavigator';
 import { GpsTabNavigator } from './GpsTabNavigator';
 import { LoginScreen } from '../screens/LoginScreen';
 import { WorkflowSelectorScreen } from '../screens/WorkflowSelectorScreen';
-import { DeviceSetupScreen } from '../screens/DeviceSetupScreen';
 import { GpsTerminalDetailScreen } from '../screens/gps/GpsTerminalDetailScreen';
 
 import { ReportScreen } from '../screens/ReportScreen';
@@ -49,7 +48,6 @@ export const RootNavigator: React.FC = () => {
   const { 
     isAuthenticated,
     isAuthLoading,
-    deviceSetupCompleted,
     workflowMode,
     setUser, 
     setIsAuthenticated, 
@@ -157,17 +155,6 @@ export const RootNavigator: React.FC = () => {
           name="WorkflowSelector"
           component={WorkflowSelectorScreen}
           options={{ headerShown: false }}
-        />
-      ) : workflowMode === 'ble' && !deviceSetupCompleted ? (
-        // BLE device setup - shown after selecting BLE but before device is set up
-        <Stack.Screen
-          name="DeviceSetup"
-          component={DeviceSetupScreen}
-          options={{ 
-            headerShown: true,
-            title: 'Device Setup',
-            headerBackVisible: false,
-          }}
         />
       ) : (
         // Main app screens - shown when workflow is selected AND setup is done

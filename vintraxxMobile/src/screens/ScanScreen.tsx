@@ -637,19 +637,20 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <View style={styles.container}>
+      {/* Fixed navy header (matches GPS workflow) */}
+      <SafeAreaView edges={['top']} style={styles.header}>
+        <Text style={styles.headerTitle}>Vehicle Scan</Text>
+        <Text style={styles.headerSubtitle}>
+          Diagnose your vehicle's health
+        </Text>
+      </SafeAreaView>
+
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Vehicle Scan</Text>
-          <Text style={styles.headerSubtitle}>
-            Diagnose your vehicle's health
-          </Text>
-        </View>
 
         {/* GPS-side data banner — only shown when the user has at least one
             paired GPS terminal. Provides a one-tap path into the GPS DTC
@@ -1161,7 +1162,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({ navigation, route }) => 
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -1178,15 +1179,18 @@ const styles = StyleSheet.create({
     paddingBottom: spacing['3xl'],
   },
   header: {
-    paddingVertical: spacing.lg,
+    backgroundColor: colors.primary.navy,
+    paddingHorizontal: spacing.screenHorizontal,
+    paddingBottom: spacing.md,
   },
   headerTitle: {
     ...typography.styles.h2,
-    color: colors.primary.navy,
+    color: colors.text.inverse,
+    paddingTop: spacing.md,
   },
   headerSubtitle: {
     ...typography.styles.body,
-    color: colors.text.secondary,
+    color: 'rgba(255,255,255,0.7)',
     marginTop: spacing.xs,
   },
   section: {

@@ -321,5 +321,8 @@ export const useAppStore = create<AppState>((set) => ({
   setDevModeActivated: (activated) => set({ devModeActivated: activated }),
 
   // Reset
-  reset: () => set(initialState),
+  // NOTE: never re-enter the loading state on reset — `initAuth` only runs
+  // once on mount, so leaving `isAuthLoading: true` here would strand the app
+  // on the RootNavigator spinner after logout.
+  reset: () => set({ ...initialState, isAuthLoading: false }),
 }));

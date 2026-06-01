@@ -375,32 +375,36 @@ export const ScheduleScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <KeyboardAvoidingView
-        style={styles.keyboardAvoid}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
-          {/* Back button + Header */}
-          <View style={styles.headerRow}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={handleGoBack}
-              activeOpacity={0.7}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Text style={styles.backArrow}>{'‹'}</Text>
-            </TouchableOpacity>
-            <View style={styles.headerTextWrap}>
-              <Text style={styles.headerTitle}>Schedule Service</Text>
-              <Text style={styles.headerSubtitle}>Book your appointment</Text>
-            </View>
+    <View style={styles.container}>
+      {/* Fixed navy header (matches GPS workflow) */}
+      <SafeAreaView edges={['top']} style={styles.header}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={handleGoBack}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Text style={styles.backArrow}>{'‹'}</Text>
+          </TouchableOpacity>
+          <View style={styles.headerTextWrap}>
+            <Text style={styles.headerTitle}>Schedule Service</Text>
+            <Text style={styles.headerSubtitle}>Book your appointment</Text>
           </View>
+        </View>
+      </SafeAreaView>
+
+      <SafeAreaView style={styles.body} edges={['bottom']}>
+        <KeyboardAvoidingView
+          style={styles.keyboardAvoid}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
 
           {/* Card wrapper for form */}
           <View style={styles.formCard}>
@@ -612,9 +616,10 @@ export const ScheduleScreen: React.FC = () => {
 
           {/* Bottom spacing for floating tab bar */}
           <View style={styles.bottomSpacer} />
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 };
 
@@ -622,6 +627,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,
+  },
+  body: {
+    flex: 1,
   },
   keyboardAvoid: {
     flex: 1,
@@ -634,26 +642,27 @@ const styles = StyleSheet.create({
     paddingBottom: spacing['3xl'],
   },
 
-  // ── Header with back button ─────────────────────────────────────────
+  // ── Fixed navy header with back button (matches GPS workflow) ────────
+  header: {
+    backgroundColor: colors.primary.navy,
+    paddingHorizontal: spacing.screenHorizontal,
+    paddingBottom: spacing.md,
+  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingTop: spacing.md,
-    paddingBottom: spacing.lg,
   },
   backButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: colors.primary.navy,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 4,
   },
   backArrow: {
     fontSize: 24,
@@ -667,12 +676,12 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 22,
     fontWeight: '700',
-    color: colors.primary.navy,
+    color: colors.text.inverse,
     letterSpacing: -0.3,
   },
   headerSubtitle: {
     fontSize: 13,
-    color: colors.text.muted,
+    color: 'rgba(255,255,255,0.7)',
     marginTop: 2,
     fontWeight: '400',
   },

@@ -325,16 +325,14 @@ export const ConnectScreen: React.FC<ConnectScreenProps> = ({ navigation, route 
 
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Fixed Header with Logo - tap 7 times to activate DEV mode */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Pressable onPress={handleLogoTap}>
-            <Image
-              source={require('../assets/images/logo.png')}
-              style={styles.logo}
-              resizeMode="contain"
-            />
+    <View style={styles.container}>
+      {/* Fixed navy header (matches GPS workflow). Title doubles as the hidden
+          7-tap DEV-mode gesture. Logout sits on the bottom row so it never
+          collides with the floating Switch pill at the top-right. */}
+      <SafeAreaView edges={['top']} style={styles.header}>
+        <View style={styles.headerTopRow}>
+          <Pressable onPress={handleLogoTap} style={styles.headerTitleWrap}>
+            <Text style={styles.headerTitle}>Devices</Text>
           </Pressable>
           {devModeActivated && (
             <View style={styles.devBadge}>
@@ -342,10 +340,13 @@ export const ConnectScreen: React.FC<ConnectScreenProps> = ({ navigation, route 
             </View>
           )}
         </View>
-        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-          <Text style={styles.logoutButtonText}>Logout</Text>
-        </TouchableOpacity>
-      </View>
+        <View style={styles.headerBottomRow}>
+          <Text style={styles.headerSubtitle}>Scanner setup &amp; connection</Text>
+          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+            <Text style={styles.logoutButtonText}>Logout</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
 
       <ScrollView 
         style={styles.scrollView}
@@ -520,7 +521,7 @@ export const ConnectScreen: React.FC<ConnectScreenProps> = ({ navigation, route 
           />
         </Modal>
       )}
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -530,30 +531,46 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.primary,
   },
   header: {
+    backgroundColor: colors.primary.navy,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+  headerTopRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: spacing.md,
+  },
+  headerTitleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 26,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text.inverse,
+  },
+  headerBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing.screenHorizontal,
-    paddingVertical: spacing.md,
-    backgroundColor: colors.background.primary,
+    marginTop: 4,
   },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  logo: {
-    width: 180,
-    height: 60,
+  headerSubtitle: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.7)',
+    flex: 1,
   },
   logoutButton: {
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: spacing.sm,
-    backgroundColor: colors.background.tab,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
   },
   logoutButtonText: {
     ...typography.styles.bodySmall,
-    color: colors.primary.red,
+    color: '#FFFFFF',
     fontWeight: typography.fontWeight.semiBold,
   },
   scrollView: {

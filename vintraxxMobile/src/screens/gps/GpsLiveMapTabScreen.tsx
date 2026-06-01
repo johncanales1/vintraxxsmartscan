@@ -58,6 +58,21 @@ const MARKER_COLORS: Record<string, string> = {
   REVOKED: '#6B7280',
 };
 
+// Detect a missing/placeholder Google Maps key. The JS layer can't read the
+// native key directly, but the same value is baked into the JS env; if it's a
+// placeholder the native build is almost certainly unconfigured too, which is
+// the most common reason for a blank/grey map (Google returns empty tiles).
+const MAPS_KEY = (GOOGLE_MAPS_CONFIG.API_KEY ?? '').trim();
+const MAPS_KEY_UNCONFIGURED =
+  MAPS_KEY === '' ||
+  MAPS_KEY === 'REPLACE_ME-maps-api-key' ||
+  MAPS_KEY === 'YOUR_GOOGLE_MAPS_API_KEY';
+
+// If the map never reports `onMapReady` within this window we assume the
+// native SDK failed to initialise (usually an invalid key / disabled SDK /
+// missing billing) and surface a diagnostic message.
+const MAP_READY_TIMEOUT_MS = 6000;
+
 function vehicleLabel(t: GpsTerminal): string {
   if (t.nickname) return t.nickname;
   const parts = [t.vehicleYear, t.vehicleMake, t.vehicleModel].filter(Boolean);
@@ -93,7 +108,19 @@ export const GpsLiveMapTabScreen: React.FC = () => {
 
   const [loading, setLoading] = useState(true);
   const [latestLocations, setLatestLocations] = useState<Record<string, GpsLocation | null>>({});
+  const [mapReady, setMapReady] = useState(false);
+  const [mapTimedOut, setMapTimedOut] = useState(false);
   const mapRef = useRef<any>(null);
+
+  // Watchdog: if the native map never calls `onMapReady` we assume the SDK
+  // failed to initialise (invalid/disabled key or missing billing) and show a
+  // diagnostic. Only armed once the map is actually rendered (key present,
+  // module available, not loading).
+  useEffect(() => {
+    if (!MapView || MAPS_KEY_UNCONFIGURED || loading || mapReady) return;
+    const timer = setTimeout(() => setMapTimedOut(true), MAP_READY_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [loading, mapReady]);
 
   // Fetch terminals on focus
   useFocusEffect(
@@ -216,7 +243,17 @@ export const GpsLiveMapTabScreen: React.FC = () => {
           <View style={styles.mapPlaceholder}>
             <Text style={styles.mapPlaceholderText}>Map unavailable</Text>
             <Text style={styles.mapPlaceholderSub}>
-              react-native-maps is not installed
+              react-native-maps is not installed in this build.
+            </Text>
+          </View>
+        ) : MAPS_KEY_UNCONFIGURED ? (
+          <View style={styles.mapPlaceholder}>
+            <Text style={styles.mapPlaceholderText}>Map can&apos;t load</Text>
+            <Text style={styles.mapPlaceholderSub}>
+              The Google Maps API key is not configured for this build. Set{' '}
+              GOOGLE_MAPS_API_KEY (iOS Secrets.xcconfig / Android
+              local.properties) with the Maps SDK enabled and billing active,
+              then rebuild the app.
             </Text>
           </View>
         ) : loading ? (
@@ -224,39 +261,65 @@ export const GpsLiveMapTabScreen: React.FC = () => {
             <ActivityIndicator size="large" color={colors.primary.navy} />
           </View>
         ) : (
-          <MapView
-            ref={mapRef}
-            style={styles.map}
-            provider={PROVIDER_GOOGLE}
-            initialRegion={{
-              latitude: located.length > 0 ? located[0].location!.latitude : 39.8283,
-              longitude: located.length > 0 ? located[0].location!.longitude : -98.5795,
-              latitudeDelta: located.length > 1 ? 20 : 0.05,
-              longitudeDelta: located.length > 1 ? 20 : 0.05,
-            }}
-            showsUserLocation={false}
-            showsMyLocationButton={false}
-          >
-            {located.map(({ terminal, location }) => (
-              <Marker
-                key={terminal.id}
-                coordinate={{
-                  latitude: location!.latitude,
-                  longitude: location!.longitude,
-                }}
-                pinColor={MARKER_COLORS[terminal.status] ?? MARKER_COLORS.OFFLINE}
-              >
-                {Callout && (
-                  <Callout
-                    tooltip
-                    onPress={() => navigation.navigate('LiveTrack', { terminalId: terminal.id })}
-                  >
-                    <TerminalCallout terminal={terminal} location={location} />
-                  </Callout>
-                )}
-              </Marker>
-            ))}
-          </MapView>
+          <>
+            <MapView
+              ref={mapRef}
+              style={styles.map}
+              provider={PROVIDER_GOOGLE}
+              onMapReady={() => setMapReady(true)}
+              initialRegion={{
+                latitude: located.length > 0 ? located[0].location!.latitude : 39.8283,
+                longitude: located.length > 0 ? located[0].location!.longitude : -98.5795,
+                latitudeDelta: located.length > 1 ? 20 : 0.05,
+                longitudeDelta: located.length > 1 ? 20 : 0.05,
+              }}
+              showsUserLocation={false}
+              showsMyLocationButton={false}
+            >
+              {located.map(({ terminal, location }) => (
+                <Marker
+                  key={terminal.id}
+                  coordinate={{
+                    latitude: location!.latitude,
+                    longitude: location!.longitude,
+                  }}
+                  pinColor={MARKER_COLORS[terminal.status] ?? MARKER_COLORS.OFFLINE}
+                >
+                  {Callout && (
+                    <Callout
+                      tooltip
+                      onPress={() => navigation.navigate('LiveTrack', { terminalId: terminal.id })}
+                    >
+                      <TerminalCallout terminal={terminal} location={location} />
+                    </Callout>
+                  )}
+                </Marker>
+              ))}
+            </MapView>
+
+            {/* Map mounted but never became ready — almost always an
+                invalid/disabled key or missing billing on the native side. */}
+            {mapTimedOut && !mapReady && (
+              <View style={styles.mapOverlay} pointerEvents="none">
+                <Text style={styles.mapOverlayTitle}>Map failed to load</Text>
+                <Text style={styles.mapOverlaySub}>
+                  The map tiles didn&apos;t load. Verify the Google Maps API key,
+                  that the Maps SDK is enabled, billing is active, and any
+                  bundle-id / SHA key restrictions match this build, then rebuild.
+                </Text>
+              </View>
+            )}
+
+            {/* Map is fine, but no vehicle has a known GPS fix yet. */}
+            {mapReady && located.length === 0 && (
+              <View style={styles.mapOverlay} pointerEvents="none">
+                <Text style={styles.mapOverlayTitle}>No vehicle locations</Text>
+                <Text style={styles.mapOverlaySub}>
+                  No vehicles are reporting a GPS location yet.
+                </Text>
+              </View>
+            )}
+          </>
         )}
       </View>
 
@@ -341,7 +404,30 @@ const styles = StyleSheet.create({
   mapPlaceholderSub: {
     fontSize: 12,
     color: colors.text.muted,
-    marginTop: 4,
+    marginTop: 6,
+    textAlign: 'center',
+    paddingHorizontal: spacing.lg,
+    lineHeight: 18,
+  },
+  mapOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(17,24,39,0.82)',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+  },
+  mapOverlayTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 2,
+  },
+  mapOverlaySub: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.85)',
+    lineHeight: 17,
   },
   listContainer: {
     flex: 1,

@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import { useAppStore } from '../store/appStore';
+import { authService } from '../services/auth/AuthService';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
@@ -68,9 +69,16 @@ export const WorkflowSelectorScreen: React.FC = () => {
     setWorkflowMode('ble');
   }, [setWorkflowMode]);
 
-  const handleLogout = useCallback(() => {
-    const { setUser, setIsAuthenticated, setDeviceSetupCompleted, setUserDevice, reset } = useAppStore.getState();
+  const handleLogout = useCallback(async () => {
+    const { reset } = useAppStore.getState();
     logger.info(LogCategory.APP, 'User logout from workflow selector');
+    try {
+      await authService.logout();
+    } catch (error) {
+      logger.warn(LogCategory.APP, 'authService.logout failed during workflow-selector logout', error);
+    }
+    // reset() clears all app state and returns to the Login screen. It must NOT
+    // re-enter the loading state (see appStore.reset) or the app would hang.
     reset();
   }, []);
 

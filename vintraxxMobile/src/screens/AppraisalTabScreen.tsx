@@ -36,19 +36,20 @@ export const AppraisalTabScreen: React.FC<AppraisalTabScreenProps> = ({ navigati
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <View style={styles.container}>
+      {/* Fixed navy header (matches GPS workflow) */}
+      <SafeAreaView edges={['top']} style={styles.header}>
+        <Text style={styles.headerTitle}>Vehicle Appraisal</Text>
+        <Text style={styles.headerSubtitle}>
+          Get your vehicle's market value
+        </Text>
+      </SafeAreaView>
+
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Vehicle Appraisal</Text>
-          <Text style={styles.headerSubtitle}>
-            Get your vehicle's market value
-          </Text>
-        </View>
 
         {/* Appraisal Button */}
         <View style={styles.scanSection}>
@@ -87,7 +88,7 @@ export const AppraisalTabScreen: React.FC<AppraisalTabScreenProps> = ({ navigati
           </View>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -104,15 +105,18 @@ const styles = StyleSheet.create({
     paddingBottom: spacing['3xl'],
   },
   header: {
-    paddingVertical: spacing.lg,
+    backgroundColor: colors.primary.navy,
+    paddingHorizontal: spacing.screenHorizontal,
+    paddingBottom: spacing.md,
   },
   headerTitle: {
     ...typography.styles.h2,
-    color: colors.primary.navy,
+    color: colors.text.inverse,
+    paddingTop: spacing.md,
   },
   headerSubtitle: {
     ...typography.styles.body,
-    color: colors.text.secondary,
+    color: 'rgba(255,255,255,0.7)',
     marginTop: spacing.xs,
   },
   scanSection: {

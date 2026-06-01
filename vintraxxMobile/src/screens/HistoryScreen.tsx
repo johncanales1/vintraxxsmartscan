@@ -487,11 +487,15 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
+    <View style={styles.container}>
+      {/* Fixed navy header (matches GPS workflow). Log button sits on the
+          bottom row so it never collides with the floating Switch pill. */}
+      <SafeAreaView edges={['top']} style={styles.header}>
+        <Text style={styles.headerTitle}>Scan History</Text>
         <View style={styles.headerTitleRow}>
-          <Text style={styles.headerTitle}>Scan History</Text>
+          <Text style={styles.headerSubtitle}>
+            {totalCount} report{totalCount !== 1 ? 's' : ''} recorded
+          </Text>
           <TouchableOpacity
             style={styles.logButton}
             onPress={() => {
@@ -503,10 +507,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
             <Text style={styles.logButtonText}>Log</Text>
           </TouchableOpacity>
         </View>
-        <Text style={styles.headerSubtitle}>
-          {totalCount} report{totalCount !== 1 ? 's' : ''} recorded
-        </Text>
-      </View>
+      </SafeAreaView>
 
       {/* Filter Tabs */}
       <View style={styles.filterContainer}>
@@ -567,7 +568,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
           </View>
         }
       />
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -577,23 +578,28 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.primary,
   },
   header: {
+    backgroundColor: colors.primary.navy,
     paddingHorizontal: spacing.screenHorizontal,
-    paddingVertical: spacing.lg,
+    paddingBottom: spacing.md,
   },
   headerTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginTop: spacing.xs,
   },
   headerTitle: {
     ...typography.styles.h2,
-    color: colors.primary.navy,
+    color: colors.text.inverse,
+    paddingTop: spacing.md,
   },
   logButton: {
-    backgroundColor: colors.primary.navy,
-    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+    borderRadius: 14,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingVertical: 6,
   },
   logButtonText: {
     color: colors.text.inverse,
@@ -602,8 +608,7 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     ...typography.styles.body,
-    color: colors.text.secondary,
-    marginTop: spacing.xs,
+    color: 'rgba(255,255,255,0.7)',
   },
   filterContainer: {
     flexDirection: 'row',

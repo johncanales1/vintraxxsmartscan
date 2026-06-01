@@ -17,15 +17,32 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
+
     // Google Maps SDK — must be initialized before any MapView is rendered.
-    // The key must have "Maps SDK for iOS" enabled in GCP Console.
-    // Set GOOGLE_MAPS_API_KEY in Secrets.xcconfig or environment variable
-    let apiKey = Bundle.main.object(forInfoDictionaryKey: "GOOGLE_MAPS_API_KEY") as? String 
-        ?? ProcessInfo.processInfo.environment["GOOGLE_MAPS_API_KEY"] 
-        ?? "YOUR_GOOGLE_MAPS_API_KEY"
-    GMSServices.provideAPIKey(apiKey)
+    // The iOS key should come from Info.plist:
+    // <key>GOOGLE_MAPS_API_KEY</key>
+    // <string>$(GOOGLE_MAPS_API_KEY)</string>
+    let plistApiKey = Bundle.main.object(forInfoDictionaryKey: "GOOGLE_MAPS_API_KEY") as? String
+    let envApiKey = ProcessInfo.processInfo.environment["GOOGLE_MAPS_API_KEY"]
+    let apiKey = plistApiKey ?? envApiKey
+
+    if let apiKey = apiKey,
+       !apiKey.isEmpty,
+       apiKey != "$(GOOGLE_MAPS_API_KEY)",
+       apiKey != "YOUR_GOOGLE_MAPS_API_KEY" {
+
+      print("✅ Google Maps API key loaded for iOS")
+      print("✅ Google Maps API key prefix: \(apiKey.prefix(8))...")
+      GMSServices.provideAPIKey(apiKey)
+
+    } else {
+      print("❌ Google Maps API key missing or not substituted")
+      print("plistApiKey: \(plistApiKey ?? "nil")")
+      print("envApiKey exists: \(envApiKey != nil)")
+    }
 
     FirebaseApp.configure()
+
     let delegate = ReactNativeDelegate()
     let factory = RCTReactNativeFactory(delegate: delegate)
     delegate.dependencyProvider = RCTAppDependencyProvider()
